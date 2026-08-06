@@ -1,0 +1,102 @@
+<?php
+
+/*
+|--------------------------------------------------------------------------
+| Page Route Map
+|--------------------------------------------------------------------------
+|
+| Maps a named route (the page's main "index"/entry route) to the page
+| key used in config/access_pages.php and role_page_access.page_access.
+| Only routes listed here are gated by CheckPageAccess; anything else
+| (AJAX/CRUD sub-actions, unnamed routes, auth routes, etc.) passes through
+| untouched.
+|
+*/
+
+return [
+    'doctors.index' => 'doctor-master',
+    'specialisation.index' => 'doctor-specialisation',
+    'doctor-schedules.index' => 'doctor-schedules',
+    'doctor-schedule.calendar' => 'doctor-appointment-calendar',
+    'doctor-appointments.index' => 'doctor-appointments',
+    'doctor-history.index' => 'doctor-history',
+    'doctor-test-payment-master.index' => 'doctor-test-payment-master',
+    'doctor-payable.index' => 'doctor-payable',
+    'doctor-settlement.index' => 'doctor-settlement',
+    'doctor-visit-invoices.index' => 'doctor-visit-invoice',
+    'diagnostic-invoice.index' => 'diagnostic-invoice',
+    'invoice-item-masters.index' => 'test-category-master',
+    'invoice-item-details.index' => 'test-detail-master',
+    'test-group-master.index' => 'test-group-master',
+    'test-extra-field-type.index' => 'test-extra-field-type',
+    'instrument-master.index' => 'instrument-master',
+    'kit-master.index' => 'kit-master',
+    'note-master.index' => 'note-master',
+    'microscopy-master.index' => 'microscopy-master',
+    'impression-master.index' => 'impression-master',
+    'detail-range-master.index' => 'detail-range-master',
+    'sample-master.index' => 'sample-master',
+    'uom-master.index' => 'uom-master',
+    'test-parameter.index' => 'test-parameter',
+    'test-result-entry.index' => 'test-result-entry',
+    'diagnostic-test-report.index' => 'diagnostic-test-report',
+    'test-report-dashboard.index' => 'test-report-dashboard',
+    'equipment-category.index' => 'equipment-category',
+    'equipment-rental.index' => 'equipment-rental',
+    'ambulance-destination.index' => 'ambulance-destination',
+    'ambulance-rental.index' => 'ambulance-rental',
+    'membership-fee-rate.index' => 'membership-fee-rate',
+    'membership-fee.index' => 'membership-fee',
+    'patient-history.index' => 'patient-history',
+
+    'inventory-category.index' => 'inventory-category',
+    'inventory-item.index' => 'inventory-item',
+    'purchase-order.index' => 'purchase-order',
+    'goods-receipt.index' => 'goods-receipt',
+    'stock-issue.index' => 'stock-issue',
+    'stock-ledger.index' => 'stock-ledger',
+    'purchase-order-report.index' => 'purchase-order-report',
+    'goods-receipt-report.index' => 'goods-receipt-report',
+    'goods-issue-report.index' => 'goods-issue-report',
+    'stock-as-on-date.index' => 'stock-as-on-date',
+    'patient-card.index' => 'patient-card',
+    'expenditure-category.index' => 'expenditure-category',
+    'expenditure-agency.index' => 'expenditure-agency',
+    'expenditure.index' => 'expenditure',
+    'income-category.index' => 'income-category',
+    'income.index' => 'income',
+    'invoice-cancellation.index' => 'invoice-cancellation',
+    'cancellation-permission.index' => 'cancellation-permission',
+    'activity-log.index' => 'activity-log',
+    'audit-logs.index' => 'audit-logs',
+    'membership-fee-status.index' => 'membership-fee-status',
+    'cloud-backup.index' => 'cloud-backup',
+    'cloud-backup.test-connection' => 'cloud-backup',
+    'cloud-backup.run' => 'cloud-backup',
+    'cloud-backup.list' => 'cloud-backup',
+    'cloud-backup.download' => 'cloud-backup',
+    'cloud-backup.destroy' => 'cloud-backup',
+    'maintenance-mode.index' => 'maintenance-mode',
+    'maintenance-mode.toggle' => 'maintenance-mode',
+    'user-invoice-report.index' => 'user-invoice-report',
+    'all-invoices-report.index' => 'all-invoices-report',
+    'doctor-settlement-by-user.index' => 'doctor-settlement-by-user',
+    'doctor-payable-by-user.index' => 'doctor-payable-by-user',
+    'cash-submission-report.index' => 'cash-submission-report',
+    'employee-performance.index' => 'employee-performance',
+    'reporting-group.index' => 'reporting-group',
+    'doctor-consultation-list.index' => 'doctor-consultation-list',
+    'doctor-visit-payment-report.index' => 'doctor-visit-payment-report',
+    'doctor-test-payment-report.index' => 'doctor-test-payment-report',
+    'doctor-payment-report.index' => 'doctor-payment-report',
+    'doctor-payable-non-cash-report.index' => 'doctor-payable-non-cash-report',
+    'doctor-wise-payment-report.index' => 'doctor-wise-payment-report',
+    'daily-transaction-report.index' => 'daily-transaction-report',
+    'whatsapp-message-report.index' => 'whatsapp-message-report',
+    'item-wise-report.index' => 'item-wise-report',
+    'item-wise-summary-report.index' => 'item-wise-summary-report',
+    'monthly-reconciliation-report.index' => 'monthly-reconciliation-report',
+
+    'users.index' => 'users',
+    'role-page-access.index' => 'role-page-access',
+];

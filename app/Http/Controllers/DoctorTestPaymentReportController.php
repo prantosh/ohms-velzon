@@ -1,0 +1,160 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Doctor;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
+
+class DoctorTestPaymentReportController extends Controller
+{
+    public function index()
+    {
+        $doctors = Doctor::orderBy('doctor_name')->get(['id', 'doctor_name']);
+        return view('apps-doctor-test-payment-report', compact('doctors'));
+    }
+
+    public function list(Request $request)
+    {
+        $request->validate([
+            'doctor_id' => 'required|exists:doctors,id',
+            'date' => 'required|date',
+        ]);
+        $result = $this->buildReport($request->doctor_id, $request->date);
+        return response()->json([
+            'status' => true,
+            'rows' => $result['rows'],
+            'summary' => $result['summary'],
+        ]);
+    }
+
+    public function print(Request $request)
+    {
+        $request->validate([
+            'doctor_id' => 'required|exists:doctors,id',
+            'date' => 'required|date',
+        ]);
+        $doctor = Doctor::findOrFail($request->doctor_id);
+        $result = $this->buildReport($request->doctor_id, $request->date);
+        $date = Carbon::parse($request->date);
+
+        $pdf = Pdf::loadView('apps-doctor-test-payment-report-pdf', [
+            'doctor' => $doctor,
+            'rows' => $result['rows'],
+            'summary' => $result['summary'],
+            'date' => $date,
+        ]);
+
+        $fileName = 'Doctor-Test-Payment-Report-' .
+            str_replace(' ', '-', $doctor->doctor_name) .
+            '-' . $date->format('d-m-Y') . '.pdf';
+
+        return $pdf->stream($fileName);
+    }
+
+    /**
+     * Unlike a doctor-visit invoice (always exactly one payable per
+     * invoice), a diagnostic invoice can carry several doctor_payables rows
+     * for the SAME doctor (multiple tests on one invoice) or a mix of
+     * different doctors' lines -- invoices.doctor_id isn't even populated
+     * for DIAGNOSTIC invoices (see DiagnosticInvoiceController::store()).
+     * So this report is built per doctor_payables row (per test), not per
+     * invoice, and settlement lookups key off payable_id rather than
+     * invoice_id -- doctor_settlement_items already supports that
+     * granularity (it carries its own payable_id/item_description).
+     */
+    private function buildReport($doctorId, $date): array
+    {
+        $payables = DB::table('doctor_payables')
+            ->join('invoices', 'invoices.id', '=', 'doctor_payables.invoice_id')
+            ->where('doctor_payables.doctor_id', $doctorId)
+            ->where('doctor_payables.invoice_type', 'DIAGNOSTIC')
+            ->whereDate('invoices.invoice_date', $date)
+            ->where(function ($q) {
+                $q->whereNull('invoices.cancelled')->orWhere('invoices.cancelled', '!=', 'Y');
+            })
+            ->orderBy('invoices.invoice_no')
+            ->orderBy('doctor_payables.id')
+            ->get([
+                'doctor_payables.id as payable_id',
+                'invoices.invoice_no',
+                'invoices.patient_name',
+                'invoices.patient_mobile_no',
+                'doctor_payables.item_description',
+                'doctor_payables.payable_amount',
+                'doctor_payables.created_at',
+            ]);
+
+        $payableIds = $payables->pluck('payable_id');
+
+        $settlementItems = DB::table('doctor_settlement_items')
+            ->join('doctor_settlements', 'doctor_settlements.id', '=', 'doctor_settlement_items.settlement_id')
+            ->whereIn('doctor_settlement_items.payable_id', $payableIds)
+            ->where('doctor_settlements.status', '!=', 'CANCELLED')
+            ->select(
+                'doctor_settlement_items.payable_id',
+                'doctor_settlement_items.payable_amount',
+                'doctor_settlement_items.settlement_amount',
+                'doctor_settlement_items.balance_after_payment',
+                'doctor_settlement_items.created_at as item_created_at',
+                'doctor_settlements.settlement_no',
+                'doctor_settlements.settlement_date',
+                'doctor_settlements.payment_mode',
+                'doctor_settlements.voucher_no',
+                'doctor_settlements.status as settlement_status'
+            )
+            ->orderBy('doctor_settlement_items.created_at')
+            ->get()
+            ->groupBy('payable_id');
+
+        $totalPayable = 0;
+        $totalSettledAmount = 0;
+        $settledCount = 0;
+
+        $rows = $payables->map(function ($payable) use ($settlementItems, &$totalPayable, &$totalSettledAmount, &$settledCount) {
+
+            $items = $settlementItems->get($payable->payable_id, collect());
+            $isSettled = $items->count() > 0;
+            $payableAmount = $isSettled ? (float) $items->max('payable_amount') : null;
+            $settledAmount = $items->sum('settlement_amount');
+            $latest = $items->last();
+            $balance = $latest ? (float) $latest->balance_after_payment : null;
+            $settlementNumbers = $items->pluck('settlement_no')->unique()->values()->implode(', ');
+
+            if ($isSettled) {
+                $totalPayable += $payableAmount;
+                $totalSettledAmount += $settledAmount;
+                $settledCount++;
+            }
+
+            return [
+                'invoice_no' => $payable->invoice_no,
+                'patient_name' => $payable->patient_name,
+                'patient_mobile_no' => $payable->patient_mobile_no,
+                'item_description' => $payable->item_description,
+                'invoice_time' => Carbon::parse($payable->created_at)->format('h:i A'),
+                'is_settled' => $isSettled,
+                'payable_amount' => $payableAmount,
+                'settled_amount' => $settledAmount,
+                'balance' => $balance,
+                'settlement_numbers' => $settlementNumbers,
+                'settlement_date' => optional($latest)->settlement_date,
+                'payment_mode' => optional($latest)->payment_mode,
+            ];
+        });
+
+        return [
+            'rows' => $rows->values(),
+            'summary' => [
+                'total_invoices' => $payables->count(),
+                'settled_count' => $settledCount,
+                'not_settled_count' => $payables->count() - $settledCount,
+                'total_payable' => round($totalPayable, 2),
+                'total_settled_amount' => round($totalSettledAmount, 2),
+                'total_balance' => round($totalPayable - $totalSettledAmount, 2),
+            ],
+        ];
+    }
+}

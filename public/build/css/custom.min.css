@@ -1,0 +1,37 @@
+/* Center the top menu bar items (horizontal layout) instead of left-aligned */
+[data-layout="horizontal"] .navbar-menu .navbar-nav {
+    width: 100%;
+    justify-content: center;
+}
+
+/* Give top menu item labels their own typographic identity so they read
+   as navigation chrome, distinct from ordinary body/page text */
+[data-layout="horizontal"] .navbar-menu .navbar-nav > .nav-item > .nav-link {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: .8125rem;
+    letter-spacing: .5px;
+}
+
+[data-layout="horizontal"] .navbar-menu .navbar-nav > .nav-item > .nav-link:hover,
+[data-layout="horizontal"] .navbar-menu .navbar-nav > .nav-item > .nav-link.active {
+    color: #0d6efd !important;
+}
+
+/* Soft off-white dashboard background instead of pure white -- lets white
+   cards/tables stand out with visible separation. Scoped to .page-content
+   (the main dashboard body) only, not the login/auth pages, and to light
+   theme only so dark mode is completely untouched and keeps its own
+   original background. */
+[data-bs-theme="light"] .page-content {
+    background-color: #eaeef2 !important;
+}
+
+/* Cards/boxes (Quick Links, stat tiles, doctor schedule widgets, etc.) must
+   stay clearly white -- the whole point of the page background change above
+   is contrast against these, not for them to blend in. The theme's cards
+   use a shared --vz-secondary-bg variable that can read close to this new
+   page background tone, so force it explicitly here. */
+[data-bs-theme="light"] .page-content .card {
+    background-color: #ffffff !important;
+}

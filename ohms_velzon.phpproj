@@ -1,0 +1,16 @@
+<Project Sdk="Devsense.Php.Sdk">
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>e87b06f3-0a8b-693a-39cb-8d85168dd955</ProjectGuid>
+  </PropertyGroup>
+  <PropertyGroup>
+    <EnvName>PHPDev</EnvName>
+    <RuntimeVersion>8.3</RuntimeVersion>
+    <WebRoot>public</WebRoot>
+    <PHPDevRouting>vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php</PHPDevRouting>
+  </PropertyGroup>
+  <ItemGroup>
+    <Folder Include="public\invoices\" />
+    <Folder Include="public\Report\doctor_visit_bill\" />
+    <Folder Include="public\uploads\doctors\" />
+  </ItemGroup>
+</Project>
