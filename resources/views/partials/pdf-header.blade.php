@@ -77,7 +77,7 @@
             @unless($isCompact)
             <h6 style="margin:2px 0;">
 
-                Web: www.abssrk.online; Phone: (033)2513-7070/7439, 2539-2009  Mob:&nbsp;8585882287/9051132429/9051129713/9038721959
+                Web: www.abssrk.online Phone: (033)2513-7070/7439, 2539-2009  Mob:&nbsp;8585882287/9051132429/9051129713/9038721959
 
             </h6>
             @endunless
