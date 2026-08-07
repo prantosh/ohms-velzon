@@ -1038,7 +1038,9 @@ class DiagnosticInvoiceController extends Controller
             foreach ($tests as $row) {
 
                 $manualDiscount =
-                    (float) ($row['additional_discount_percent'] ?? 0) / 100 * (float) ($row['rate'] ?? 0) +
+                    $this->roundToNearestTen(
+                        (float) ($row['additional_discount_percent'] ?? 0) / 100 * (float) ($row['rate'] ?? 0)
+                    ) +
                     (float) ($row['additional_discount_amount'] ?? 0);
 
                 if ($manualDiscount > 0 && !empty($row['discount_approved_by'])) {
@@ -1194,18 +1196,28 @@ class DiagnosticInvoiceController extends Controller
                 // row per component) aren't separately billed -- the
                 // invoice should only show the package's own line.
                 ->whereNull('package_parent_item_code_sub')
-                ->get()
-                ->map(function ($row) {
+                ->get();
+
+            $testCategoryNames = DB::table('invoice_item_masters')
+                ->whereIn('item_code', $tests->pluck('item_code')->unique())
+                ->pluck('item_name', 'item_code');
+
+            $tests = $tests->map(function ($row) use ($testCategoryNames) {
 
                     $row->test_name =
                         $row->item_description;
 
+                    $row->test_category =
+                        $testCategoryNames->get($row->item_code);
+
                     $row->discount =
-                        (($row->rate ?? 0)
-                            * ($row->standard_discount ?? 0) / 100)
+                        $this->roundToNearestTen(
+                            ($row->rate ?? 0) * ($row->standard_discount ?? 0) / 100
+                        )
                         +
-                        (($row->rate ?? 0)
-                            * ($row->additional_discount_percent ?? 0) / 100)
+                        $this->roundToNearestTen(
+                            ($row->rate ?? 0) * ($row->additional_discount_percent ?? 0) / 100
+                        )
                         +
                         ($row->additional_discount_amount ?? 0);
 
@@ -2311,15 +2323,22 @@ class DiagnosticInvoiceController extends Controller
             // Package component rows aren't separately billed -- see the
             // identical filter in the WhatsApp PDF generation above.
             ->whereNull('package_parent_item_code_sub')
-            ->get()
-            ->map(function ($row) {
+            ->get();
+
+        $testCategoryNames = DB::table('invoice_item_masters')
+            ->whereIn('item_code', $tests->pluck('item_code')->unique())
+            ->pluck('item_name', 'item_code');
+
+        $tests = $tests->map(function ($row) use ($testCategoryNames) {
 
                 $row->test_name = $row->item_description;
 
+                $row->test_category = $testCategoryNames->get($row->item_code);
+
                 $row->discount =
-                    (($row->rate ?? 0) * ($row->standard_discount ?? 0) / 100)
+                    $this->roundToNearestTen(($row->rate ?? 0) * ($row->standard_discount ?? 0) / 100)
                     +
-                    (($row->rate ?? 0) * ($row->additional_discount_percent ?? 0) / 100)
+                    $this->roundToNearestTen(($row->rate ?? 0) * ($row->additional_discount_percent ?? 0) / 100)
                     +
                     ($row->additional_discount_amount ?? 0);
 
@@ -2340,5 +2359,15 @@ class DiagnosticInvoiceController extends Controller
 
         return $pdf->stream($safeFileName);
     }
-    
+
+    // Every percent-based discount (Standard Discount %, Additional Discount
+    // %) is rounded to the nearest multiple of 10 once converted to a
+    // currency amount, independently of any other discount on the same line
+    // -- e.g. a 20% discount on a rate of 80 is 16, rounded to 20. Mirrors
+    // roundToNearestTen() in apps-diagnostic-invoice.init.js.
+    private function roundToNearestTen(float $value): float
+    {
+        return round($value / 10) * 10;
+    }
+
 }

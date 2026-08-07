@@ -197,17 +197,15 @@ function fmtDateTime($date)
 
 <th width="5%">SL</th>
 
-<th width="15%">Test ID</th>
+<th width="15%">Test Category</th>
 
-<th width="30%">Test Description</th>
+<th width="50%">Test Description</th>
 
 <th width="10%">Rate</th>
 
 <th width="10%">Discount</th>
 
 <th width="10%">Amount</th>
-
-<th width="20%">Remarks</th>
 
 </tr>
 
@@ -227,7 +225,7 @@ $sl = 1;
 
 <td class="text-center">{{ $sl++ }}</td>
 
-<td>{{ $row->item_code_sub }}</td>
+<td>{{ $row->test_category }}</td>
 
 <td>{{ $row->test_name }}</td>
 
@@ -241,14 +239,6 @@ $sl = 1;
 
 <td class="amount">
     {{ number_format($row->amount,2) }}
-</td>
-
-<td>
-    @if($row->doctor_payment_waived)
-    Doctor Fees Waived{{ $row->remarks ? ' - ' . $row->remarks : '' }}
-    @else
-    {{ $row->remarks }}
-    @endif
 </td>
 
 </tr>
@@ -532,14 +522,24 @@ $amountInWords = ucwords(
 ======================================================= -->
 
 <table>
+<tr>
 
+<td>
+
+
+
+Please bring this slip for report collection
+
+</td>
+
+</tr>
 <tr>
 
 <td>
 
 <b>Remarks :</b>
 
-Report can be obtained from Monday to Saturday after 7 P.M.
+Report can be obtained from Monday to Sunday after 7 P.M.
 
 </td>
 

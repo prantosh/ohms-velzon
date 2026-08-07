@@ -12,6 +12,14 @@ window.isInHousePatient = false;
 // client-side test-package expansion without extra AJAX round-trips.
 let testsByCategory = {};
 let testDataByCode = {};
+
+// Every percent-based discount (Standard Discount %, Additional Discount %)
+// is rounded to the nearest multiple of 10 once converted to a currency
+// amount, independently of any other discount on the same line -- e.g. a
+// 20% discount on a rate of 80 is 16, rounded to 20.
+function roundToNearestTen(value) {
+    return Math.round(value / 10) * 10;
+}
 /*
 |--------------------------------------------------------------------------
 | PAGE LOAD
@@ -1765,10 +1773,10 @@ $(document).on(
             ) || 0;
 
         let standardDiscountAmount =
-            (rate * standardDiscount) / 100;
+            roundToNearestTen((rate * standardDiscount) / 100);
 
         let percentAmount =
-            (rate * additionalPercent) / 100;
+            roundToNearestTen((rate * additionalPercent) / 100);
 
         let amount =
             rate
