@@ -121,7 +121,8 @@
                         <th>Date</th>
                         <th>Patient</th>
                         <th>Mobile</th>
-                        <th class="text-center">Tests</th>
+                        <th>Test Description</th>
+                        <th class="text-center">Test Count</th>
                         <th class="text-center">Result Status</th>
                         <th class="text-center">Confirmed</th>
                         <th class="text-center" width="220">Action</th>

@@ -118,14 +118,35 @@ class TestResultEntryController extends Controller
     }
 
     /**
-     * Mirrors TestReportDashboardController's definition exactly, so a
-     * given invoice shows the same result status on both dashboards.
+     * The result-status algorithm (N/A/Pending/Partial/Complete) mirrors
+     * TestReportDashboardController's definition exactly, so a given
+     * invoice shows the same status on both dashboards. It stays scoped to
+     * $qualifyingItemCodes (today: only Pathology's PAT001, the only
+     * item_code with test_parameter_required=YES) since that's the only
+     * category with a structured parameter-entry grid to track completion
+     * against -- Non-Pathology invoices (X-Ray, USG, Dental, etc.) have no
+     * such grid and correctly stay 'N/A'.
      *
-     * @return array{0: string, 1: int, 2: int} [result_status, total_tests, results_entered]
+     * The displayed test count/description, however, is NOT scoped to
+     * $qualifyingItemCodes -- it lists every billed line on the invoice
+     * regardless of category, since Non-Pathology invoices still have real
+     * billed tests worth showing even though none of them feed the
+     * qualifying-based completion status above.
+     *
+     * @return array{0: string, 1: int, 2: int, 3: string} [result_status, total_tests, results_entered, test_description]
      */
     private function resultStatusFor(Invoice $invoice, array $qualifyingItemCodes): array
     {
-        $totalTests = DB::table('invoice_details')
+        $allTestDescriptions = DB::table('invoice_details')
+            ->where('invoice_no', $invoice->invoice_no)
+            // Excludes stray blank placeholder lines (no item_code at all)
+            // that aren't real billed tests -- see e.g. invoice_details id
+            // 1031 on LAB/0826/082/0004.
+            ->whereNotNull('item_code')
+            ->where('item_code', '!=', '')
+            ->pluck('item_description');
+
+        $qualifyingTotal = DB::table('invoice_details')
             ->where('invoice_no', $invoice->invoice_no)
             ->whereIn('item_code', $qualifyingItemCodes)
             ->count();
@@ -138,18 +159,18 @@ class TestResultEntryController extends Controller
             ->distinct()
             ->count('invoice_detail_id');
 
-        $resultStatus = $totalTests === 0
+        $resultStatus = $qualifyingTotal === 0
             ? 'N/A'
             : ($resultsEntered <= 0
                 ? 'Pending'
-                : ($resultsEntered >= $totalTests ? 'Complete' : 'Partial'));
+                : ($resultsEntered >= $qualifyingTotal ? 'Complete' : 'Partial'));
 
-        return [$resultStatus, $totalTests, $resultsEntered];
+        return [$resultStatus, $allTestDescriptions->count(), $resultsEntered, $allTestDescriptions->implode(', ')];
     }
 
     private function toRow(Invoice $invoice, array $qualifyingItemCodes): array
     {
-        [$resultStatus, $totalTests, $resultsEntered] = $this->resultStatusFor($invoice, $qualifyingItemCodes);
+        [$resultStatus, $totalTests, $resultsEntered, $testDescription] = $this->resultStatusFor($invoice, $qualifyingItemCodes);
 
         $confirmed = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists();
 
@@ -164,6 +185,7 @@ class TestResultEntryController extends Controller
             'patient_gender' => $invoice->patient_gender,
             'patient_mobile_no' => $invoice->patient_mobile_no,
             'referred_doctor' => $invoice->referred_doctor,
+            'test_description' => $testDescription,
             'total_tests' => $totalTests,
             'results_entered' => $resultsEntered,
             'result_status' => $resultStatus,

@@ -83,6 +83,7 @@ async function loadDashboard(page = 1) {
             <td>${escapeHtml(row.invoice_date ?? '')}</td>
             <td>${escapeHtml(row.patient_name ?? '')}</td>
             <td>${escapeHtml(row.patient_mobile_no ?? '')}</td>
+            <td>${escapeHtml(row.test_description ?? '')}</td>
             <td class="text-center">${row.total_studies}</td>
             <td class="text-center">${resultStatusBadgeHtml(row)}</td>
             <td class="text-center text-nowrap">

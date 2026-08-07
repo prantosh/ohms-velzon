@@ -91,7 +91,8 @@
                         <th>Date</th>
                         <th>Patient</th>
                         <th>Mobile</th>
-                        <th class="text-center">Studies</th>
+                        <th>Test Description</th>
+                        <th class="text-center">Test Count</th>
                         <th class="text-center">Status</th>
                         <th class="text-center" width="140">Action</th>
                     </tr>

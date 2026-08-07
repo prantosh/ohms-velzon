@@ -105,10 +105,12 @@ class UsgReportController extends Controller
 
     private function toRow(Invoice $invoice): array
     {
-        $totalStudies = DB::table('invoice_details')
+        $studyDescriptions = DB::table('invoice_details')
             ->where('invoice_no', $invoice->invoice_no)
             ->where('item_code', self::ITEM_CODE)
-            ->count();
+            ->pluck('item_description');
+
+        $totalStudies = $studyDescriptions->count();
 
         $confirmedStudies = DB::table('usg_report_findings')
             ->where('invoice_no', $invoice->invoice_no)
@@ -130,6 +132,7 @@ class UsgReportController extends Controller
             'patient_gender' => $invoice->patient_gender,
             'patient_mobile_no' => $invoice->patient_mobile_no,
             'referred_doctor' => $invoice->referred_doctor,
+            'test_description' => $studyDescriptions->implode(', '),
             'total_studies' => $totalStudies,
             'confirmed_studies' => $confirmedStudies,
             'result_status' => $resultStatus,
