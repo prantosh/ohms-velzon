@@ -1434,6 +1434,7 @@ $(document).on(
                 loadDoctorDropdownForItem(mainRow, $(this).val(), true);
             }
 
+            checkLastRowCompletion();
             calculateTotal();
 
             return;
