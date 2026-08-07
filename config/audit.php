@@ -123,6 +123,8 @@ return [
 
     'TEST_RESULT_ENTRY'   => 'Test Result Entry',
 
+    'USG_REPORT'          => 'USG Report',
+
     'DIAGNOSTIC_TEST_REPORT' => 'Diagnostic Test Report',
 
     'TEST_ANALYTE_MASTER' => 'Test Analyte Master',
@@ -134,6 +136,7 @@ return [
     'KIT_MASTER' => 'Kit Master',
 
     'NOTE_MASTER' => 'Note Master',
+    'REMARKS_MASTER' => 'Remarks Master',
 
     'MICROSCOPY_MASTER' => 'Microscopy Master',
 
@@ -146,6 +149,8 @@ return [
     'SAMPLE_MASTER' => 'Sample Master',
 
     'TEST_GROUP_MASTER' => 'Test Group Master',
+    'USG_REPORT_TEMPLATE' => 'USG Report Template',
+    'TEST_REPORT_TEMPLATE' => 'Test Report Template',
 
     'TEST_SUB_GROUP' => 'Test Sub Group',
 

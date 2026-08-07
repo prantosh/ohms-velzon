@@ -23,6 +23,8 @@ use App\Http\Controllers\EquipmentRentalController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\RolePageAccessController;
 use App\Http\Controllers\TestGroupMasterController;
+use App\Http\Controllers\UsgReportTemplateController;
+use App\Http\Controllers\TestReportTemplateController;
 use App\Http\Controllers\SampleMasterController;
 use App\Http\Controllers\UomMasterController;
 use App\Http\Controllers\TestExtraFieldTypeController;
@@ -30,11 +32,13 @@ use App\Http\Controllers\DiagnosticTestAdditionalInfoController;
 use App\Http\Controllers\InstrumentMasterController;
 use App\Http\Controllers\KitMasterController;
 use App\Http\Controllers\NoteMasterController;
+use App\Http\Controllers\RemarksMasterController;
 use App\Http\Controllers\MicroscopyMasterController;
 use App\Http\Controllers\ImpressionMasterController;
 use App\Http\Controllers\DetailRangeMasterController;
 use App\Http\Controllers\TestParameterController;
 use App\Http\Controllers\TestResultEntryController;
+use App\Http\Controllers\UsgReportController;
 use App\Http\Controllers\TestReportDashboardController;
 use App\Http\Controllers\DiagnosticTestReportController;
 use App\Http\Controllers\AmbulanceDestinationController;
@@ -1764,6 +1768,88 @@ Route::prefix('test-group-master')->group(function () {
 
 });
 
+Route::prefix('usg-report-template')->group(function () {
+
+    Route::get(
+        '/',
+        [UsgReportTemplateController::class, 'index']
+    )->name('usg-report-template.index');
+
+    Route::get(
+        '/list',
+        [UsgReportTemplateController::class, 'list']
+    );
+
+    Route::post(
+        '/store',
+        [UsgReportTemplateController::class, 'store']
+    );
+
+    Route::get(
+        '/edit/{id}',
+        [UsgReportTemplateController::class, 'edit']
+    );
+
+    Route::post(
+        '/update/{id}',
+        [UsgReportTemplateController::class, 'update']
+    );
+
+    Route::delete(
+        '/delete/{id}',
+        [UsgReportTemplateController::class, 'destroy']
+    );
+
+    // Lightweight lookup used by the USG report entry screen's template
+    // picker -- deliberately separate from the paginated admin /list above.
+    Route::get(
+        '/for-study/{itemCodeSub}',
+        [UsgReportTemplateController::class, 'forStudy']
+    );
+
+});
+
+Route::prefix('test-report-template')->group(function () {
+
+    Route::get(
+        '/',
+        [TestReportTemplateController::class, 'index']
+    )->name('test-report-template.index');
+
+    Route::get(
+        '/list',
+        [TestReportTemplateController::class, 'list']
+    );
+
+    Route::post(
+        '/store',
+        [TestReportTemplateController::class, 'store']
+    );
+
+    Route::get(
+        '/edit/{id}',
+        [TestReportTemplateController::class, 'edit']
+    );
+
+    Route::post(
+        '/update/{id}',
+        [TestReportTemplateController::class, 'update']
+    );
+
+    Route::delete(
+        '/delete/{id}',
+        [TestReportTemplateController::class, 'destroy']
+    );
+
+    // Lightweight lookup used by the Test Result Entry screen's bundled
+    // template picker -- deliberately separate from the paginated admin /list above.
+    Route::get(
+        '/for-test/{itemCodeSub}',
+        [TestReportTemplateController::class, 'forTest']
+    );
+
+});
+
 Route::prefix('sample-master')->group(function () {
 
     Route::get(
@@ -1992,6 +2078,45 @@ Route::prefix('note-master')->group(function () {
     Route::delete(
         '/delete/{id}',
         [NoteMasterController::class, 'destroy']
+    );
+
+});
+
+Route::prefix('remarks-master')->group(function () {
+
+    Route::get(
+        '/',
+        [RemarksMasterController::class, 'index']
+    )->name('remarks-master.index');
+
+    Route::get(
+        '/list',
+        [RemarksMasterController::class, 'list']
+    );
+
+    Route::get(
+        '/active-list',
+        [RemarksMasterController::class, 'activeList']
+    );
+
+    Route::post(
+        '/store',
+        [RemarksMasterController::class, 'store']
+    );
+
+    Route::get(
+        '/edit/{id}',
+        [RemarksMasterController::class, 'edit']
+    );
+
+    Route::post(
+        '/update/{id}',
+        [RemarksMasterController::class, 'update']
+    );
+
+    Route::delete(
+        '/delete/{id}',
+        [RemarksMasterController::class, 'destroy']
     );
 
 });
@@ -2227,6 +2352,49 @@ Route::middleware(['auth'])->prefix('test-result-entry')->group(function () {
         '/delete-extra/{id}',
         [TestResultEntryController::class, 'destroyExtraValue']
     )->name('test-result-entry.delete-extra');
+
+});
+
+// USG's own narrative-report module (Clinical History/Findings/Impression,
+// one report per billed line) -- deliberately separate from
+// TestResultEntryController's tabular Pathology report above; see
+// UsgReportController's class doc-comment.
+Route::middleware(['auth'])->prefix('usg-report')->group(function () {
+
+    Route::get(
+        '/',
+        [UsgReportController::class, 'index']
+    )->name('usg-report.index');
+
+    Route::get(
+        '/list',
+        [UsgReportController::class, 'list']
+    )->name('usg-report.list');
+
+    Route::post(
+        '/search',
+        [UsgReportController::class, 'search']
+    )->name('usg-report.search');
+
+    Route::post(
+        '/save',
+        [UsgReportController::class, 'store']
+    )->name('usg-report.save');
+
+    Route::post(
+        '/confirm',
+        [UsgReportController::class, 'confirm']
+    )->name('usg-report.confirm');
+
+    Route::get(
+        '/print/{id}',
+        [UsgReportController::class, 'printReport']
+    )->name('usg-report.print');
+
+    Route::post(
+        '/send-whatsapp/{id}',
+        [UsgReportController::class, 'sendWhatsapp']
+    )->name('usg-report.send-whatsapp');
 
 });
 

@@ -8,6 +8,14 @@ let isConfirmed = false;
 let isReadOnlyView = false;
 let currentRows = [];
 let extraFieldTypes = [];
+let remarksTemplates = [];
+
+fetch('/remarks-master/active-list')
+    .then(r => r.json())
+    .then(result => {
+        if (result.status) remarksTemplates = result.data;
+    })
+    .catch(() => {});
 
 function inputsLocked() {
     return isConfirmed || isReadOnlyView;
@@ -78,6 +86,11 @@ function renderResultRow(options) {
         </td>
 
         <td>
+            <select class="form-select form-select-sm mb-1 remarks-template-picker"
+                    style="max-width:130px" ${inputsLocked() ? 'disabled' : ''}>
+                <option value="">-- Quick pick --</option>
+                ${remarksTemplates.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r.length > 40 ? r.slice(0, 40) + '…' : r)}</option>`).join('')}
+            </select>
             <input type="text" class="form-control form-control-sm remarks-input"
                    value="${escapeHtml(remarks)}" ${inputsLocked() ? 'disabled' : ''}>
         </td>
@@ -191,19 +204,25 @@ function renderExtraParamsRow(row) {
         renderExtraParamCard(row.invoice_detail_id, v.field_type_id, v.field_name, v.input_type, v.value, v.id)
     ).join('');
 
+    // Bundled templates (Remarks + Microscopy + Impression together) only
+    // make sense once per billed test line, so this picker lives here
+    // alongside the other test-line-level "extra parameter" controls,
+    // not on every per-analyte result row.
+    let templatePickerHtml = row.item_code_sub ? `
+    <select class="form-select form-select-sm test-template-picker ${inputsLocked() ? 'd-none' : ''}"
+            style="max-width:220px" data-invoice-detail-id="${row.invoice_detail_id}">
+        <option value="">-- Load Template --</option>
+    </select>
+    ` : '';
+
     return `
     <tr class="extra-params-row">
         <td colspan="11">
             <div class="d-flex flex-wrap gap-2 align-items-start extra-params-container" data-invoice-detail-id="${row.invoice_detail_id}">
 
-                ${cards}
+                ${templatePickerHtml}
 
-                <div class="extra-param-add-wrap ${inputsLocked() ? 'd-none' : ''}">
-                    <button class="btn btn-sm btn-soft-primary add-extra-param-btn" type="button">
-                        <i class="ri-add-line"></i> Add Parameter
-                    </button>
-                    <ul class="dropdown-menu extra-param-menu" style="max-height: 420px; overflow-y: auto; z-index: 1065;"></ul>
-                </div>
+                ${cards}
 
             </div>
         </td>
@@ -215,14 +234,15 @@ function renderRows(rows) {
 
     let tbody = document.querySelector('#resultTableBody');
 
-    tbody.innerHTML = '';
+    let html = '';
+    let pickersToLoad = [];
 
     rows.forEach(row => {
 
         // The main billed test always gets its own editable result row,
         // whether or not it also has an analyte breakdown below it —
         // some tests need both (e.g. an overall result plus components).
-        tbody.innerHTML += renderResultRow({
+        html += renderResultRow({
             invoiceDetailId: row.invoice_detail_id,
             analyteId: 0,
             resultId: row.result_id,
@@ -252,18 +272,18 @@ function renderRows(rows) {
                 let subGroup = a.sub_group_name || '';
 
                 if (subGroup && subGroup !== previousSubGroup) {
-                    tbody.innerHTML += renderAnalyteSubGroupHeaderRow(subGroup);
+                    html += renderAnalyteSubGroupHeaderRow(subGroup);
                     previousGroup = undefined;
                 }
 
                 if (group && group !== previousGroup) {
-                    tbody.innerHTML += renderAnalyteGroupHeaderRow(group);
+                    html += renderAnalyteGroupHeaderRow(group);
                 }
 
                 previousGroup = group;
                 previousSubGroup = subGroup;
 
-                tbody.innerHTML += renderResultRow({
+                html += renderResultRow({
                     invoiceDetailId: row.invoice_detail_id,
                     analyteId: a.analyte_id,
                     resultId: a.result_id,
@@ -282,7 +302,73 @@ function renderRows(rows) {
             });
         }
 
-        tbody.innerHTML += renderExtraParamsRow(row);
+        html += renderExtraParamsRow(row);
+
+        if (row.item_code_sub && !inputsLocked()) {
+            pickersToLoad.push({ invoiceDetailId: row.invoice_detail_id, itemCodeSub: row.item_code_sub });
+        }
+    });
+
+    // Build the whole tbody in one shot before wiring up any async picker
+    // loads -- assigning innerHTML incrementally inside the loop above would
+    // tear down and recreate every earlier row's nodes on each iteration,
+    // detaching any picker element a later-resolving fetch tries to populate.
+    tbody.innerHTML = html;
+
+    pickersToLoad.forEach(({ invoiceDetailId, itemCodeSub }) => {
+
+        let picker = tbody.querySelector(
+            `.test-template-picker[data-invoice-detail-id="${invoiceDetailId}"]`
+        );
+
+        if (picker) loadTestTemplatesForPicker(picker, itemCodeSub);
+    });
+}
+
+function loadTestTemplatesForPicker(picker, itemCodeSub) {
+
+    fetch(`/test-report-template/for-test/${itemCodeSub}`)
+        .then(r => r.json())
+        .then(result => {
+
+            if (!result.status || !result.data.length) return;
+
+            picker.testTemplates = {};
+
+            result.data.forEach(tpl => {
+
+                picker.testTemplates[tpl.id] = tpl;
+
+                let option = document.createElement('option');
+                option.value = tpl.id;
+                option.textContent = tpl.title;
+                picker.appendChild(option);
+            });
+        })
+        .catch(() => {});
+}
+
+function applyTestTemplateToLine(extraParamsRow, template) {
+
+    let container = extraParamsRow.querySelector('.extra-params-container');
+    let invoiceDetailId = container.dataset.invoiceDetailId;
+
+    (template.parameters || []).forEach(function (param) {
+
+        if (!param.value) return;
+
+        let existingCard = container.querySelector(`.extra-param-item[data-field-type-id="${param.field_type_id}"]`);
+        let valueId = existingCard ? existingCard.dataset.valueId : '';
+
+        if (existingCard) existingCard.remove();
+
+        let wrapper = document.createElement('div');
+
+        wrapper.innerHTML = renderExtraParamCard(
+            invoiceDetailId, param.field_type_id, param.field_name, param.input_type, param.value, valueId
+        );
+
+        container.appendChild(wrapper.firstElementChild);
     });
 }
 
@@ -469,6 +555,91 @@ async function searchInvoice() {
     document.querySelector('#resultTableWrap').style.display = 'block';
 }
 
+document.addEventListener('change', async function (e) {
+
+    let picker = e.target.closest('.remarks-template-picker');
+
+    if (!picker || !picker.value) return;
+
+    let selectedText = picker.value;
+    let remarksInput = picker.closest('td').querySelector('.remarks-input');
+
+    if (remarksInput.value.trim()) {
+
+        let confirmResult = await Swal.fire({
+            icon: 'warning',
+            title: 'Replace current remarks?',
+            text: 'This will replace your current remarks with the selected quick pick.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Replace'
+        });
+
+        if (!confirmResult.isConfirmed) {
+            picker.value = '';
+            return;
+        }
+    }
+
+    remarksInput.value = selectedText;
+    picker.value = '';
+});
+
+document.addEventListener('change', async function (e) {
+
+    let picker = e.target.closest('.test-template-picker');
+
+    if (!picker || !picker.value) return;
+
+    let template = (picker.testTemplates || {})[picker.value];
+
+    if (!template) {
+        picker.value = '';
+        return;
+    }
+
+    let invoiceDetailId = picker.dataset.invoiceDetailId;
+
+    let mainRow = document.querySelector(
+        `#resultTableBody tr[data-invoice-detail-id="${invoiceDetailId}"][data-analyte-id="0"]`
+    );
+
+    let remarksInput = mainRow ? mainRow.querySelector('.remarks-input') : null;
+
+    let extraParamsRow = picker.closest('tr.extra-params-row');
+    let container = extraParamsRow.querySelector('.extra-params-container');
+
+    let hasExistingParam = (template.parameters || []).some(function (param) {
+        let existingInput = container.querySelector(
+            `.extra-param-item[data-field-type-id="${param.field_type_id}"] .extra-param-input`
+        );
+        return existingInput && existingInput.value.trim();
+    });
+
+    let hasExisting = (remarksInput && remarksInput.value.trim()) || hasExistingParam;
+
+    if (hasExisting) {
+
+        let confirmResult = await Swal.fire({
+            icon: 'warning',
+            title: 'Replace current values?',
+            text: 'This will replace the current Remarks and any overlapping parameters for this test with the selected template.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Replace'
+        });
+
+        if (!confirmResult.isConfirmed) {
+            picker.value = '';
+            return;
+        }
+    }
+
+    if (remarksInput && template.remarks) remarksInput.value = template.remarks;
+
+    applyTestTemplateToLine(extraParamsRow, template);
+
+    picker.value = '';
+});
+
 document.addEventListener('click', async function (e) {
 
     let saveBtn = e.target.closest('.save-result-btn');
@@ -594,147 +765,16 @@ document.addEventListener('click', async function (e) {
 
 /*
 |--------------------------------------------------------------------------
-| EXTRA PARAMETERS (once-per-test metadata fields)
+| EXTRA PARAMETERS (once-per-test metadata fields) -- cards can only
+| arrive here via a Load Template pick now; there is no ad hoc "Add
+| Parameter" control at entry time any more (that now lives on the Test
+| Report Template admin screen, where parameters are configured once per
+| template instead of chosen per patient). Save/Remove on an existing
+| card still work normally.
 |--------------------------------------------------------------------------
 */
 
-let openMenuAnchorBtn = null;
-let openMenuEl = null;
-
-function closeAllExtraParamMenus() {
-
-    document.querySelectorAll('.extra-param-menu').forEach(m => {
-        m.style.display = 'none';
-    });
-
-    openMenuAnchorBtn = null;
-    openMenuEl = null;
-}
-
-// Positions (or re-positions, e.g. on scroll) a fixed menu against its
-// trigger button, flipping above / clamping within the viewport as
-// needed — position:fixed only escapes ancestor overflow clipping, it
-// does not automatically stay inside the viewport or track the anchor.
-function positionExtraParamMenu(menu, addBtn) {
-
-    let rect = addBtn.getBoundingClientRect();
-
-    let wasHidden = menu.style.display !== 'block';
-
-    if (wasHidden) {
-        menu.style.visibility = 'hidden';
-        menu.style.display = 'block';
-    }
-
-    let menuHeight = menu.offsetHeight;
-    let menuWidth = menu.offsetWidth;
-    let viewportHeight = window.innerHeight;
-    let viewportWidth = window.innerWidth;
-
-    let top;
-
-    if (rect.bottom + 4 + menuHeight <= viewportHeight) {
-        top = rect.bottom + 4;
-    } else if (rect.top - 4 - menuHeight >= 0) {
-        top = rect.top - 4 - menuHeight;
-    } else {
-        top = Math.max(4, viewportHeight - menuHeight - 4);
-    }
-
-    let left = rect.left;
-
-    if (left + menuWidth > viewportWidth) {
-        left = Math.max(4, viewportWidth - menuWidth - 4);
-    }
-
-    menu.style.position = 'fixed';
-    menu.style.minWidth = Math.max(rect.width, 180) + 'px';
-    menu.style.top = top + 'px';
-    menu.style.left = left + 'px';
-
-    if (wasHidden) {
-        menu.style.visibility = 'visible';
-    }
-}
-
 document.addEventListener('click', async function (e) {
-
-    let addBtn = e.target.closest('.add-extra-param-btn');
-
-    if (addBtn) {
-
-        let container = addBtn.closest('.extra-params-container');
-        let presentIds = Array.from(container.querySelectorAll('.extra-param-item'))
-            .map(el => String(el.dataset.fieldTypeId));
-
-        let menu = addBtn.closest('.extra-param-add-wrap').querySelector('.extra-param-menu');
-
-        let alreadyOpen = menu.style.display === 'block';
-
-        closeAllExtraParamMenus();
-
-        if (alreadyOpen) {
-            return;
-        }
-
-        menu.innerHTML = '';
-
-        let available = extraFieldTypes.filter(ft => !presentIds.includes(String(ft.id)));
-
-        if (!available.length) {
-
-            menu.innerHTML = '<li><span class="dropdown-item-text text-muted">No more parameters available</span></li>';
-
-        } else {
-
-            available.forEach(ft => {
-
-                menu.innerHTML += `
-                <li>
-                    <a class="dropdown-item add-extra-param-option" href="javascript:void(0)"
-                       data-field-type-id="${ft.id}"
-                       data-field-name="${escapeHtml(ft.field_name)}"
-                       data-input-type="${ft.input_type}">
-                       ${escapeHtml(ft.field_name)}
-                    </a>
-                </li>
-                `;
-            });
-        }
-
-        positionExtraParamMenu(menu, addBtn);
-
-        openMenuAnchorBtn = addBtn;
-        openMenuEl = menu;
-
-        return;
-    }
-
-    let addOption = e.target.closest('.add-extra-param-option');
-
-    if (addOption) {
-
-        closeAllExtraParamMenus();
-
-        let container = addOption.closest('.extra-params-container');
-        let invoiceDetailId = container.dataset.invoiceDetailId;
-        let dropdownWrap = container.querySelector('.extra-param-add-wrap');
-
-        let wrapper = document.createElement('div');
-
-        wrapper.innerHTML = renderExtraParamCard(
-            invoiceDetailId,
-            addOption.dataset.fieldTypeId,
-            addOption.dataset.fieldName,
-            addOption.dataset.inputType,
-            '',
-            ''
-        );
-
-        container.insertBefore(wrapper.firstElementChild, dropdownWrap);
-
-        return;
-    }
 
     let saveExtraBtn = e.target.closest('.save-extra-param-btn');
 
@@ -833,27 +873,6 @@ document.addEventListener('click', async function (e) {
         card.remove();
     }
 });
-
-document.addEventListener('click', function (e) {
-
-    if (e.target.closest('.add-extra-param-btn')) return;
-    if (e.target.closest('.extra-param-menu')) return;
-
-    closeAllExtraParamMenus();
-});
-
-document.addEventListener('scroll', function (e) {
-
-    if (!openMenuAnchorBtn || !openMenuEl) return;
-
-    if (e.target && e.target.closest && e.target.closest('.extra-param-menu')) return;
-
-    // Keep the fixed-positioned menu tracking its anchor button when an
-    // ancestor (or the page) scrolls, rather than closing it outright —
-    // simpler and avoids misjudging harmless layout-settling reflows as
-    // "the user scrolled away".
-    positionExtraParamMenu(openMenuEl, openMenuAnchorBtn);
-}, true);
 
 document.getElementById('btnPrintReport').addEventListener('click', function () {
 

@@ -44,6 +44,8 @@ return [
         'concentrator_broadcast_name' => env('WATI_CONCENTRATOR_BROADCAST_NAME', 'concentrator_rent_new'),
         'test_report_template_name' => env('WATI_TEST_REPORT_TEMPLATE_NAME', 'diagnostic_test_report'),
         'test_report_broadcast_name' => env('WATI_TEST_REPORT_BROADCAST_NAME', 'diagnostic_test_report'),
+        'usg_report_template_name' => env('WATI_USG_REPORT_TEMPLATE_NAME', 'usg_report'),
+        'usg_report_broadcast_name' => env('WATI_USG_REPORT_BROADCAST_NAME', 'usg_report'),
     ],
 
 ];

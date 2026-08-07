@@ -146,7 +146,17 @@
                                         <a href="{{ route('test-group-master.index') }}" class="nav-link">@lang('translation.testgroupmaster')</a>
                                         </li>
                                         @endif
-                                        
+                                        @if(is_null($allowedPages) || in_array('usg-report-template', $allowedPages))
+                                        <li class="nav-item">
+                                        <a href="{{ route('usg-report-template.index') }}" class="nav-link">@lang('translation.usgreporttemplate')</a>
+                                        </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('test-report-template', $allowedPages))
+                                        <li class="nav-item">
+                                        <a href="{{ route('test-report-template.index') }}" class="nav-link">@lang('translation.testreporttemplate')</a>
+                                        </li>
+                                        @endif
+
                                         @if(is_null($allowedPages) || in_array('test-parameter', $allowedPages))
                                         <li class="nav-item">
                                         <a href="{{ route('test-parameter.index') }}" class="nav-link">@lang('translation.testparametermaster')</a>
@@ -158,7 +168,7 @@
                             @if(is_null($allowedPages) || collect([
                                 'test-extra-field-type', 'instrument-master', 'kit-master',
                                 'note-master', 'microscopy-master', 'impression-master',
-                                'detail-range-master', 'sample-master', 'uom-master',
+                                'detail-range-master', 'sample-master', 'uom-master', 'remarks-master',
                             ])->intersect($allowedPages)->isNotEmpty())
                             <li class="nav-item">
                                 <a href="{{ route('diagnostic-test-additional-info.index') }}" class="nav-link">@lang('translation.diagnostictestadditionalinfo')</a>
@@ -322,6 +332,11 @@
                             @if(is_null($allowedPages) || in_array('test-result-entry', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('test-result-entry.index') }}" class="nav-link">@lang('translation.testresultentry')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('usg-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('usg-report.index') }}" class="nav-link">@lang('translation.usgreport')</a>
                                         </li>
                             @endif
                             @if(is_null($allowedPages) || in_array('diagnostic-test-report', $allowedPages))
