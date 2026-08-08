@@ -16,6 +16,47 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
+async function loadCopyFromOptions() {
+
+    const response = await fetch('/usg-report-template/all');
+    const result = await response.json();
+
+    let select = document.querySelector('#copy-from-field');
+
+    select.innerHTML = '<option value="">-- Start Blank --</option>';
+
+    if (!result.status) return;
+
+    result.data.forEach(tpl => {
+
+        let option = document.createElement('option');
+        option.value = tpl.id;
+        option.textContent = `${tpl.study_name} — ${tpl.title}` + (tpl.status === 'INACTIVE' ? ' (Inactive)' : '');
+        select.appendChild(option);
+    });
+}
+
+document.querySelector('#copy-from-field').addEventListener('change', async function () {
+
+    let id = this.value;
+
+    if (!id) return;
+
+    const response = await fetch(`/usg-report-template/edit/${id}`);
+    const result = await response.json();
+
+    if (result.status) {
+        document.querySelector('#title-field').value = result.data.title;
+        document.querySelector('#item_code_sub-field').value = result.data.item_code_sub;
+        document.querySelector('#clinical_history-field').value = result.data.clinical_history ?? '';
+        document.querySelector('#findings-field').value = result.data.findings ?? '';
+        document.querySelector('#impression-field').value = result.data.impression ?? '';
+        document.querySelector('#status-field').value = result.data.status;
+    }
+
+    this.value = '';
+});
+
 async function loadTemplates(page = 1) {
     currentPage = page;
 
@@ -148,6 +189,7 @@ document.querySelector('.tablelist-form').addEventListener('submit', async funct
     this.reset();
 
     loadTemplates(currentPage);
+    loadCopyFromOptions();
 });
 
 document.getElementById('showModal').addEventListener('hidden.bs.modal', function () {
@@ -172,9 +214,20 @@ document.addEventListener('click', async function (e) {
         return;
     }
 
+    if (e.target.closest('#addTemplateBtn')) {
+
+        // Copying only makes sense when starting a brand new template.
+        document.querySelector('.copy-from-wrap').style.display = '';
+        return;
+    }
+
     let editBtn = e.target.closest('.edit-item-btn');
 
     if (editBtn) {
+
+        // Editing already loads its own data below -- copying from
+        // another template here would just clobber it, so hide the option.
+        document.querySelector('.copy-from-wrap').style.display = 'none';
 
         document.querySelector('#modal-title').innerText = 'Update Template';
         document.querySelector('#add-btn').innerText = 'Update Template';
@@ -233,6 +286,7 @@ document.addEventListener('click', async function (e) {
 
         if (result.status) {
             loadTemplates(currentPage);
+            loadCopyFromOptions();
         }
     }
 });
@@ -252,3 +306,4 @@ document.getElementById('searchInput').addEventListener('input', function () {
 });
 
 loadTemplates();
+loadCopyFromOptions();

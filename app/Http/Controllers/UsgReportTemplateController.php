@@ -250,4 +250,39 @@ class UsgReportTemplateController extends Controller
             'data' => $templates
         ]);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ALL -- lightweight, unpaginated listing of every template (any status,
+    | any study) used to populate the "Copy from existing template" picker
+    | in the Add Template modal. Separate from the paginated admin list()
+    | above for the same reason forStudy() is.
+    |--------------------------------------------------------------------------
+    */
+
+    public function all()
+    {
+        $templates = UsgReportTemplate::orderBy('item_code_sub')
+            ->orderBy('title')
+            ->get(['id', 'title', 'item_code_sub', 'status']);
+
+        $studyNames = InvoiceItemDetail::where('item_code', 'USG001')
+            ->whereIn('item_code_sub', $templates->pluck('item_code_sub')->unique())
+            ->pluck('item_description_sub', 'item_code_sub');
+
+        $data = $templates->map(function ($template) use ($studyNames) {
+
+            return [
+                'id' => $template->id,
+                'title' => $template->title,
+                'study_name' => $studyNames->get($template->item_code_sub, $template->item_code_sub),
+                'status' => $template->status,
+            ];
+        });
+
+        return response()->json([
+            'status' => true,
+            'data' => $data
+        ]);
+    }
 }

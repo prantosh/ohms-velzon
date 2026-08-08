@@ -182,6 +182,23 @@
 
                     <div class="row">
 
+                        <div class="col-md-12 mb-3 copy-from-wrap">
+
+                            <label class="form-label">
+                                Copy From Existing Template
+                            </label>
+
+                            <select id="copy-from-field" class="form-select">
+                                <option value="">-- Start Blank --</option>
+                            </select>
+
+                            <small class="text-muted">
+                                Pre-fills every field below from another template -- pick this first, then adjust
+                                the Title and wording for the new template.
+                            </small>
+
+                        </div>
+
                         <div class="col-md-6 mb-3">
 
                             <label class="form-label">

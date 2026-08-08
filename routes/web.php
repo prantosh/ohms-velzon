@@ -1807,6 +1807,13 @@ Route::prefix('usg-report-template')->group(function () {
         [UsgReportTemplateController::class, 'forStudy']
     );
 
+    // Lightweight, unpaginated listing used by the "Copy from existing
+    // template" picker in the Add Template modal.
+    Route::get(
+        '/all',
+        [UsgReportTemplateController::class, 'all']
+    );
+
 });
 
 Route::prefix('test-report-template')->group(function () {
