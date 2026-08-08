@@ -468,19 +468,32 @@
 
 <tr>
 
-<th>Date</th>
+<th rowspan="2" class="align-middle">Doctor</th>
 
-<th>Doctor</th>
+<th rowspan="2" class="align-middle">Mobile</th>
 
+@foreach($scheduleDays as $index => $day)
 
+    <th colspan="{{ $index === 0 ? 2 : 1 }}" class="text-center">
+        {{ $day['label'] }}<br>
+        <small class="text-muted">{{ $day['display_date'] }}</small>
+    </th>
 
-<th>Mobile</th>
+@endforeach
 
-<th>Fee</th>
+</tr>
 
-<th class="text-center">
-Appointments
-</th>
+<tr>
+
+@foreach($scheduleDays as $index => $day)
+
+    <th class="text-center">Patients Booked</th>
+
+    @if($index === 0)
+    <th class="text-center">Patients Confirmed</th>
+    @endif
+
+@endforeach
 
 </tr>
 
@@ -488,43 +501,49 @@ Appointments
 
 <tbody>
 
-@foreach($doctorAppointments as $row)
+@forelse($doctorAppointments as $row)
 
 <tr>
 
 <td>
-{{ \Carbon\Carbon::parse($row->appointment_date)->format('d-m-Y') }}
-</td>
-
-<td>
     <span class="fw-bold text-primary">
-        {{ $row->doctor_name }}
+        {{ $row['doctor_name'] }}
     </span>
 </td>
 
-
-
 <td>
-    {{ $row->mobile_no }}
+    {{ $row['mobile_no'] }}
 </td>
 
-<td>
-    ₹ {{ number_format($row->consultation_fee_total,0) }}
-</td>
+@foreach($row['days'] as $index => $day)
 
-<td class="text-center">
+    <td class="text-center">
+        <span class="badge bg-success-subtle text-success fs-6">
+            {{ $day['booked'] }}
+        </span>
+    </td>
 
-    <span class="badge bg-success-subtle text-success fs-6">
+    @if($index === 0)
+    <td class="text-center">
+        <span class="badge bg-info-subtle text-info fs-6">
+            {{ $row['confirmed_today'] }}
+        </span>
+    </td>
+    @endif
 
-        {{ $row->total_appointments }}
-
-    </span>
-
-</td>
+@endforeach
 
 </tr>
 
-@endforeach
+@empty
+
+<tr>
+    <td colspan="{{ 2 + $scheduleDays->count() + 1 }}" class="text-center text-muted">
+        No upcoming appointments.
+    </td>
+</tr>
+
+@endforelse
 
 </tbody>
 

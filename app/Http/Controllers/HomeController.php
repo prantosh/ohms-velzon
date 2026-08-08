@@ -366,30 +366,77 @@ class HomeController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | DOCTOR WISE APPOINTMENT COUNT
+        | DOCTOR WISE APPOINTMENT SCHEDULE -- one row per doctor, one column
+        | per day for the next 7 days (today + 6). Today additionally splits
+        | into "Patients Booked" (appointments made, net of cancellations)
+        | and "Patients Confirmed" (of those, how many have already turned
+        | into an invoice) -- the remaining 6 days only show the booked
+        | count, since nothing can be invoiced yet for a future date.
         |--------------------------------------------------------------------------
         */
 
-        $doctorAppointments =
-            DB::table('doctor_appointments as da')
-                ->join('doctors as d', 'da.doctor_id', '=', 'd.id')
-                ->select(
-                    'da.appointment_date',
-                    'd.doctor_name',
-                    'd.mobile_no',
-                    'd.consultation_fee_total',
-                    DB::raw('COUNT(*) as total_appointments')
-                )
-                ->whereDate('da.appointment_date', '>=', $today)
-                ->groupBy(
-                    'da.appointment_date',
-                    'd.doctor_name',
-                    'd.mobile_no',
-                    'd.consultation_fee_total'
-                )
-                ->orderBy('da.appointment_date')
-                ->orderBy('d.doctor_name')
-                ->get();
+        $scheduleDays = collect(range(0, 6))->map(function ($offset) use ($today) {
+
+            $date = $today->copy()->addDays($offset);
+
+            return [
+                'date' => $date->toDateString(),
+                'label' => $offset === 0
+                    ? 'Today'
+                    : ($offset === 1 ? 'Tomorrow' : $date->format('l')),
+                'display_date' => $date->format('d/m/Y'),
+            ];
+        });
+
+        $scheduleEndDate = $today->copy()->addDays(6)->toDateString();
+
+        // Net booked count per doctor/day -- a cancelled slot no longer
+        // counts as "booked".
+        $bookedCounts = DB::table('doctor_appointments')
+            ->whereBetween(DB::raw('DATE(appointment_date)'), [$today->toDateString(), $scheduleEndDate])
+            ->where('appointment_status', '!=', 'Cancelled')
+            ->select('doctor_id', DB::raw('DATE(appointment_date) as appt_date'), DB::raw('COUNT(*) as cnt'))
+            ->groupBy('doctor_id', 'appt_date')
+            ->get()
+            ->groupBy('doctor_id');
+
+        // Of today's booked appointments, how many have already resulted in
+        // an invoice (invoices.appointment_id ties an invoice back to the
+        // exact appointment slot it was created from).
+        $confirmedTodayCounts = DB::table('invoices')
+            ->join('doctor_appointments', 'invoices.appointment_id', '=', 'doctor_appointments.id')
+            ->whereDate('doctor_appointments.appointment_date', $today->toDateString())
+            ->where(function ($q) {
+                $q->whereNull('invoices.cancelled')
+                    ->orWhere('invoices.cancelled', '!=', 'Y');
+            })
+            ->select('doctor_appointments.doctor_id', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('doctor_appointments.doctor_id')
+            ->pluck('cnt', 'doctor_id');
+
+        $doctorAppointments = DB::table('doctors')
+            ->whereIn('id', $bookedCounts->keys())
+            ->select('id', 'doctor_name', 'mobile_no')
+            ->orderBy('doctor_name')
+            ->get()
+            ->map(function ($doctor) use ($bookedCounts, $confirmedTodayCounts, $scheduleDays) {
+
+                $doctorBookedByDate = ($bookedCounts->get($doctor->id) ?? collect())
+                    ->pluck('cnt', 'appt_date');
+
+                return [
+                    'doctor_name' => $doctor->doctor_name,
+                    'mobile_no' => $doctor->mobile_no,
+                    'confirmed_today' => $confirmedTodayCounts->get($doctor->id, 0),
+                    'days' => $scheduleDays->map(function ($day) use ($doctorBookedByDate) {
+                        return [
+                            'label' => $day['label'],
+                            'display_date' => $day['display_date'],
+                            'booked' => $doctorBookedByDate->get($day['date'], 0),
+                        ];
+                    }),
+                ];
+            });
 
         /*
         |--------------------------------------------------------------------------
@@ -432,6 +479,7 @@ class HomeController extends Controller
                 'todayCollection',
                 'pendingDue',
                 'doctorAppointments',
+                'scheduleDays',
                 'recentTransactions',
                 'totalPatientsToday',
                 'doctorChart',
