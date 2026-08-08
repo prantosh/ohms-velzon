@@ -406,6 +406,18 @@
 
                             </div>
 
+                            <div class="mt-2" id="addNewPatientContainer">
+
+                                <button type="button"
+                                        id="addNewPatientForMobile"
+                                        class="btn btn-success btn-sm">
+
+                                    + Add New Patient For This Mobile Number
+
+                                </button>
+
+                            </div>
+
                         </div>
 
                         <div class="col-md-4 mb-3">

@@ -13,6 +13,7 @@ function resetPatientSection() {
 
     document.querySelector('#patientResultsWrap').style.display = 'none';
     document.querySelector('#patientResultsBody').innerHTML = '';
+    document.querySelector('#addNewPatientContainer').style.display = 'none';
 
     document.querySelector('#patient_id-field').value = '';
 
@@ -131,6 +132,7 @@ document.getElementById('searchPatientBtn').addEventListener('click', async func
         });
 
         document.querySelector('#patientResultsWrap').style.display = 'block';
+        document.querySelector('#addNewPatientContainer').style.display = 'block';
 
         return;
     }
@@ -147,6 +149,11 @@ document.getElementById('searchPatientBtn').addEventListener('click', async func
     if (confirm.isConfirmed) {
         enableNewPatientEntry();
     }
+});
+
+document.getElementById('addNewPatientForMobile').addEventListener('click', function () {
+
+    enableNewPatientEntry();
 });
 
 document.getElementById('patientResultsBody').addEventListener('click', function (e) {
