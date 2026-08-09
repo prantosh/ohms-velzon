@@ -233,19 +233,39 @@ width="100%">
     </th>
 
     <th rowspan="2" class="text-center align-middle">
+        Test<br>Group
+    </th>
+
+    <th rowspan="2" class="text-center align-middle">
+        UOM
+    </th>
+
+    <th rowspan="2" class="text-center align-middle">
+        Range<br>(Male)
+    </th>
+
+    <th rowspan="2" class="text-center align-middle">
+        Range<br>(Female)
+    </th>
+
+    <th rowspan="2" class="text-center align-middle">
+        Range<br>(Common)
+    </th>
+
+    <th rowspan="2" class="text-center align-middle">
+        Method
+    </th>
+
+    <th rowspan="2" class="text-center align-middle">
+        Report<br>Days
+    </th>
+
+    <th rowspan="2" class="text-center align-middle">
         Package
     </th>
 
     <th rowspan="2" class="text-center align-middle">
         Status
-    </th>
-
-    <th colspan="2" class="text-center bg-soft-success">
-        Created
-    </th>
-
-    <th colspan="2" class="text-center bg-soft-warning">
-        Updated
     </th>
 
     <th rowspan="2" class="text-center align-middle">
@@ -271,13 +291,6 @@ width="100%">
     <th class="text-center">
         Member +<br>Other Lab
     </th>
-    <th class="text-center">By</th>
-
-    <th class="text-center">Date</th>
-
-    <th class="text-center">By</th>
-
-    <th class="text-center">Date</th>
 
 </tr>
 

@@ -94,43 +94,6 @@ class InvoiceItemDetailController extends Controller
 
             })
 
-            ->editColumn('created_dt', function ($row) {
-
-                if (
-                    empty($row->created_dt) ||
-                    $row->created_dt == '0000-00-00 00:00:00'
-                ) {
-                    return '';
-                }
-
-                return \Carbon\Carbon::parse($row->created_dt)
-                    ->format('d-m-Y H:i');
-            })
-
-            ->editColumn('update_dt', function ($row) {
-
-                if (
-                    empty($row->update_dt) ||
-                    $row->update_dt == '0000-00-00 00:00:00'
-                ) {
-                    return '';
-                }
-
-                return \Carbon\Carbon::parse($row->update_dt)
-                    ->format('d-m-Y H:i');
-            })
-            ->editColumn('created_by', function ($row) {
-
-                return $row->created_by ?? '';
-
-            })
-
-            ->editColumn('update_by', function ($row) {
-
-                return $row->update_by ?? '';
-
-            })
-
             ->addColumn('action', function ($row) {
 
                 return '

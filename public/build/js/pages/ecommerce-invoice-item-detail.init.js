@@ -217,6 +217,43 @@ function initialiseDataTable() {
             },
 
             {
+                data: 'test_group_name',
+                name: 'test_group_masters.test_group_name'
+            },
+
+            {
+                data: 'uom',
+                name: 'invoice_item_details.uom',
+                className: 'text-center'
+            },
+
+            {
+                data: 'range_male',
+                name: 'invoice_item_details.range_male'
+            },
+
+            {
+                data: 'range_female',
+                name: 'invoice_item_details.range_female'
+            },
+
+            {
+                data: 'range_common',
+                name: 'invoice_item_details.range_common'
+            },
+
+            {
+                data: 'method',
+                name: 'invoice_item_details.method'
+            },
+
+            {
+                data: 'report_days',
+                name: 'invoice_item_details.report_days',
+                className: 'text-center'
+            },
+
+            {
                 data: 'is_package_label',
                 name: 'invoice_item_details.is_package',
                 searchable: false,
@@ -229,26 +266,6 @@ function initialiseDataTable() {
                 searchable: false
             },
 
-            {
-                data: 'created_by',
-                name: 'invoice_item_details.created_by',
-                className: 'text-center'
-            },
-            {
-                data: 'created_dt',
-                name: 'invoice_item_details.created_dt',
-                className: 'text-center'
-            },
-            {
-                data: 'update_by',
-                name: 'invoice_item_details.update_by',
-                className: 'text-center'
-            },
-            {
-                data: 'update_dt',
-                name: 'invoice_item_details.update_dt',
-                className: 'text-center'
-            },
             {
                 data: 'action',
                 searchable: false,
