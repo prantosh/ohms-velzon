@@ -71,11 +71,36 @@ class TestResultEntryController extends Controller
     {
         $perPage = (int) $request->get('per_page', 15);
 
+        $invoiceCategory = $request->get('invoice_category', 'PATHOLOGY');
+
         $query = Invoice::where('invoice_type', 'DIAGNOSTIC')
-            ->where('invoice_category', $request->get('invoice_category', 'PATHOLOGY'))
+            ->where('invoice_category', $invoiceCategory)
             ->where(function ($q) {
                 $q->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y');
             });
+
+        if ($invoiceCategory === 'NON_PATHOLOGY') {
+
+            // USG shares the NON_PATHOLOGY category with every other
+            // non-pathology test, but has its own separate reporting
+            // dashboard (UsgReportController) -- an invoice whose only
+            // Non-Pathology lines are USG has nothing to do on this screen
+            // and is excluded. Mirrors NonPathologyReportController's own
+            // qualifying-set definition. An invoice that mixes USG with
+            // other tests (e.g. USG + X-Ray) still belongs here for its
+            // non-USG lines; NonPathologyReportController::search() already
+            // filters those cards down to the non-USG lines only.
+            $nonUsgQualifyingItemCodes = InvoiceItemMaster::where('test_parameter_required', '!=', 'YES')
+                ->whereNotIn('item_code', ['USG001', 'DOC001'])
+                ->pluck('item_code');
+
+            $query->whereExists(function ($sub) use ($nonUsgQualifyingItemCodes) {
+                $sub->selectRaw('1')
+                    ->from('invoice_details')
+                    ->whereColumn('invoice_details.invoice_no', 'invoices.invoice_no')
+                    ->whereIn('invoice_details.item_code', $nonUsgQualifyingItemCodes);
+            });
+        }
 
         $range = $request->get('range', '3');
 
@@ -133,18 +158,29 @@ class TestResultEntryController extends Controller
      * billed tests worth showing even though none of them feed the
      * qualifying-based completion status above.
      *
-     * @return array{0: string, 1: int, 2: int, 3: string} [result_status, total_tests, results_entered, test_description]
+     * @return array{0: string, 1: int, 2: int, 3: string, 4: string} [result_status, total_tests, results_entered, test_description, test_category]
      */
     private function resultStatusFor(Invoice $invoice, array $qualifyingItemCodes): array
     {
-        $allTestDescriptions = DB::table('invoice_details')
+        $lineDetails = DB::table('invoice_details')
             ->where('invoice_no', $invoice->invoice_no)
             // Excludes stray blank placeholder lines (no item_code at all)
             // that aren't real billed tests -- see e.g. invoice_details id
             // 1031 on LAB/0826/082/0004.
             ->whereNotNull('item_code')
             ->where('item_code', '!=', '')
-            ->pluck('item_description');
+            ->get(['item_code', 'item_description']);
+
+        // Non-Pathology mixes several categories (X-Ray, Cardiology, USG,
+        // etc.) on the same invoice/table, unlike Pathology's single
+        // category -- resolved from invoice_item_masters.item_name, same
+        // lookup used for the diagnostic invoice PDF's Test Category column.
+        $testCategoryNames = InvoiceItemMaster::whereIn('item_code', $lineDetails->pluck('item_code')->unique())
+            ->pluck('item_name', 'item_code');
+
+        $testCategory = $lineDetails->pluck('item_code')->unique()
+            ->map(fn ($code) => $testCategoryNames->get($code, $code))
+            ->implode(', ');
 
         $qualifyingTotal = DB::table('invoice_details')
             ->where('invoice_no', $invoice->invoice_no)
@@ -165,12 +201,19 @@ class TestResultEntryController extends Controller
                 ? 'Pending'
                 : ($resultsEntered >= $qualifyingTotal ? 'Complete' : 'Partial'));
 
-        return [$resultStatus, $allTestDescriptions->count(), $resultsEntered, $allTestDescriptions->implode(', ')];
+        return [
+            $resultStatus,
+            $lineDetails->count(),
+            $resultsEntered,
+            $lineDetails->pluck('item_description')->implode(', '),
+            $testCategory,
+        ];
     }
 
     private function toRow(Invoice $invoice, array $qualifyingItemCodes): array
     {
-        [$resultStatus, $totalTests, $resultsEntered, $testDescription] = $this->resultStatusFor($invoice, $qualifyingItemCodes);
+        [$resultStatus, $totalTests, $resultsEntered, $testDescription, $testCategory] =
+            $this->resultStatusFor($invoice, $qualifyingItemCodes);
 
         $confirmed = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists();
 
@@ -185,6 +228,7 @@ class TestResultEntryController extends Controller
             'patient_gender' => $invoice->patient_gender,
             'patient_mobile_no' => $invoice->patient_mobile_no,
             'referred_doctor' => $invoice->referred_doctor,
+            'test_category' => $testCategory,
             'test_description' => $testDescription,
             'total_tests' => $totalTests,
             'results_entered' => $resultsEntered,
@@ -239,6 +283,7 @@ class TestResultEntryController extends Controller
             'invoice' => [
                 'id' => $invoice->id,
                 'invoice_no' => $invoice->invoice_no,
+                'invoice_category' => $invoice->invoice_category,
                 'invoice_date' => optional($invoice->invoice_date)
                     ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y')
                     : '',

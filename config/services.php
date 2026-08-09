@@ -46,6 +46,8 @@ return [
         'test_report_broadcast_name' => env('WATI_TEST_REPORT_BROADCAST_NAME', 'diagnostic_test_report'),
         'usg_report_template_name' => env('WATI_USG_REPORT_TEMPLATE_NAME', 'usg_report'),
         'usg_report_broadcast_name' => env('WATI_USG_REPORT_BROADCAST_NAME', 'usg_report'),
+        'non_pathology_report_template_name' => env('WATI_NON_PATHOLOGY_REPORT_TEMPLATE_NAME', 'non_pathology_report'),
+        'non_pathology_report_broadcast_name' => env('WATI_NON_PATHOLOGY_REPORT_BROADCAST_NAME', 'non_pathology_report'),
     ],
 
 ];

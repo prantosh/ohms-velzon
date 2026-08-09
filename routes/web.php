@@ -39,6 +39,7 @@ use App\Http\Controllers\DetailRangeMasterController;
 use App\Http\Controllers\TestParameterController;
 use App\Http\Controllers\TestResultEntryController;
 use App\Http\Controllers\UsgReportController;
+use App\Http\Controllers\NonPathologyReportController;
 use App\Http\Controllers\TestReportDashboardController;
 use App\Http\Controllers\DiagnosticTestReportController;
 use App\Http\Controllers\AmbulanceDestinationController;
@@ -2402,6 +2403,39 @@ Route::middleware(['auth'])->prefix('usg-report')->group(function () {
         '/send-whatsapp/{id}',
         [UsgReportController::class, 'sendWhatsapp']
     )->name('usg-report.send-whatsapp');
+
+});
+
+// Narrative-report module for every Non-Pathology category that has no
+// structured parameter grid, except USG (own module above). No index/list
+// routes -- reached only through Test Result Entry's existing Non-Pathology
+// tab; see NonPathologyReportController's class doc-comment.
+Route::middleware(['auth'])->prefix('non-pathology-report')->group(function () {
+
+    Route::post(
+        '/search',
+        [NonPathologyReportController::class, 'search']
+    )->name('non-pathology-report.search');
+
+    Route::post(
+        '/save',
+        [NonPathologyReportController::class, 'store']
+    )->name('non-pathology-report.save');
+
+    Route::post(
+        '/confirm',
+        [NonPathologyReportController::class, 'confirm']
+    )->name('non-pathology-report.confirm');
+
+    Route::get(
+        '/print/{id}',
+        [NonPathologyReportController::class, 'printReport']
+    )->name('non-pathology-report.print');
+
+    Route::post(
+        '/send-whatsapp/{id}',
+        [NonPathologyReportController::class, 'sendWhatsapp']
+    )->name('non-pathology-report.send-whatsapp');
 
 });
 

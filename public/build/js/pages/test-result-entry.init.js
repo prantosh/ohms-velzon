@@ -504,6 +504,7 @@ async function searchInvoice() {
     document.querySelector('#invoiceNotFoundMsg').style.display = 'none';
     document.querySelector('#resultTableWrap').style.display = 'none';
     document.querySelector('#noQualifyingMsg').style.display = 'none';
+    document.querySelector('#nonPathologyReportsWrap').innerHTML = '';
 
     if (!invoiceNo) {
         return;
@@ -545,6 +546,16 @@ async function searchInvoice() {
 
     if (!result.data.length) {
 
+        // Non-Pathology categories (X-Ray, Cardiology, EMG-NCV, Endoscopy,
+        // Dental, EYE, Miscellaneous, etc. -- everything except Pathology
+        // and USG, which has its own separate module) have no parameter
+        // grid at all, so buildRows() always returns empty for them. Offer
+        // the narrative-report cards instead of the dead-end message.
+        if (result.invoice.invoice_category === 'NON_PATHOLOGY') {
+            await loadNonPathologyReports(result.invoice.invoice_no);
+            return;
+        }
+
         document.querySelector('#noQualifyingMsg').style.display = 'block';
         return;
     }
@@ -554,6 +565,224 @@ async function searchInvoice() {
 
     document.querySelector('#resultTableWrap').style.display = 'block';
 }
+
+/*
+|--------------------------------------------------------------------------
+| NON-PATHOLOGY NARRATIVE REPORTS -- one independently completable/
+| confirmable/printable Clinical History/Findings/Impression card per
+| billed line, for every Non-Pathology category with no parameter grid.
+| Mirrors usg-report.init.js's card handling exactly (USG solved this same
+| problem for itself already and keeps its own separate module).
+|--------------------------------------------------------------------------
+*/
+
+async function loadNonPathologyReports(invoiceNo) {
+
+    const response = await fetch('/non-pathology-report/search', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken(),
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({ invoice_no: invoiceNo })
+    });
+
+    const result = await response.json();
+
+    let wrap = document.querySelector('#nonPathologyReportsWrap');
+    wrap.innerHTML = '';
+
+    if (!result.status || !result.lines.length) {
+
+        document.querySelector('#noQualifyingMsg').style.display = 'block';
+        return;
+    }
+
+    let template = document.getElementById('nonPathReportCardTemplate');
+
+    result.lines.forEach(function (line) {
+
+        let card = template.content.cloneNode(true);
+        let root = card.querySelector('.nonpath-report-card');
+
+        root.dataset.invoiceDetailId = line.invoice_detail_id;
+        root.dataset.findingId = line.finding_id ?? '';
+
+        root.querySelector('.nonpath-item-description').innerText = line.item_description ?? '';
+        root.querySelector('.nonpath-item-code-sub').innerText = line.item_code_sub ? `(${line.item_code_sub})` : '';
+        root.querySelector('.nonpath-doctor-name').innerText = line.doctor_name ?? '-';
+
+        root.querySelector('.nonpath-clinical-history').value = line.clinical_history ?? '';
+        root.querySelector('.nonpath-findings').value = line.findings ?? '';
+        root.querySelector('.nonpath-impression').value = line.impression ?? '';
+
+        if (line.confirmed_at) {
+            lockNonPathCard(root, line.finding_id);
+        }
+
+        wrap.appendChild(card);
+    });
+
+    document.querySelector('#resultTableWrap').style.display = 'none';
+}
+
+function lockNonPathCard(root, findingId) {
+
+    root.querySelectorAll('textarea').forEach(t => t.disabled = true);
+    root.querySelector('.nonpath-confirmed-badge').style.display = 'inline-block';
+    root.querySelector('.nonpath-save-btn').style.display = 'none';
+    root.querySelector('.nonpath-confirm-btn').style.display = 'none';
+
+    let printBtn = root.querySelector('.nonpath-print-btn');
+    printBtn.href = `/non-pathology-report/print/${findingId}`;
+    printBtn.style.display = 'inline-block';
+
+    root.querySelector('.nonpath-whatsapp-btn').style.display = 'inline-block';
+}
+
+document.addEventListener('click', async function (e) {
+
+    let saveBtn = e.target.closest('.nonpath-save-btn');
+    if (saveBtn) {
+
+        let root = saveBtn.closest('.nonpath-report-card');
+
+        saveBtn.disabled = true;
+
+        const response = await fetch('/non-pathology-report/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken()
+            },
+            body: JSON.stringify({
+                invoice_detail_id: root.dataset.invoiceDetailId,
+                clinical_history: root.querySelector('.nonpath-clinical-history').value,
+                findings: root.querySelector('.nonpath-findings').value,
+                impression: root.querySelector('.nonpath-impression').value
+            })
+        });
+
+        const result = await response.json();
+
+        saveBtn.disabled = false;
+
+        if (result.status && result.data && result.data.id) {
+            root.dataset.findingId = result.data.id;
+        }
+
+        Swal.fire({
+            icon: result.status ? 'success' : 'error',
+            title: result.status ? 'Saved' : 'Error',
+            text: result.message ?? (result.errors ? Object.values(result.errors).flat().join(', ') : ''),
+            timer: result.status ? 1200 : undefined,
+            showConfirmButton: !result.status
+        });
+
+        return;
+    }
+
+    let confirmBtn = e.target.closest('.nonpath-confirm-btn');
+    if (confirmBtn) {
+
+        let root = confirmBtn.closest('.nonpath-report-card');
+
+        if (!root.dataset.findingId) {
+
+            Swal.fire({
+                icon: 'warning',
+                title: 'Save First',
+                text: 'Please save the report before confirming it.'
+            });
+
+            return;
+        }
+
+        let confirmResult = await Swal.fire({
+            icon: 'warning',
+            title: 'Confirm this report?',
+            text: 'Once confirmed, it can no longer be edited.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Confirm & Lock'
+        });
+
+        if (!confirmResult.isConfirmed) {
+            return;
+        }
+
+        confirmBtn.disabled = true;
+
+        const response = await fetch('/non-pathology-report/confirm', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken()
+            },
+            body: JSON.stringify({ invoice_detail_id: root.dataset.invoiceDetailId })
+        });
+
+        const result = await response.json();
+
+        confirmBtn.disabled = false;
+
+        if (result.status) {
+
+            lockNonPathCard(root, root.dataset.findingId);
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Confirmed',
+                text: result.message
+            });
+
+        } else {
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: result.message
+            });
+        }
+
+        return;
+    }
+
+    let whatsappBtn = e.target.closest('.nonpath-whatsapp-btn');
+    if (whatsappBtn) {
+
+        let root = whatsappBtn.closest('.nonpath-report-card');
+        let findingId = root.dataset.findingId;
+
+        whatsappBtn.disabled = true;
+
+        Swal.fire({
+            title: 'Please wait...',
+            text: 'We are sending WhatsApp message',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            didOpen: function () {
+                Swal.showLoading();
+            }
+        });
+
+        const response = await fetch(`/non-pathology-report/send-whatsapp/${findingId}`, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken() }
+        });
+
+        const result = await response.json();
+
+        whatsappBtn.disabled = false;
+
+        Swal.fire({
+            icon: result.status ? 'success' : 'error',
+            title: result.status ? 'Sent' : 'Error',
+            text: result.message
+        });
+    }
+});
 
 document.addEventListener('change', async function (e) {
 

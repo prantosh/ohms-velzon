@@ -121,6 +121,7 @@
                         <th>Date</th>
                         <th>Patient</th>
                         <th>Mobile</th>
+                        <th>Test Category</th>
                         <th>Test Description</th>
                         <th class="text-center">Test Count</th>
                         <th class="text-center">Result Status</th>
@@ -237,6 +238,8 @@
                 <div id="noQualifyingMsg" class="text-muted" style="display:none;">
                     No test-parameter-required items found on this invoice.
                 </div>
+
+                <div id="nonPathologyReportsWrap"></div>
 
                 <div id="resultTableWrap" style="display:none;">
 
@@ -397,6 +400,77 @@
     </div>
 
 </div>
+
+<!-- NON-PATHOLOGY REPORT CARD TEMPLATE (cloned per line by JS, for
+     Non-Pathology categories with no parameter grid -- X-Ray, Cardiology,
+     EMG-NCV, Endoscopy, Dental, EYE, Miscellaneous, etc. USG has its own
+     separate module.) -->
+
+<template id="nonPathReportCardTemplate">
+
+    <div class="card nonpath-report-card mb-3">
+
+        <div class="card-header d-flex justify-content-between align-items-center">
+
+            <div>
+                <strong class="nonpath-item-description"></strong>
+                <span class="text-muted small nonpath-item-code-sub"></span>
+                <span class="text-muted small ms-2">Reported By: <span class="nonpath-doctor-name">-</span></span>
+            </div>
+
+            <span class="badge bg-success nonpath-confirmed-badge" style="display:none;">
+                <i class="ri-check-double-line"></i>
+                Confirmed
+            </span>
+
+        </div>
+
+        <div class="card-body">
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Clinical History</label>
+                <textarea class="form-control nonpath-clinical-history" rows="2"></textarea>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Findings</label>
+                <textarea class="form-control nonpath-findings" rows="6"></textarea>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Impression</label>
+                <textarea class="form-control nonpath-impression" rows="3"></textarea>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+
+                <button type="button" class="btn btn-primary nonpath-save-btn">
+                    <i class="ri-save-line"></i>
+                    Save
+                </button>
+
+                <button type="button" class="btn btn-warning nonpath-confirm-btn">
+                    <i class="ri-shield-check-line"></i>
+                    Confirm
+                </button>
+
+                <a href="javascript:void(0)" class="btn btn-info nonpath-print-btn" style="display:none;" target="_blank">
+                    <i class="ri-printer-line"></i>
+                    Print Report
+                </a>
+
+                <button type="button" class="btn btn-success nonpath-whatsapp-btn" style="display:none;">
+                    <i class="ri-whatsapp-line"></i>
+                    Send via WhatsApp
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</template>
 
 @endsection
 

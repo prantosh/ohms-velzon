@@ -124,6 +124,7 @@ return [
     'TEST_RESULT_ENTRY'   => 'Test Result Entry',
 
     'USG_REPORT'          => 'USG Report',
+    'NON_PATHOLOGY_REPORT' => 'Non-Pathology Report',
 
     'DIAGNOSTIC_TEST_REPORT' => 'Diagnostic Test Report',
 
