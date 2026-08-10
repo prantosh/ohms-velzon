@@ -1113,6 +1113,29 @@ function applyStandardDiscount(mainRow, d1, d2, d3, d4) {
 |--------------------------------------------------------------------------
 */
 
+/*
+|--------------------------------------------------------------------------
+| MANUAL CATEGORY -- FALLBACK SPECIALISATION (for the "no preset
+| doctor_test_payment_masters rule" branch of loadDoctorDropdownForItem()).
+| Dental Manual items are all dental work, so when an item has no configured
+| doctor_test_payment_masters row, the fallback offers every DENTAL-
+| specialisation doctor instead, amount typed by hand. Every other manual
+| category (e.g. Miscellaneous Manual) has no such fallback -- the doctor/
+| staff dropdown there is driven strictly by doctor_test_payment_masters:
+| only doctors/staff with a configured row for the selected item show up
+| (a payment_value of 0 still counts as configured), and if none are
+| configured the row simply has no doctor to pick, same as any regular
+| test with no payment rule.
+|--------------------------------------------------------------------------
+*/
+
+function getManualFallbackSpecialisation(categoryName) {
+
+    return (categoryName.includes('MANUAL') && categoryName.includes('DENTAL'))
+        ? 'DENTAL'
+        : null;
+}
+
 function populateTestRow(mainRow, testData, forceZeroAmount = false) {
 
     let detailRow =
@@ -1128,11 +1151,7 @@ function populateTestRow(mainRow, testData, forceZeroAmount = false) {
                 .data('category-name') || ''
         ).toUpperCase();
 
-    let isDentalManual =
-        categoryName.includes('MANUAL') &&
-        categoryName.includes('DENTAL');
-
-    loadDoctorDropdownForItem(mainRow, testData.item_code_sub, isDentalManual);
+    loadDoctorDropdownForItem(mainRow, testData.item_code_sub, categoryName);
 
     let d1 =
         forceZeroAmount ? 0 : (parseFloat(testData.discount_percent) || 0);
@@ -1180,14 +1199,30 @@ function populateTestRow(mainRow, testData, forceZeroAmount = false) {
 /*
 |--------------------------------------------------------------------------
 | LOAD DOCTOR DROPDOWN FOR AN ITEM -- shared by populateTestRow() (regular,
-| non-manual tests) and the Dental Manual branch of the .test change
+| non-manual tests) and the manual-category branch of the .test change
 | handler (manual categories skip populateTestRow() entirely, since there's
-| no rate/discount to look up -- but Dental Manual still needs this doctor-
-| payment lookup, unlike other manual categories).
+| no rate/discount to look up -- but they still need this doctor-payment
+| lookup). `categoryName` is '' for regular tests, or the selected row's
+| category name (upper-cased) for manual categories.
+|
+| For a MANUAL category, any doctor_test_payment_masters row found is only
+| a starting suggestion, never a fixed preset: the total amount for a
+| manual line is itself typed by hand (see the .rate handling in the .test
+| change handler), so the doctor/staff's share of it has to be typeable
+| too -- data-editable-payment="1" keeps .paymentValue editable instead of
+| readonly once a doctor is picked (see the .doctorSelect handler below).
 |--------------------------------------------------------------------------
 */
 
-function loadDoctorDropdownForItem(mainRow, itemCodeSub, isDentalManual) {
+function loadDoctorDropdownForItem(mainRow, itemCodeSub, categoryName) {
+
+    categoryName = categoryName || '';
+
+    let isManualCategory =
+        categoryName.includes('MANUAL');
+
+    let manualFallbackSpecialisation =
+        getManualFallbackSpecialisation(categoryName);
 
     // Any waiver in effect belonged to the previous doctor/fee for this
     // row -- reset before the dropdown (and paymentValue it depends on)
@@ -1209,6 +1244,7 @@ function loadDoctorDropdownForItem(mainRow, itemCodeSub, isDentalManual) {
             doctorDropdown.html('');
             doctorDropdown.removeClass('border border-danger');
             doctorDropdown.removeAttr('data-manual-payment');
+            doctorDropdown.removeAttr('data-editable-payment');
 
             if (rows.length === 0) {
 
@@ -1219,10 +1255,12 @@ function loadDoctorDropdownForItem(mainRow, itemCodeSub, isDentalManual) {
                 | all, unlike other categories. Offer every DENTAL-
                 | specialisation doctor instead, optional, with the payment
                 | amount typed by hand (there's nothing to preset it from).
+                | Other manual categories get no such fallback -- see
+                | getManualFallbackSpecialisation().
                 |--------------------------------------------------------------------------
                 */
 
-                if (isDentalManual) {
+                if (manualFallbackSpecialisation) {
 
                     loadDentalDoctorsForRow(mainRow);
 
@@ -1253,9 +1291,13 @@ function loadDoctorDropdownForItem(mainRow, itemCodeSub, isDentalManual) {
 
                 doctorDropdown.val('999');
 
+                if (isManualCategory) {
+                    doctorDropdown.attr('data-editable-payment', '1');
+                }
+
                 mainRow.find('.paymentValue')
                     .val(rows[0].payment_value)
-                    .prop('readonly', true);
+                    .prop('readonly', !isManualCategory);
 
                 return;
             }
@@ -1284,7 +1326,11 @@ function loadDoctorDropdownForItem(mainRow, itemCodeSub, isDentalManual) {
                 }
             });
 
-            mainRow.find('.paymentValue').prop('readonly', true);
+            if (isManualCategory) {
+                doctorDropdown.attr('data-editable-payment', '1');
+            }
+
+            mainRow.find('.paymentValue').prop('readonly', !isManualCategory);
         }
     );
 }
@@ -1297,7 +1343,8 @@ function loadDoctorDropdownForItem(mainRow, itemCodeSub, isDentalManual) {
 | Dental Manual item. Doctor selection is optional here (unlike the normal,
 | preset-rule flow where a doctor is required) and the payment amount, if
 | any, is typed by hand once a doctor is picked -- see the .doctorSelect
-| change handler below.
+| change handler below. Other manual categories (e.g. Miscellaneous Manual)
+| have no such fallback -- see getManualFallbackSpecialisation().
 |--------------------------------------------------------------------------
 */
 
@@ -1421,17 +1468,21 @@ $(document).on(
 
             /*
             |--------------------------------------------------------------------------
-            | DENTAL MANUAL -- unlike other manual categories, some of these
-            | items DO have a preset doctor payment rule (checked here same
-            | as any regular test); the rest fall back to every DENTAL
-            | doctor, optional, with the amount typed by hand. See
-            | loadDoctorDropdownForItem() / loadDentalDoctorsForRow().
+            | MANUAL CATEGORIES -- some items in any manual category DO have
+            | a configured doctor_test_payment_masters row (checked here same
+            | as any regular test, via getDoctorPayments()), but the amount
+            | stays editable rather than a locked-in preset -- see
+            | loadDoctorDropdownForItem(). For Dental Manual specifically,
+            | items with no configured row fall back to a doctor list,
+            | optional, with the amount typed by hand -- other manual
+            | categories get no such fallback. See loadDentalDoctorsForRow()
+            | / getManualFallbackSpecialisation().
             |--------------------------------------------------------------------------
             */
 
-            if (categoryName.includes('DENTAL') && $(this).val()) {
+            if ($(this).val()) {
 
-                loadDoctorDropdownForItem(mainRow, $(this).val(), true);
+                loadDoctorDropdownForItem(mainRow, $(this).val(), categoryName);
             }
 
             checkLastRowCompletion();
@@ -1602,6 +1653,20 @@ $(document).on(
 
         tr.find('.paymentValue')
             .val(payment);
+
+        /*
+        |--------------------------------------------------------------------------
+        | MANUAL CATEGORY WITH A CONFIGURED doctor_test_payment_masters ROW --
+        | that value is only a starting suggestion (it's part of the total
+        | amount typed by hand for this line), so keep it editable rather
+        | than locking it read-only like a normal preset test fee.
+        |--------------------------------------------------------------------------
+        */
+
+        if ($(this).attr('data-editable-payment') === '1') {
+
+            tr.find('.paymentValue').prop('readonly', false);
+        }
 
         if ($(this).val()) {
 
@@ -2648,7 +2713,8 @@ $(document).on(
             /*
             |--------------------------------------------------------------------------
             | If doctor list exists, selection is mandatory -- EXCEPT the
-            | Dental Manual "no preset rule" list (data-manual-payment="1"),
+            | Dental Manual "no preset rule" fallback list
+            | (data-manual-payment="1", see loadDentalDoctorsForRow()),
             | which is offered but always optional.
             |--------------------------------------------------------------------------
             */
