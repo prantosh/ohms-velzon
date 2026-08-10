@@ -109,6 +109,10 @@
 
                             <th>Title</th>
                             <th>Study Type</th>
+                            <th width="130">Created By</th>
+                            <th width="150">Created Date Time</th>
+                            <th width="130">Updated By</th>
+                            <th width="150">Updated Date Time</th>
                             <th width="120">Status</th>
                             <th width="120">Action</th>
 

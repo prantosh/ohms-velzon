@@ -29,7 +29,7 @@ class UsgReportTemplateController extends Controller
     {
         $perPage = $request->get('per_page', 10);
 
-        $query = UsgReportTemplate::query();
+        $query = UsgReportTemplate::with(['creator', 'updater']);
 
         if ($request->filled('search')) {
 
@@ -55,6 +55,12 @@ class UsgReportTemplateController extends Controller
         $templates->getCollection()->transform(function ($row) use ($studyNames) {
 
             $row->study_name = $studyNames->get($row->item_code_sub);
+
+            $row->created_dt = optional($row->created_at)->format('d-m-Y H:i');
+            $row->updated_dt = optional($row->updated_at)->format('d-m-Y H:i');
+
+            $row->created_by_name = optional($row->creator)->name;
+            $row->updated_by_name = optional($row->updater)->name;
 
             return $row;
         });

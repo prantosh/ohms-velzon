@@ -95,6 +95,14 @@ async function loadTemplates(page = 1) {
 
             <td>${escapeHtml(raw.study_name ?? raw.item_code_sub)}</td>
 
+            <td>${escapeHtml(raw.created_by_name ?? '-')}</td>
+
+            <td>${escapeHtml(raw.created_dt ?? '-')}</td>
+
+            <td>${escapeHtml(raw.updated_by_name ?? '-')}</td>
+
+            <td>${escapeHtml(raw.updated_dt ?? '-')}</td>
+
             <td>${statusBadge}</td>
 
             <td>
