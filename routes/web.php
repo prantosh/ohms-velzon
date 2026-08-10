@@ -100,7 +100,33 @@ use App\Http\Controllers\ReportingGroupController;
 |
 */
 
-Auth::routes();
+Auth::routes(['reset' => false]);
+
+/*
+|--------------------------------------------------------------------------
+| STAFF PASSWORD RESET -- mobile number + WhatsApp OTP
+|--------------------------------------------------------------------------
+| Replaces Laravel's stock emailed reset-link routes (disabled above via
+| 'reset' => false) with the same mobile-OTP mechanism used for public
+| doctor booking (see PublicAppointmentController).
+*/
+
+Route::get('/password/reset', [App\Http\Controllers\Auth\ForgotPasswordController::class, 'showLinkRequestForm'])
+    ->middleware('guest')
+    ->name('password.request');
+
+Route::post('/password/send-otp', [App\Http\Controllers\Auth\ForgotPasswordController::class, 'sendOtp'])
+    ->middleware(['guest', 'throttle:5,1'])
+    ->name('password.send-otp');
+
+Route::post('/password/verify-otp', [App\Http\Controllers\Auth\ForgotPasswordController::class, 'verifyOtp'])
+    ->middleware(['guest', 'throttle:10,1'])
+    ->name('password.verify-otp');
+
+Route::post('/password/reset', [App\Http\Controllers\Auth\ResetPasswordController::class, 'reset'])
+    ->middleware('guest')
+    ->name('password.update');
+
 //Language Translation
 
 

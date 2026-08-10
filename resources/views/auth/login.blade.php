@@ -528,27 +528,29 @@ a.forgot-link:hover{
                                     <div class="mb-3">
 
                                         <label class="form-label">
-                                            Username
+                                            Mobile Number
                                             <span class="text-danger">*</span>
                                         </label>
 
                                         <div class="input-group">
 
                                             <span class="input-group-text">
-                                                <i class="ri-user-line"></i>
+                                                <i class="ri-smartphone-line"></i>
                                             </span>
 
                                             <input
                                                 type="text"
-                                                name="email"
+                                                name="mobile_no"
                                                 id="username"
-                                                value="{{ old('email') }}"
-                                                class="form-control @error('email') is-invalid @enderror"
-                                                placeholder="Enter username">
+                                                inputmode="numeric"
+                                                maxlength="10"
+                                                value="{{ old('mobile_no') }}"
+                                                class="form-control @error('mobile_no') is-invalid @enderror"
+                                                placeholder="Enter 10 digit mobile number">
 
                                         </div>
 
-                                        @error('email')
+                                        @error('mobile_no')
                                         <span class="invalid-feedback d-block">
                                             <strong>{{ $message }}</strong>
                                         </span>
@@ -564,7 +566,7 @@ a.forgot-link:hover{
                                                 <span class="text-danger">*</span>
                                             </label>
 
-                                            <a href="{{ route('password.update') }}"
+                                            <a href="{{ route('password.request') }}"
                                                class="forgot-link">
                                                 Forgot Password?
                                             </a>

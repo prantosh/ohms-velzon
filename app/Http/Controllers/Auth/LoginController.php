@@ -37,4 +37,12 @@ class LoginController extends Controller
     {
         $this->middleware('guest')->except('logout');
     }
+
+    /**
+     * Staff log in with their mobile number instead of email.
+     */
+    public function username()
+    {
+        return 'mobile_no';
+    }
 }
