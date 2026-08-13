@@ -2864,16 +2864,34 @@ $(document).on(
                             Swal.fire({
 
                                 icon:
-                                    'success',
+                                    response.status ? 'success' : 'error',
 
                                 title:
-                                    'Success',
+                                    response.status ? 'Success' : 'Error',
 
                                 text:
                                     response.message
                             });
 
-                            loadInvoices();
+                            if (response.status) {
+                                loadInvoices();
+                            }
+                        },
+
+                    error:
+                        function (xhr) {
+                            Swal.fire({
+
+                                icon:
+                                    'error',
+
+                                title:
+                                    'Error',
+
+                                text:
+                                    xhr.responseJSON?.message ||
+                                    'Unable to cancel invoice.'
+                            });
                         }
                 });
             }

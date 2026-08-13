@@ -2030,6 +2030,18 @@ class DiagnosticInvoiceController extends Controller
                 ]);
             }
 
+            $approverId = \App\Support\InvoiceCancellationApproval::resolveApprover($invoice);
+
+            if ($approverId === false) {
+
+                DB::rollBack();
+
+                return response()->json([
+                    'status' => false,
+                    'message' => \App\Support\InvoiceCancellationApproval::NOT_TODAY_MESSAGE
+                ], 422);
+            }
+
             $oldInvoiceData = $invoice->only($invoice->getFillable());
 
             $invoice->cancelled = 'Y';
@@ -2039,6 +2051,9 @@ class DiagnosticInvoiceController extends Controller
 
             $invoice->cancelled_at =
                 now();
+
+            $invoice->cancellation_approved_by =
+                $approverId;
 
             $invoice->refund_amount =
                 $invoice->paid_amount;

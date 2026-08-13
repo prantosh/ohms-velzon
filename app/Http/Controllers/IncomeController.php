@@ -242,13 +242,26 @@ class IncomeController extends Controller
                 ], 422);
             }
 
+            $approverId = \App\Support\InvoiceCancellationApproval::resolveApprover($invoice);
+
+            if ($approverId === false) {
+
+                DB::rollBack();
+
+                return response()->json([
+                    'status' => false,
+                    'message' => \App\Support\InvoiceCancellationApproval::NOT_TODAY_MESSAGE
+                ], 422);
+            }
+
             $oldData = $invoice->only($invoice->getFillable());
 
             $invoice->update([
                 'status' => 'Cancelled',
                 'cancelled' => 'Y',
                 'cancelled_by' => Auth::id(),
-                'cancelled_at' => now()
+                'cancelled_at' => now(),
+                'cancellation_approved_by' => $approverId
             ]);
 
             if ($invoice->paid_amount > 0) {

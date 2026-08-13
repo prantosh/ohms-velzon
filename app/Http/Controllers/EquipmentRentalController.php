@@ -682,6 +682,16 @@ class EquipmentRentalController extends Controller
                 ], 422);
             }
 
+            if (!\App\Support\InvoiceCancellationApproval::isToday($invoice)) {
+
+                DB::rollBack();
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Only a rental issued today can be cancelled.'
+                ], 422);
+            }
+
             $detail = DB::table('invoice_details')
                 ->where('invoice_no', $invoice->invoice_no)
                 ->first();

@@ -717,6 +717,18 @@ class DoctorVisitInvoiceController extends Controller
                 ]);
             }
 
+            $approverId = \App\Support\InvoiceCancellationApproval::resolveApprover($invoice);
+
+            if ($approverId === false) {
+
+                DB::rollBack();
+
+                return response()->json([
+                    'status' => false,
+                    'message' => \App\Support\InvoiceCancellationApproval::NOT_TODAY_MESSAGE
+                ], 422);
+            }
+
             $oldInvoiceData = $invoice->only($invoice->getFillable());
 
             $refundAmount =
@@ -783,6 +795,8 @@ class DoctorVisitInvoiceController extends Controller
                 'cancelled_by' => Auth::id(),
 
                 'cancelled_at' => now(),
+
+                'cancellation_approved_by' => $approverId,
 
                 'refund_amount' => $refundAmount,
 
