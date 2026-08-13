@@ -206,6 +206,11 @@
                                 </a>
                                 <div class="collapse menu-dropdown" id="sidebarSignIn">
                                     <ul class="nav nav-sm flex-column">
+                                         @if(is_null($allowedPages) || in_array('expenditure-category', $allowedPages))
+                                        <li class="nav-item">
+                                        <a href="{{ route('expenditure-category.index') }}" class="nav-link">@lang('translation.expenditurecategorymaster')</a>
+                                        </li>
+                                        @endif
                                          @if(is_null($allowedPages) || in_array('expenditure-agency', $allowedPages))
                                         <li class="nav-item">
                                         <a href="{{ route('expenditure-agency.index') }}" class="nav-link">@lang('translation.expenditureagencymaster')</a>

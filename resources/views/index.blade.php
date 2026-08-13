@@ -462,21 +462,40 @@
 
 <div class="card-body">
 
- <table class="table table-striped table-hover align-middle w-100 mb-0">
+@php
+    $columnColors = ['primary', 'success', 'info', 'warning', 'danger', 'secondary', 'dark'];
+    $doctorColor = $columnColors[0];
+    $mobileColor = $columnColors[1 % count($columnColors)];
+
+    $dayColumnColors = [];
+    $col = 2;
+    foreach ($scheduleDays as $idx => $day) {
+        $bookedColor = $columnColors[$col % count($columnColors)];
+        $col++;
+        $confirmedColor = null;
+        if ($idx === 0) {
+            $confirmedColor = $columnColors[$col % count($columnColors)];
+            $col++;
+        }
+        $dayColumnColors[$idx] = ['booked' => $bookedColor, 'confirmed' => $confirmedColor];
+    }
+@endphp
+
+ <table class="table table-hover align-middle w-100 mb-0">
 
 <thead>
 
 <tr>
 
-<th rowspan="2" class="align-middle">Doctor</th>
+<th rowspan="2" class="align-middle bg-{{ $doctorColor }}-subtle text-{{ $doctorColor }}">Doctor</th>
 
-<th rowspan="2" class="align-middle">Mobile</th>
+<th rowspan="2" class="align-middle bg-{{ $mobileColor }}-subtle text-{{ $mobileColor }}">Mobile</th>
 
 @foreach($scheduleDays as $index => $day)
 
-    <th colspan="{{ $index === 0 ? 2 : 1 }}" class="text-center">
+    <th colspan="{{ $index === 0 ? 2 : 1 }}" class="text-center bg-{{ $dayColumnColors[$index]['booked'] }}-subtle text-{{ $dayColumnColors[$index]['booked'] }}">
         {{ $day['label'] }}<br>
-        <small class="text-muted">{{ $day['display_date'] }}</small>
+        <small>{{ $day['display_date'] }}</small>
     </th>
 
 @endforeach
@@ -487,10 +506,10 @@
 
 @foreach($scheduleDays as $index => $day)
 
-    <th class="text-center">Patients Booked</th>
+    <th class="text-center bg-{{ $dayColumnColors[$index]['booked'] }}-subtle text-{{ $dayColumnColors[$index]['booked'] }}">Patients Booked</th>
 
     @if($index === 0)
-    <th class="text-center">Patients Confirmed</th>
+    <th class="text-center bg-{{ $dayColumnColors[$index]['confirmed'] }}-subtle text-{{ $dayColumnColors[$index]['confirmed'] }}">Patients Confirmed</th>
     @endif
 
 @endforeach
@@ -505,29 +524,33 @@
 
 <tr>
 
-<td>
-    <span class="fw-bold text-primary">
+<td class="bg-{{ $doctorColor }}-subtle">
+    <span class="fw-bold text-{{ $doctorColor }}">
         {{ $row['doctor_name'] }}
     </span>
 </td>
 
-<td>
+<td class="bg-{{ $mobileColor }}-subtle">
     {{ $row['mobile_no'] }}
 </td>
 
 @foreach($row['days'] as $index => $day)
 
-    <td class="text-center">
-        <span class="badge bg-success-subtle text-success fs-6">
+    <td class="text-center bg-{{ $dayColumnColors[$index]['booked'] }}-subtle">
+        @if($day['booked'] > 0)
+        <span class="badge bg-{{ $dayColumnColors[$index]['booked'] }} fs-6">
             {{ $day['booked'] }}
         </span>
+        @endif
     </td>
 
     @if($index === 0)
-    <td class="text-center">
-        <span class="badge bg-info-subtle text-info fs-6">
+    <td class="text-center bg-{{ $dayColumnColors[$index]['confirmed'] }}-subtle">
+        @if($row['confirmed_today'] > 0)
+        <span class="badge bg-{{ $dayColumnColors[$index]['confirmed'] }} fs-6">
             {{ $row['confirmed_today'] }}
         </span>
+        @endif
     </td>
     @endif
 
@@ -546,6 +569,41 @@
 @endforelse
 
 </tbody>
+
+<tfoot>
+
+<tr>
+
+<th rowspan="2" class="align-middle bg-{{ $doctorColor }}-subtle text-{{ $doctorColor }}">Doctor</th>
+
+<th rowspan="2" class="align-middle bg-{{ $mobileColor }}-subtle text-{{ $mobileColor }}">Mobile</th>
+
+@foreach($scheduleDays as $index => $day)
+
+    <th colspan="{{ $index === 0 ? 2 : 1 }}" class="text-center bg-{{ $dayColumnColors[$index]['booked'] }}-subtle text-{{ $dayColumnColors[$index]['booked'] }}">
+        {{ $day['label'] }}<br>
+        <small>{{ $day['display_date'] }}</small>
+    </th>
+
+@endforeach
+
+</tr>
+
+<tr>
+
+@foreach($scheduleDays as $index => $day)
+
+    <th class="text-center bg-{{ $dayColumnColors[$index]['booked'] }}-subtle text-{{ $dayColumnColors[$index]['booked'] }}">Patients Booked</th>
+
+    @if($index === 0)
+    <th class="text-center bg-{{ $dayColumnColors[$index]['confirmed'] }}-subtle text-{{ $dayColumnColors[$index]['confirmed'] }}">Patients Confirmed</th>
+    @endif
+
+@endforeach
+
+</tr>
+
+</tfoot>
 
 </table>
 

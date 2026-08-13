@@ -45,6 +45,7 @@ return [
     'usg-report.index' => 'usg-report',
     'diagnostic-test-report.index' => 'diagnostic-test-report',
     'test-report-dashboard.index' => 'test-report-dashboard',
+    'diagnostic-test-additional-info.index' => 'diagnostic-test-additional-info',
     'equipment-category.index' => 'equipment-category',
     'equipment-rental.index' => 'equipment-rental',
     'ambulance-destination.index' => 'ambulance-destination',

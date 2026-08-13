@@ -1,7 +1,7 @@
 @extends('layouts.master')
 
 @section('title')
-Invoice Item Details
+Test Detail Master
 @endsection
 
 @section('css')
@@ -110,7 +110,7 @@ Masters
 
 @slot('title')
 
-Invoice Item Details
+Test Detail Master
 
 @endslot
 
@@ -131,7 +131,7 @@ Invoice Item Details
 
 <h4 class="card-title mb-0">
 
-Invoice Item Details
+Test Detail Master
 
 </h4>
 
@@ -216,11 +216,7 @@ width="100%">
 
     <th rowspan="2" class="text-center align-middle">Sl</th>
 
-    <th rowspan="2" class="text-center align-middle">Item<br>Code</th>
-
     <th rowspan="2" class="text-center align-middle">Item<br>Name</th>
-
-    <th rowspan="2" class="text-center align-middle">Item<br>Type</th>
 
     <th rowspan="2" class="text-center align-middle">Sub<br>Code</th>
 

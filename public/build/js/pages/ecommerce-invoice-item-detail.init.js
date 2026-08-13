@@ -162,18 +162,8 @@ function initialiseDataTable() {
             },
 
             {
-                data: 'item_code',
-                name: 'invoice_item_details.item_code'
-            },
-
-            {
                 data: 'item_name',
                 name: 'invoice_item_masters.item_name'
-            },
-
-            {
-                data: 'item_type',
-                name: 'invoice_item_masters.item_type'
             },
 
             {

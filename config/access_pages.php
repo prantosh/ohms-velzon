@@ -33,6 +33,7 @@ return [
     'usg-report' => 'USG Report',
     'diagnostic-test-report' => 'Diagnostic Test Report',
     'test-report-dashboard' => 'Diagnostic Test Report Dashboard',
+    'diagnostic-test-additional-info' => 'Diagnostic Test Additional Info (Manage Tabs)',
     'equipment-category' => 'Equipment Category Master',
     'equipment-rental' => 'Equipment Rent Transaction',
     'ambulance-destination' => 'Ambulance Destination Master',
