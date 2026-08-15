@@ -574,13 +574,13 @@ width="100%">
                         <select id="item_status"
                                 class="form-select">
 
-                            <option value="1">
+                            <option value="Y">
 
                                 Active
 
                             </option>
 
-                            <option value="0">
+                            <option value="N">
 
                                 Inactive
 

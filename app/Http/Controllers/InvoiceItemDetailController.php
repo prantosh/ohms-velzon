@@ -80,7 +80,7 @@ class InvoiceItemDetailController extends Controller
 
             ->editColumn('status', function ($row) {
 
-                return $row->status
+                return $row->status === 'Y'
                     ? '<span class="badge bg-success">Active</span>'
                     : '<span class="badge bg-danger">Inactive</span>';
 
@@ -611,7 +611,7 @@ class InvoiceItemDetailController extends Controller
                     $row->member_discount,
                     $row->discount_other_lab,
                     $row->discount_member_other_lab,
-                    $row->status ? 'Active' : 'Inactive',
+                    $row->status === 'Y' ? 'Active' : 'Inactive',
                     $row->created_by,
                     $row->created_dt
                     ? \Carbon\Carbon::parse($row->created_dt)->format('d-m-Y H:i')

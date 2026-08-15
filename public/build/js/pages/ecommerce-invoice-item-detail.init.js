@@ -331,7 +331,7 @@ function clearForm() {
 
     $('#report_days').val('');
 
-    $('#item_status').val('1');
+    $('#item_status').val('Y');
 
     // Remove validation
     $('.is-invalid').removeClass('is-invalid');
