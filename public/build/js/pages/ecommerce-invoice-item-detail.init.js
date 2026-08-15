@@ -251,6 +251,13 @@ function initialiseDataTable() {
             },
 
             {
+                data: 'is_outsourced_label',
+                name: 'invoice_item_details.is_outsourced',
+                searchable: false,
+                className: 'text-center'
+            },
+
+            {
                 data: 'status',
                 name: 'invoice_item_details.status',
                 searchable: false
@@ -291,6 +298,8 @@ function clearForm() {
     $('#item_description_sub').val('');
 
     $('#is_package').prop('checked', false);
+
+    $('#is_outsourced').prop('checked', false);
 
     $('#componentsWrap').hide();
 
@@ -423,6 +432,8 @@ function editRecord() {
             $('#item_description_sub').val(response.item_description_sub);
 
             $('#is_package').prop('checked', !!(response.is_package * 1));
+
+            $('#is_outsourced').prop('checked', !!(response.is_outsourced * 1));
 
             if ($('#is_package').is(':checked')) {
 
@@ -572,6 +583,8 @@ function saveRecord() {
             item_description_sub: $('#item_description_sub').val(),
 
             is_package: $('#is_package').is(':checked') ? 1 : 0,
+
+            is_outsourced: $('#is_outsourced').is(':checked') ? 1 : 0,
 
             components: $('#is_package').is(':checked') ? ($('#components').val() || []) : [],
 

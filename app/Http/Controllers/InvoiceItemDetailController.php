@@ -94,6 +94,14 @@ class InvoiceItemDetailController extends Controller
 
             })
 
+            ->addColumn('is_outsourced_label', function ($row) {
+
+                return $row->is_outsourced
+                    ? '<span class="badge bg-warning text-dark">Outsourced</span>'
+                    : '';
+
+            })
+
             ->addColumn('action', function ($row) {
 
                 return '
@@ -117,6 +125,7 @@ class InvoiceItemDetailController extends Controller
             ->rawColumns([
                 'status',
                 'is_package_label',
+                'is_outsourced_label',
                 'action'
             ])
 
@@ -223,6 +232,8 @@ class InvoiceItemDetailController extends Controller
 
             'is_package' => 'nullable|boolean',
 
+            'is_outsourced' => 'nullable|boolean',
+
             'components' => 'nullable|array',
 
             'components.*' => 'exists:invoice_item_details,id',
@@ -276,6 +287,8 @@ class InvoiceItemDetailController extends Controller
                 'item_description_sub' => $request->item_description_sub,
 
                 'is_package' => $isPackage,
+
+                'is_outsourced' => $request->boolean('is_outsourced'),
 
                 'rate' => $request->rate,
 
@@ -381,6 +394,8 @@ class InvoiceItemDetailController extends Controller
 
                 'is_package' => 'nullable|boolean',
 
+                'is_outsourced' => 'nullable|boolean',
+
                 'components' => 'nullable|array',
 
                 'components.*' => 'exists:invoice_item_details,id',
@@ -411,6 +426,8 @@ class InvoiceItemDetailController extends Controller
             'item_description_sub' => $request->item_description_sub,
 
             'is_package' => $isPackage,
+
+            'is_outsourced' => $request->boolean('is_outsourced'),
 
             'rate' => $request->rate,
 

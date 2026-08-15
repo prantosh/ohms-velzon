@@ -16,6 +16,7 @@ class InvoiceItemDetail extends Model
         'item_code_sub',
         'item_description_sub',
         'is_package',
+        'is_outsourced',
         'rate',
 
         'discount_percent',

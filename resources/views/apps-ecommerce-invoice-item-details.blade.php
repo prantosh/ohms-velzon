@@ -261,6 +261,10 @@ width="100%">
     </th>
 
     <th rowspan="2" class="text-center align-middle">
+        Outsourced
+    </th>
+
+    <th rowspan="2" class="text-center align-middle">
         Status
     </th>
 
@@ -485,6 +489,25 @@ width="100%">
 
                         <div class="invalid-feedback"
                              id="error_components">
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <!-- Row 2c: Outsourced -->
+
+                <div class="row mt-3">
+
+                    <div class="col-md-6">
+
+                        <div class="form-check">
+                            <input type="checkbox"
+                                   id="is_outsourced"
+                                   class="form-check-input">
+                            <label class="form-check-label" for="is_outsourced">
+                                Outsourced (physically performed and reported by an outside agency -- excluded from report entry in this system)
+                            </label>
                         </div>
 
                     </div>

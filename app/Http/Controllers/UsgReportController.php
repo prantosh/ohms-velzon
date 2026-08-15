@@ -57,7 +57,9 @@ class UsgReportController extends Controller
         // Cannot filter by invoices.invoice_category -- USG shares
         // NON_PATHOLOGY with every other non-pathology category. An
         // invoice qualifies for this dashboard if it has at least one
-        // billed USG001 line.
+        // billed, non-outsourced USG001 line (an outsourced USG study is
+        // physically performed and reported by an outside agency -- this
+        // system has no report to produce for it).
         $query = Invoice::where('invoice_type', 'DIAGNOSTIC')
             ->where(function ($q) {
                 $q->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y');
@@ -65,8 +67,13 @@ class UsgReportController extends Controller
             ->whereExists(function ($sub) {
                 $sub->selectRaw('1')
                     ->from('invoice_details')
+                    ->join('invoice_item_details', function ($join) {
+                        $join->on('invoice_item_details.item_code', '=', 'invoice_details.item_code')
+                            ->on('invoice_item_details.item_code_sub', '=', 'invoice_details.item_code_sub');
+                    })
                     ->whereColumn('invoice_details.invoice_no', 'invoices.invoice_no')
-                    ->where('invoice_details.item_code', self::ITEM_CODE);
+                    ->where('invoice_details.item_code', self::ITEM_CODE)
+                    ->where('invoice_item_details.is_outsourced', 0);
             });
 
         $range = $request->get('range', '3');
@@ -173,8 +180,16 @@ class UsgReportController extends Controller
         $lines = DB::table('invoice_details as d')
             ->leftJoin('doctors as doc', 'doc.id', '=', 'd.doctor_id')
             ->leftJoin('usg_report_findings as f', 'f.invoice_detail_id', '=', 'd.id')
+            // Excludes studies physically performed and reported by an
+            // outside agency -- this system has no report to produce for
+            // those lines.
+            ->join('invoice_item_details as iid', function ($join) {
+                $join->on('iid.item_code', '=', 'd.item_code')
+                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+            })
             ->where('d.invoice_no', $invoice->invoice_no)
             ->where('d.item_code', self::ITEM_CODE)
+            ->where('iid.is_outsourced', 0)
             ->orderBy('d.line_no')
             ->get([
                 'd.id as invoice_detail_id',

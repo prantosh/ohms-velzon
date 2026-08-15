@@ -75,8 +75,16 @@ class NonPathologyReportController extends Controller
         $lines = DB::table('invoice_details as d')
             ->leftJoin('doctors as doc', 'doc.id', '=', 'd.doctor_id')
             ->leftJoin('non_pathology_report_findings as f', 'f.invoice_detail_id', '=', 'd.id')
+            // Excludes tests physically performed and reported by an
+            // outside agency -- this system has no report to produce for
+            // those lines.
+            ->join('invoice_item_details as iid', function ($join) {
+                $join->on('iid.item_code', '=', 'd.item_code')
+                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+            })
             ->where('d.invoice_no', $invoice->invoice_no)
             ->whereIn('d.item_code', $this->qualifyingItemCodes())
+            ->where('iid.is_outsourced', 0)
             ->orderBy('d.line_no')
             ->get([
                 'd.id as invoice_detail_id',

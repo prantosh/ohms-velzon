@@ -90,6 +90,11 @@ class TestResultEntryController extends Controller
             // other tests (e.g. USG + X-Ray) still belongs here for its
             // non-USG lines; NonPathologyReportController::search() already
             // filters those cards down to the non-USG lines only.
+            //
+            // Outsourced tests (physically performed and reported by an
+            // outside agency) are excluded the same way -- an invoice
+            // needs at least one qualifying, non-outsourced, non-USG line
+            // to belong on this tab.
             $nonUsgQualifyingItemCodes = InvoiceItemMaster::where('test_parameter_required', '!=', 'YES')
                 ->whereNotIn('item_code', ['USG001', 'DOC001'])
                 ->pluck('item_code');
@@ -97,8 +102,33 @@ class TestResultEntryController extends Controller
             $query->whereExists(function ($sub) use ($nonUsgQualifyingItemCodes) {
                 $sub->selectRaw('1')
                     ->from('invoice_details')
+                    ->join('invoice_item_details', function ($join) {
+                        $join->on('invoice_item_details.item_code', '=', 'invoice_details.item_code')
+                            ->on('invoice_item_details.item_code_sub', '=', 'invoice_details.item_code_sub');
+                    })
                     ->whereColumn('invoice_details.invoice_no', 'invoices.invoice_no')
-                    ->whereIn('invoice_details.item_code', $nonUsgQualifyingItemCodes);
+                    ->whereIn('invoice_details.item_code', $nonUsgQualifyingItemCodes)
+                    ->where('invoice_item_details.is_outsourced', 0);
+            });
+
+        } else {
+
+            // Pathology: an invoice needs at least one PAT001 (or whichever
+            // item_codes are test_parameter_required) line that isn't
+            // outsourced, otherwise there is nothing to report on here.
+            $pathologyQualifyingItemCodes = InvoiceItemMaster::where('test_parameter_required', 'YES')
+                ->pluck('item_code');
+
+            $query->whereExists(function ($sub) use ($pathologyQualifyingItemCodes) {
+                $sub->selectRaw('1')
+                    ->from('invoice_details')
+                    ->join('invoice_item_details', function ($join) {
+                        $join->on('invoice_item_details.item_code', '=', 'invoice_details.item_code')
+                            ->on('invoice_item_details.item_code_sub', '=', 'invoice_details.item_code_sub');
+                    })
+                    ->whereColumn('invoice_details.invoice_no', 'invoices.invoice_no')
+                    ->whereIn('invoice_details.item_code', $pathologyQualifyingItemCodes)
+                    ->where('invoice_item_details.is_outsourced', 0);
             });
         }
 

@@ -52,6 +52,13 @@ class TestReportRowBuilder
                 ->where('item_code_sub', $detail->item_code_sub)
                 ->first();
 
+            // Physically performed and reported by an outside agency --
+            // this system has no report to produce for it, so it's skipped
+            // entirely rather than shown as an empty/unusable row.
+            if ($itemDetail && $itemDetail->is_outsourced) {
+                continue;
+            }
+
             $analytes = $itemDetail ? $itemDetail->analytes()->get() : collect();
 
             $groupToSubGroup = [];
