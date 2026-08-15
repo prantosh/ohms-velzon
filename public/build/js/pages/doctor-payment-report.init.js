@@ -69,6 +69,8 @@ async function loadReport() {
             ${result.is_all_users ? `<td>${escapeHtml(row.user_name)}</td>` : ''}
             ${result.is_all_doctors ? `<td>${escapeHtml(row.doctor_name)}</td>` : ''}
             <td>${escapeHtml(row.patient_name)}</td>
+            <td>${escapeHtml(row.patient_gender) || '-'}</td>
+            <td>${escapeHtml(row.patient_age) || '-'}</td>
             <td>${escapeHtml(row.card_number) || '-'}</td>
             <td>${escapeHtml(row.item_description)}</td>
             <td>${escapeHtml(row.time_fmt)}</td>

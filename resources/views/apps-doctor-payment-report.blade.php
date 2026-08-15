@@ -146,6 +146,8 @@
                                 <th class="user-col" style="display:none;">User</th>
                                 <th class="doctor-col" style="display:none;">Doctor</th>
                                 <th>Patient Name</th>
+                                <th width="80">Gender</th>
+                                <th width="70">Age</th>
                                 <th width="110">Card No</th>
                                 <th>Item Description</th>
                                 <th width="90">Time</th>

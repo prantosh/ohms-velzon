@@ -136,7 +136,7 @@ function fmtMoney6($v)
 
 <thead>
 <tr>
-    <th colspan="{{ 8 + ($isAllUsers ? 1 : 0) + ($isAllDoctors ? 1 : 0) }}" style="text-align:left; background-color:#e6e6e6;">
+    <th colspan="{{ 10 + ($isAllUsers ? 1 : 0) + ($isAllDoctors ? 1 : 0) }}" style="text-align:left; background-color:#e6e6e6;">
         {{ $doctorLabel }} &mdash; {{ $userLabel }} &mdash; Doctor Payment Report for {{ $date->format('d-m-Y (l)') }}
     </th>
 </tr>
@@ -149,6 +149,8 @@ function fmtMoney6($v)
     <th>Doctor</th>
     @endif
     <th>Patient Name</th>
+    <th width="7%">Gender</th>
+    <th width="6%">Age</th>
     <th width="10%">Card No</th>
     <th>Item Description</th>
     <th width="7%">Time</th>
@@ -170,6 +172,8 @@ function fmtMoney6($v)
     <td>{{ $row->doctor_name }}</td>
     @endif
     <td>{{ $row->patient_name }}</td>
+    <td>{{ $row->patient_gender ?: '-' }}</td>
+    <td>{{ $row->patient_age ?: '-' }}</td>
     <td>{{ $row->card_number ?: '-' }}</td>
     <td>{{ $row->item_description }}</td>
     <td>{{ $row->time_fmt }}</td>
@@ -179,12 +183,12 @@ function fmtMoney6($v)
 </tr>
 @empty
 <tr>
-    <td colspan="{{ 8 + ($isAllUsers ? 1 : 0) + ($isAllDoctors ? 1 : 0) }}" class="text-center">No invoices found for this user and doctor on this date.</td>
+    <td colspan="{{ 10 + ($isAllUsers ? 1 : 0) + ($isAllDoctors ? 1 : 0) }}" class="text-center">No invoices found for this user and doctor on this date.</td>
 </tr>
 @endforelse
 
 <tr style="background-color:#f0f0f0; font-weight:bold;">
-    <td colspan="{{ 5 + ($isAllUsers ? 1 : 0) + ($isAllDoctors ? 1 : 0) }}" class="text-end">Total</td>
+    <td colspan="{{ 7 + ($isAllUsers ? 1 : 0) + ($isAllDoctors ? 1 : 0) }}" class="text-end">Total</td>
     <td class="text-end">{{ fmtMoney6($summary['total_doctor_fees']) }}</td>
     <td class="text-end">{{ fmtMoney6($summary['total_clinic_charge']) }}</td>
     <td></td>
