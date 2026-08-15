@@ -24,6 +24,25 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
+// Grows a textarea to fit its content so long template text is fully
+// visible instead of scrolling inside a fixed-height box.
+function autoGrowTextarea(el) {
+
+    if (!el) {
+        return;
+    }
+
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+}
+
+document.addEventListener('input', function (e) {
+
+    if (e.target.matches('.study-clinical-history, .study-findings, .study-impression')) {
+        autoGrowTextarea(e.target);
+    }
+});
+
 /*
 |--------------------------------------------------------------------------
 | DASHBOARD
@@ -198,9 +217,13 @@ async function searchInvoice(invoiceNo) {
         root.querySelector('.study-item-code-sub').innerText = line.item_code_sub ? `(${line.item_code_sub})` : '';
         root.querySelector('.study-doctor-name').innerText = line.doctor_name ?? '-';
 
-        root.querySelector('.study-clinical-history').value = line.clinical_history ?? '';
-        root.querySelector('.study-findings').value = line.findings ?? '';
-        root.querySelector('.study-impression').value = line.impression ?? '';
+        let historyEl = root.querySelector('.study-clinical-history');
+        let findingsEl = root.querySelector('.study-findings');
+        let impressionEl = root.querySelector('.study-impression');
+
+        historyEl.value = line.clinical_history ?? '';
+        findingsEl.value = line.findings ?? '';
+        impressionEl.value = line.impression ?? '';
 
         if (line.confirmed_at) {
 
@@ -212,6 +235,12 @@ async function searchInvoice(invoiceNo) {
         }
 
         wrap.appendChild(card);
+
+        // Elements must be attached to the DOM before scrollHeight is
+        // meaningful, so grow the textareas after appending the card.
+        autoGrowTextarea(historyEl);
+        autoGrowTextarea(findingsEl);
+        autoGrowTextarea(impressionEl);
     });
 }
 
@@ -294,6 +323,10 @@ document.addEventListener('change', async function (e) {
     historyField.value = tpl.clinical_history ?? '';
     findingsField.value = tpl.findings ?? '';
     impressionField.value = tpl.impression ?? '';
+
+    autoGrowTextarea(historyField);
+    autoGrowTextarea(findingsField);
+    autoGrowTextarea(impressionField);
 
     picker.value = '';
 });

@@ -239,17 +239,17 @@
 
             <div class="mb-3">
                 <label class="form-label fw-semibold">Clinical History</label>
-                <textarea class="form-control study-clinical-history" rows="2"></textarea>
+                <textarea class="form-control study-clinical-history" rows="2" style="overflow-y:hidden; resize:none;"></textarea>
             </div>
 
             <div class="mb-3">
                 <label class="form-label fw-semibold">Findings</label>
-                <textarea class="form-control study-findings" rows="6"></textarea>
+                <textarea class="form-control study-findings" rows="6" style="overflow-y:hidden; resize:none;"></textarea>
             </div>
 
             <div class="mb-3">
                 <label class="form-label fw-semibold">Impression</label>
-                <textarea class="form-control study-impression" rows="3"></textarea>
+                <textarea class="form-control study-impression" rows="3" style="overflow-y:hidden; resize:none;"></textarea>
             </div>
 
             <div class="d-flex justify-content-end gap-2">
