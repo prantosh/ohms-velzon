@@ -10,14 +10,10 @@
 <style>
 
 @page {
-    margin-top: 1in;
+    margin-top: 45mm;
     margin-right: 40px;
-    margin-bottom: 40px;
+    margin-bottom: 60mm;
     margin-left: 40px;
-}
-
-@page :first {
-    margin-top: 0.4in;
 }
 
 body {
@@ -80,24 +76,25 @@ table td {
     white-space: pre-wrap;
 }
 
-.signature-section {
-    margin-top: 50px;
-}
-
-.signature {
-    width: 45%;
-    text-align: center;
-    display: inline-block;
-    float: right;
-}
-
 </style>
 
 </head>
 
-<body>
+@php
+    // Radiologists type all-caps words in these fields for emphasis (e.g.
+    // abbreviations, key findings) -- render that emphasis as bold+underline
+    // instead of flattening it to the same weight as surrounding text.
+    if (!function_exists('usgBoldAllCaps')) {
+        function usgBoldAllCaps($text) {
+            if ($text === null || $text === '') {
+                return '';
+            }
+            return preg_replace('/\b[A-Z]{2,}\b/', '<strong><u>$0</u></strong>', e($text));
+        }
+    }
+@endphp
 
-@include('partials.pdf-header', ['reportTitle' => 'USG REPORT', 'headerColor' => '#003399'])
+<body>
 
 <table class="patient-detail-table">
     <tr>
@@ -121,7 +118,7 @@ table td {
             <span class="label-blue">Reported By :</span>
             {{ optional($doctor)->doctor_name }}
             @if(optional($doctor)->qualification)
-                ({{ $doctor->qualification }})
+                ({!! usgBoldAllCaps($doctor->qualification) !!})
             @endif
         </td>
         <td width="30%">
@@ -131,31 +128,23 @@ table td {
     </tr>
 </table>
 
-<h4 class="study-title">USG {{ $finding->item_description }}</h4>
+<h4 class="study-title">{!! usgBoldAllCaps('USG ' . $finding->item_description) !!}</h4>
 
 @if(!empty($finding->clinical_history))
 <div class="report-section">
     <div class="report-section-heading">Clinical History</div>
-    <div class="report-section-body">{{ $finding->clinical_history }}</div>
+    <div class="report-section-body">{!! usgBoldAllCaps($finding->clinical_history) !!}</div>
 </div>
 @endif
 
 <div class="report-section">
     <div class="report-section-heading">Findings</div>
-    <div class="report-section-body">{{ $finding->findings }}</div>
+    <div class="report-section-body">{!! usgBoldAllCaps($finding->findings) !!}</div>
 </div>
 
 <div class="report-section">
     <div class="report-section-heading">Impression</div>
-    <div class="report-section-body">{{ $finding->impression }}</div>
-</div>
-
-<div class="signature-section">
-    <div class="signature">
-        ______________________
-        <br>
-        Radiologist's Signature
-    </div>
+    <div class="report-section-body">{!! usgBoldAllCaps($finding->impression) !!}</div>
 </div>
 
 </body>
