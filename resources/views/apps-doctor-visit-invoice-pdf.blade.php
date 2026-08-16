@@ -28,19 +28,15 @@ function fmtDateTime($date)
                 <style>
 
                     @page {
-                            margin-top: 1in;
-                            margin-right: 40px;
-                            margin-bottom: 40px;
-                            margin-left: 40px;
-                        }
-
-                    @page :first {
-                            margin-top: 0.4in;
+                            margin-top: 10mm;
+                            margin-right: 20mm;
+                            margin-bottom: 10mm;
+                            margin-left: 20mm;
                         }
 
                     body {
                         font-family: DejaVu Sans, sans-serif;
-                        font-size: 12px;
+                        font-size: 9px;
                         color: #000;
                         margin: 0;
                         padding: 0;
@@ -49,7 +45,7 @@ function fmtDateTime($date)
                     .invoice-box {
                         width: 100%;
                         border: 1px solid #000;
-                        padding: 15px;
+                        padding: 0;
                     }
 
                     .title {
@@ -67,14 +63,17 @@ function fmtDateTime($date)
                     table {
                         width: 100%;
                         border-collapse: collapse;
-                        margin-top: 10px;
+                        margin-top: 4px;
+                        table-layout: fixed;
                     }
 
                         table th,
                         table td {
                             border: 1px solid #000;
-                            padding: 6px;
+                            padding: 3px;
                             vertical-align: top;
+                            word-wrap: break-word;
+                            overflow-wrap: break-word;
                         }
 
                     .text-end {
@@ -113,7 +112,7 @@ function fmtDateTime($date)
                     }
 
                     .signature-section {
-                        margin-top: 50px;
+                        margin-top: 15mm;
                     }
 
                     .signature {
@@ -126,8 +125,65 @@ function fmtDateTime($date)
         </head>
 
 <body>
-@include('partials.pdf-header', ['reportTitle' => 'DOCTOR CONSULTATION INVOICE', 'headerColor' => '#003399'])
 
+{{-- Dedicated header for this invoice only -- sized to fill the wider A4
+     content width, kept clear of the shared partials.pdf-header (used by
+     42 other reports) so this doesn't affect any of them. --}}
+
+<div style="position: fixed; top: 90px; left: 0; right: 0; text-align: center; opacity: 0.08;">
+    <img src="{{ public_path('images/abssrk_logo.png') }}" style="width: 380px;">
+</div>
+
+<table style="border:none; margin:0; width:100%;">
+
+    <tr>
+
+        <td style="width:15%; border:none; text-align:left; vertical-align:middle;">
+            <img src="{{ public_path('images/iso.jpg') }}" style="height:50px;">
+        </td>
+
+        <td style="width:70%; border:none; text-align:center; vertical-align:middle;">
+
+            <div style="font-size:14px; font-weight:bold; color:#003399; white-space:nowrap;">
+                Dr. Amitava Basu Smriti Swastha Raksha Kendra
+            </div>
+
+            <div style="font-size:13px; font-weight:bold; color:#003399; margin-top:2px;">
+                Srayan Apartment, 19, M B Road, Kolkata - 700049
+            </div>
+
+            <div style="font-size:10px; margin-top:2px;">
+                Web: www.abssrk.online; Phone: (033)2513-7070/7439, 2539-2009
+                Mob: 8585882287/9051132429/9051129713/9038721959
+            </div>
+
+        </td>
+
+        <td style="width:15%; border:none; text-align:right; vertical-align:middle;">
+            <img src="{{ public_path('images/nabl.jpg') }}" style="height:50px;">
+        </td>
+
+    </tr>
+
+    <tr>
+
+        <td colspan="3" style="border:none; text-align:center; padding-top:3px; padding-bottom:0;">
+            <div style="font-size:16px; font-weight:bold; color:#003399;">
+                OPD CLINIC INVOICE
+            </div>
+        </td>
+
+    </tr>
+
+    <tr>
+
+        <td colspan="3" style="border:none; text-align:right; padding-top:1px; padding-bottom:0; font-size:9px; color:#555;">
+            Printed On: {{ now()->format('d-m-Y h:i A') }}
+        </td>
+
+    </tr>
+
+</table>
 
     <div class="invoice-box">
 
@@ -190,7 +246,7 @@ function fmtDateTime($date)
 
             <tbody>
                 <tr>
-                    <td>Doctor Consultation Fee</td>
+                    <td>OPD Clinic Charge</td>
                     <td class="text-end">
                         {{ number_format($invoice->consultation_fee, 2) }}
                     </td>
@@ -261,7 +317,7 @@ $amountInWords = ucwords(
                     Rs. {{ number_format($invoice->paid_amount,2) }}
                     ({{ $amountInWords }} Only)
                 </b>
-                towards consultation charges.
+                towards OPD clinic charges.
 
                 <br>
 

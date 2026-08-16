@@ -919,6 +919,8 @@ class DoctorVisitInvoiceController extends Controller
                     )
                 );
 
+                $pdf->setPaper('A4', 'portrait');
+
                 $pdf->save($filePath);
 
            

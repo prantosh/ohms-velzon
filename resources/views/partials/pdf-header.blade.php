@@ -6,17 +6,23 @@
     Optional 'compact' (default false) -- shrinks the badge images and
     drops the web/phone line, for PDFs (e.g. the prescription pad) that
     need to save vertical space for content below the header.
+    Optional 'watermarkWidth' / 'watermarkTop' (default 380 / 280, tuned
+    for A4) -- override for smaller page sizes, e.g. the A5 doctor visit
+    invoice, so the watermark stays proportionate instead of dominating
+    the page.
 --}}
 @php
     $isCompact = $compact ?? false;
     $badgeHeight = $isCompact ? 35 : 55;
+    $watermarkWidth = $watermarkWidth ?? 380;
+    $watermarkTop = $watermarkTop ?? 280;
 @endphp
 
 {{-- WATERMARK -- position:fixed repeats this on every page. Placed before
      the header table so it paints behind everything that follows. --}}
 <div style="
     position: fixed;
-    top: 280px;
+    top: {{ $watermarkTop }}px;
     left: 0;
     right: 0;
     text-align: center;
@@ -24,7 +30,7 @@
 ">
     <img
         src="{{ public_path('images/abssrk_logo.png') }}"
-        style="width: 380px;">
+        style="width: {{ $watermarkWidth }}px;">
 </div>
 
 <table style="border:none; margin:0;">
