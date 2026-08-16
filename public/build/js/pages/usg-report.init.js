@@ -337,6 +337,7 @@ function lockStudyCard(root, findingId) {
     root.querySelector('.study-template-picker').style.display = 'none';
     root.querySelector('.study-confirmed-badge').style.display = 'inline-block';
     root.querySelector('.study-save-btn').style.display = 'none';
+    root.querySelector('.study-preview-btn').style.display = 'none';
     root.querySelector('.study-confirm-btn').style.display = 'none';
 
     let printBtn = root.querySelector('.study-print-btn');
@@ -357,6 +358,31 @@ document.getElementById('usgReportModal').addEventListener('shown.bs.modal', fun
 
 document.getElementById('usgReportModal').addEventListener('hidden.bs.modal', function () {
     loadDashboard(dashPage);
+});
+
+// Bootstrap doesn't natively stack modals -- bump the preview modal and its
+// backdrop above the entry modal it's opened on top of, and revoke the blob
+// URL on close so repeated previews don't leak memory.
+document.getElementById('usgPreviewModal').addEventListener('shown.bs.modal', function () {
+
+    let backdrops = document.querySelectorAll('.modal-backdrop');
+    let topBackdrop = backdrops[backdrops.length - 1];
+
+    if (topBackdrop) {
+        topBackdrop.style.zIndex = 1070;
+    }
+
+    this.style.zIndex = 1075;
+});
+
+document.getElementById('usgPreviewModal').addEventListener('hidden.bs.modal', function () {
+
+    let frame = document.getElementById('usgPreviewFrame');
+
+    if (frame.src) {
+        URL.revokeObjectURL(frame.src);
+        frame.src = '';
+    }
 });
 
 document.addEventListener('click', function (e) {
@@ -417,6 +443,60 @@ document.addEventListener('click', async function (e) {
             timer: result.status ? 1200 : undefined,
             showConfirmButton: !result.status
         });
+
+        return;
+    }
+
+    let previewBtn = e.target.closest('.study-preview-btn');
+    if (previewBtn) {
+
+        let root = previewBtn.closest('.usg-study-card');
+
+        previewBtn.disabled = true;
+
+        try {
+
+            const response = await fetch('/usg-report/preview', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken()
+                },
+                body: JSON.stringify({
+                    invoice_detail_id: root.dataset.invoiceDetailId,
+                    clinical_history: root.querySelector('.study-clinical-history').value,
+                    findings: root.querySelector('.study-findings').value,
+                    impression: root.querySelector('.study-impression').value
+                })
+            });
+
+            if (!response.ok || (response.headers.get('Content-Type') || '').includes('application/json')) {
+
+                const result = await response.json();
+
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: result.message ?? (result.errors ? Object.values(result.errors).flat().join(', ') : 'Unable to generate preview.')
+                });
+
+                return;
+            }
+
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+
+            // An iframe (same top-level browsing context) rather than a new
+            // tab/window -- Chromium blocks navigating a *new* top-level
+            // context to a blob: URL outright, even same-origin/opener.
+            document.getElementById('usgPreviewFrame').src = blobUrl;
+
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('usgPreviewModal')).show();
+
+        } finally {
+
+            previewBtn.disabled = false;
+        }
 
         return;
     }

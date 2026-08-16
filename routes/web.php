@@ -2416,6 +2416,11 @@ Route::middleware(['auth'])->prefix('usg-report')->group(function () {
     )->name('usg-report.save');
 
     Route::post(
+        '/preview',
+        [UsgReportController::class, 'preview']
+    )->name('usg-report.preview');
+
+    Route::post(
         '/confirm',
         [UsgReportController::class, 'confirm']
     )->name('usg-report.confirm');

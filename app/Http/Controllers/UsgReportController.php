@@ -298,6 +298,71 @@ class UsgReportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | PREVIEW (unsaved draft -- lets staff see the printed report and still
+    | go back and edit before Save/Confirm; nothing is persisted here)
+    |--------------------------------------------------------------------------
+    */
+
+    public function preview(Request $request)
+    {
+        $validator = Validator::make(
+            $request->all(),
+            [
+                'invoice_detail_id' => 'required|integer',
+                'clinical_history' => 'nullable|max:5000',
+                'findings' => 'nullable|max:5000',
+                'impression' => 'nullable|max:5000',
+            ]
+        );
+
+        if ($validator->fails()) {
+
+            return response()->json([
+                'status' => false,
+                'errors' => $validator->errors()
+            ]);
+        }
+
+        $line = DB::table('invoice_details')
+            ->where('id', $request->invoice_detail_id)
+            ->where('item_code', self::ITEM_CODE)
+            ->first();
+
+        if (!$line) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Not a valid USG line item.'
+            ], 422);
+        }
+
+        $invoice = Invoice::where('invoice_no', $line->invoice_no)->firstOrFail();
+
+        $doctor = $line->doctor_id
+            ? DB::table('doctors')->where('id', $line->doctor_id)->first()
+            : null;
+
+        // A plain stdClass standing in for UsgReportFinding -- the PDF
+        // template only ever reads properties off $finding, never calls a
+        // model method, so the unsaved draft text can flow straight through.
+        $finding = (object) [
+            'item_description' => $line->item_description,
+            'clinical_history' => $request->clinical_history,
+            'findings' => $request->findings,
+            'impression' => $request->impression,
+            'confirmed_at' => null,
+        ];
+
+        $pdf = Pdf::loadView(
+            'apps-usg-report-pdf',
+            compact('finding', 'invoice', 'doctor')
+        );
+
+        return $pdf->stream('usg-report-preview.pdf');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | CONFIRM (locks this one study's report)
     |--------------------------------------------------------------------------
     */
