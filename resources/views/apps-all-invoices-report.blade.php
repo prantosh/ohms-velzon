@@ -47,7 +47,17 @@
                         <input type="text" id="invoice_date-field" class="form-control flatpickr" required>
                     </div>
 
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">User</label>
+                        <select id="user_id-field" class="form-select">
+                            <option value="ALL" selected>-- All Users --</option>
+                            @foreach($users as $user)
+                            <option value="{{ $user->id }}">{{ $user->name }} ({{ $user->role }})</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="col-md-3 mb-3">
                         <label class="form-label">Search</label>
                         <input type="text" id="search-field" class="form-control" placeholder="Invoice No / Patient Name / Mobile">
                     </div>

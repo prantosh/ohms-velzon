@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class AllInvoicesReportController extends Controller
 {
+    private const STAFF_ROLES = ['Admin', 'Supervisor', 'Employee'];
+
     private const INVOICE_TYPE_LABELS = [
         'DOCTOR_VISIT' => 'Doctor Visit',
         'DIAGNOSTIC' => 'Diagnostic',
@@ -36,7 +39,11 @@ class AllInvoicesReportController extends Controller
 
     public function index()
     {
-        return view('apps-all-invoices-report');
+        $users = User::whereIn('role', self::STAFF_ROLES)
+            ->orderBy('name')
+            ->get(['id', 'name', 'role']);
+
+        return view('apps-all-invoices-report', compact('users'));
     }
 
     /*
@@ -51,7 +58,12 @@ class AllInvoicesReportController extends Controller
             'date' => 'required|date',
             'tab' => 'required|in:all,pending,cancelled',
             'search' => 'nullable|string',
+            'user_id' => 'nullable|string',
         ]);
+
+        if ($request->filled('user_id') && $request->user_id !== 'ALL') {
+            $request->validate(['user_id' => 'exists:users,id']);
+        }
 
         $perPage = $request->get('per_page', 10);
 
@@ -108,7 +120,12 @@ class AllInvoicesReportController extends Controller
         $request->validate([
             'date' => 'required|date',
             'search' => 'nullable|string',
+            'user_id' => 'nullable|string',
         ]);
+
+        if ($request->filled('user_id') && $request->user_id !== 'ALL') {
+            $request->validate(['user_id' => 'exists:users,id']);
+        }
 
         return response()->json([
             'status' => true,
@@ -154,6 +171,10 @@ class AllInvoicesReportController extends Controller
                     ->orWhere('patient_name', 'like', "%{$search}%")
                     ->orWhere('patient_mobile_no', 'like', "%{$search}%");
             });
+        }
+
+        if ($request->filled('user_id') && $request->user_id !== 'ALL') {
+            $query->where('created_by', $request->user_id);
         }
 
         return $query;
