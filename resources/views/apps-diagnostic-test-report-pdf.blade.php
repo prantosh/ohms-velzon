@@ -40,14 +40,10 @@ function formatReferenceRange($row)
                 <style>
 
                     @page {
-                            margin-top: 1in;
+                            margin-top: 50mm;
                             margin-right: 40px;
-                            margin-bottom: 40px;
+                            margin-bottom: 40mm;
                             margin-left: 40px;
-                        }
-
-                    @page :first {
-                            margin-top: 0.4in;
                         }
 
                     body {
@@ -94,16 +90,6 @@ function formatReferenceRange($row)
                         text-align: center;
                     }
 
-                    .signature-section {
-                        margin-top: 30px;
-                    }
-
-                    .signature {
-                        width: 45%;
-                        text-align: center;
-                        display: inline-block;
-                    }
-
                     .additional-info {
                         margin-top: 20px;
                         border-top: 1px solid #999;
@@ -125,8 +111,6 @@ function formatReferenceRange($row)
         </head>
 
         <body>
-
-@include('partials.pdf-header', ['reportTitle' => 'TEST REPORT'])
 
 <!-- =======================================================
      INVOICE / PATIENT INFORMATION
@@ -382,30 +366,6 @@ function formatReferenceRange($row)
 </div>
 
 @endif
-
-<br><br>
-
-<!-- =======================================================
-     SIGNATURES
-======================================================= -->
-
-<table border="0" style="border:none; margin:0;">
-
-<tr>
-
-<td class="no-border text-left">
-
-_____________________
-
-<br>
-
-Authorized Signature
-
-</td>
-
-</tr>
-
-</table>
 
 </body>
 
