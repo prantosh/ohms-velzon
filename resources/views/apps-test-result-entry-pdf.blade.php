@@ -42,7 +42,7 @@ function formatReferenceRange($row)
                     @page {
                             margin-top: 50mm;
                             margin-right: 40px;
-                            margin-bottom: 40mm;
+                            margin-bottom: 60mm;
                             margin-left: 40px;
                         }
 
