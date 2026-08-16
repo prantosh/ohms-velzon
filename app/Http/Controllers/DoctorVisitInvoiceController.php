@@ -1127,72 +1127,36 @@ class DoctorVisitInvoiceController extends Controller
 
     public function printInvoice($id)
     {
-        try {
+        $invoice = Invoice::findOrFail($id);
 
-            $invoice = Invoice::findOrFail($id);
-            if ($invoice->cancelled == 'Y') {
-
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Cancelled invoice cannot be printed'
-                ]);
-            }
-
-            $appointment = DoctorAppointment::leftJoin(
-                'doctors',
-                'doctor_appointments.doctor_id',
-                '=',
-                'doctors.id'
-            )
-                ->select(
-                    'doctor_appointments.*',
-                    'doctors.doctor_name'
-                )
-                ->where(
-                    'doctor_appointments.id',
-                    $invoice->appointment_id
-                )
-                ->first();
-
-            $folderPath = public_path('invoices');
-
-            if (!File::exists($folderPath)) {
-
-                File::makeDirectory($folderPath, 0777, true, true);
-            }
-
-            $safeInvoiceNo = str_replace('/', '_', $invoice->invoice_no);
-
-            $fileName = $safeInvoiceNo . '.pdf';
-
-            $filePath = $folderPath . '/' . $fileName;
-
-            $pdf = Pdf::loadView(
-                'apps-doctor-visit-invoice-pdf',
-                compact('invoice', 'appointment')
-            );
-
-            $pdf->setPaper('A4', 'portrait');
-
-            $pdf->save($filePath);
-
-            return response()->json([
-
-                'status' => true,
-
-                'pdf_url' => asset('invoices/' . $fileName)
-            ]);
-
-        } catch (\Exception $e) {
-
-            return response()->json([
-
-                'status' => false,
-
-                'message' => $e->getMessage()
-
-            ], 500);
+        if ($invoice->cancelled == 'Y') {
+            abort(404, 'Cancelled invoice cannot be printed.');
         }
+
+        $appointment = DoctorAppointment::leftJoin(
+            'doctors',
+            'doctor_appointments.doctor_id',
+            '=',
+            'doctors.id'
+        )
+            ->select(
+                'doctor_appointments.*',
+                'doctors.doctor_name'
+            )
+            ->where(
+                'doctor_appointments.id',
+                $invoice->appointment_id
+            )
+            ->first();
+
+        $pdf = Pdf::loadView(
+            'apps-doctor-visit-invoice-pdf',
+            compact('invoice', 'appointment')
+        );
+
+        $pdf->setPaper('A4', 'portrait');
+
+        return $pdf->stream(str_replace('/', '_', $invoice->invoice_no) . '.pdf');
     }
 
     /*

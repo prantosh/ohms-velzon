@@ -645,43 +645,9 @@ ${row.actions}
 
             const id = $(this).data("id");
 
-            self.showLoader("Generating PDF...");
-
-            $.ajax({
-
-                url: "/doctor-visit-invoice/print/" + id,
-
-                type: "GET",
-
-                success: function (response) {
-
-                    self.hideLoader();
-
-                    if (response.status && response.pdf_url) {
-
-                        window.open(response.pdf_url, "_blank");
-
-                    } else {
-
-                        Swal.fire({
-                            icon: "error",
-                            title: "PDF Error",
-                            text: response.message || "Unable to generate PDF."
-                        });
-                    }
-                },
-
-                error: function (xhr) {
-
-                    self.hideLoader();
-
-                    Swal.fire({
-                        icon: "error",
-                        title: "PDF Generation Failed",
-                        text: xhr.responseJSON?.message || "Unable to generate PDF."
-                    });
-                }
-            });
+            // The endpoint streams the PDF directly (no disk save, no JSON
+            // wrapper) -- same as every other "print" action in this app.
+            window.open("/doctor-visit-invoice/print/" + id, "_blank");
         });
 
         $(document).off("click", ".sendWhatsapp");

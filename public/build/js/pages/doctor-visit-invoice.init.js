@@ -683,43 +683,12 @@ $(document).on(
 
         let id = $(this).data("id");
 
-        $.ajax({
-
-            url:
-                "/doctor-visit-invoice/print/" + id,
-
-            type: "GET",
-
-            success: function (response) {
-
-                if (response.status && response.pdf_url) {
-
-                    window.open(
-                        response.pdf_url,
-                        "_blank"
-                    );
-
-                } else {
-
-                    Swal.fire({
-                        icon: "error",
-                        title: "PDF Error",
-                        text: response.message
-                    });
-                }
-            },
-
-            error: function (xhr) {
-
-                Swal.fire({
-                    icon: "error",
-                    title: "PDF Generation Failed",
-                    text:
-                        xhr.responseJSON?.message ||
-                        xhr.responseText
-                });
-            }
-        });
+        // The endpoint streams the PDF directly (no disk save, no JSON
+        // wrapper) -- same as every other "print" action in this app.
+        window.open(
+            "/doctor-visit-invoice/print/" + id,
+            "_blank"
+        );
     }
 );
 /*
@@ -944,21 +913,10 @@ $("#btnConfirmSaveInvoice").on("click", function () {
 
             if (response.invoice_id) {
 
-                $.get(
+                window.open(
                     '/doctor-visit-invoice/print/' +
                     response.invoice_id,
-                    function (pdfResponse) {
-
-                        if (
-                            pdfResponse.status &&
-                            pdfResponse.pdf_url
-                        ) {
-                            window.open(
-                                pdfResponse.pdf_url,
-                                '_blank'
-                            );
-                        }
-                    }
+                    '_blank'
                 );
             }
 
