@@ -66,6 +66,7 @@ return [
     'purchase-order-report' => 'Purchase Order Report',
     'remarks-master' => 'Remarks Master',
     'reporting-group' => 'Reporting Group Master',
+    'reporting-group-summary-report' => 'Reporting Group Summary Report',
     'role-page-access' => 'Role Page Access',
     'sample-master' => 'Sample Master',
     'stock-as-on-date' => 'Stock As On Date',
@@ -83,5 +84,6 @@ return [
     'users' => 'User Management',
     'usg-report' => 'USG Report',
     'usg-report-template' => 'USG Report Template Master',
+    'whatsapp-auto-send-settings' => 'WhatsApp Auto-Send Settings',
     'whatsapp-message-report' => 'WhatsApp Message Report',
 ];
