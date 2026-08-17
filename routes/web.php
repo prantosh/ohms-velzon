@@ -82,6 +82,7 @@ use App\Http\Controllers\WhatsappMessageReportController;
 use App\Http\Controllers\ItemWiseReportController;
 use App\Http\Controllers\ItemWiseSummaryReportController;
 use App\Http\Controllers\MonthlyReconciliationReportController;
+use App\Http\Controllers\ReportingGroupSummaryReportController;
 use App\Http\Controllers\UserInvoiceReportController;
 use App\Http\Controllers\AllInvoicesReportController;
 use App\Http\Controllers\CashSubmissionReportController;
@@ -1640,6 +1641,18 @@ Route::prefix('monthly-reconciliation-report')->group(function () {
 
     Route::get('/report', [MonthlyReconciliationReportController::class, 'report']);
     Route::get('/print', [MonthlyReconciliationReportController::class, 'print']);
+
+});
+
+// Wrapped in auth (see the cash-submission-report group's comment above for
+// why unnamed sub-routes need this explicitly, not just CheckPageAccess).
+Route::middleware(['auth'])->prefix('reporting-group-summary-report')->group(function () {
+
+    Route::get('/', [ReportingGroupSummaryReportController::class, 'index'])
+        ->name('reporting-group-summary-report.index');
+
+    Route::get('/report', [ReportingGroupSummaryReportController::class, 'report']);
+    Route::get('/print', [ReportingGroupSummaryReportController::class, 'print']);
 
 });
 

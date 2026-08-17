@@ -525,6 +525,11 @@
                                         <a href="{{ route('monthly-reconciliation-report.index') }}" class="nav-link">@lang('translation.monthlyreconciliationreport')</a>
                                         </li>
                             @endif
+                            @if(is_null($allowedPages) || in_array('reporting-group-summary-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('reporting-group-summary-report.index') }}" class="nav-link">@lang('translation.reportinggroupsummaryreport')</a>
+                                        </li>
+                            @endif
                             @if(is_null($allowedPages) || in_array('user-invoice-report', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('user-invoice-report.index') }}" class="nav-link">@lang('translation.userinvoicereport')</a>

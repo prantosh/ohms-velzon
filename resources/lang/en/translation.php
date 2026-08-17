@@ -82,6 +82,7 @@ return [
     "itemwisereport" => "Item Wise Report",
     "itemwisesummaryreport" => "Item Wise Summary Report",
     "monthlyreconciliationreport" => "Monthly Reconciliation Report",
+    "reportinggroupsummaryreport" => "Reporting Group Summary Report",
     "usermanagement" => "User Management",
     "usermaster" => "User Master",
     "rolepageaccess" => "Role Page Access",
