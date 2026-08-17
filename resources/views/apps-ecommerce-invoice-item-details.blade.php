@@ -47,6 +47,28 @@ Test Detail Master
     .select2-selection__arrow {
         height: 36px !important;
     }
+
+    .select2-selection__choice {
+        background-color: #0d6efd !important;
+        border: 1px solid #0d6efd !important;
+        color: #fff !important;
+        padding: 2px 8px !important;
+    }
+
+    .select2-selection__choice__display {
+        color: #fff !important;
+    }
+
+    .select2-selection__choice__remove {
+        color: #fff !important;
+        opacity: 0.8;
+        margin-right: 6px !important;
+    }
+
+    .select2-selection__choice__remove:hover {
+        color: #fff !important;
+        opacity: 1;
+    }
 .table>thead>tr>th{
 
     background:#0d6efd;
