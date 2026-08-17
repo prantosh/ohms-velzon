@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\UserOtp;
+use App\Models\WhatsappAutoSendSetting;
 use App\Services\WatiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,10 +43,22 @@ class ForgotPasswordController extends Controller
 
         $mobile = $request->mobile_no;
 
-        if (!User::where('mobile_no', $mobile)->exists()) {
+        $user = User::where('mobile_no', $mobile)->first();
+
+        if (!$user) {
             return response()->json([
                 'status' => false,
                 'message' => 'No account found with this mobile number.',
+            ]);
+        }
+
+        // Checked before the cooldown/quota reads and before any OTP row is
+        // created -- a disabled category must not consume a user's resend
+        // cooldown or hourly quota on a message that can never arrive.
+        if (!WhatsappAutoSendSetting::isEnabled('OTP_FORGOT_PASSWORD')) {
+            return response()->json([
+                'status' => false,
+                'message' => 'OTP delivery is temporarily unavailable. Please contact the Admin to reset your password.',
             ]);
         }
 
@@ -112,7 +125,8 @@ class ForgotPasswordController extends Controller
         DB::table('whatsapp_message_logs')->insert([
             'invoice_no' => 'PWDOTP-' . $otp->id,
             'mobile_no' => $mobile,
-            'message_type' => 'OTP',
+            'patient_name' => $user->name,
+            'message_type' => 'OTP_FORGOT_PASSWORD',
             'status' => $whatsappSent ? 'SENT' : 'FAILED',
             'response' => json_encode($whatsappResponse),
             'created_at' => now(),

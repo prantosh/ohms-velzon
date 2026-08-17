@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\WhatsappMessageTypeRegistry;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -9,16 +10,6 @@ use Illuminate\Support\Facades\DB;
 
 class WhatsappMessageReportController extends Controller
 {
-    private const MESSAGE_TYPES = ['INVOICE', 'TEST_REPORT', 'APPOINTMENT', 'OTP', 'DOCTOR_APPOINTMENT_REASSIGNED'];
-
-    private const TYPE_LABELS = [
-        'INVOICE' => 'Invoice',
-        'TEST_REPORT' => 'Test Report',
-        'APPOINTMENT' => 'Appointment',
-        'OTP' => 'OTP',
-        'DOCTOR_APPOINTMENT_REASSIGNED' => 'Appointment Reassigned (Blackout)',
-    ];
-
     /*
     |--------------------------------------------------------------------------
     | VIEW
@@ -43,31 +34,31 @@ class WhatsappMessageReportController extends Controller
             'to_date' => 'required|date|after_or_equal:from_date',
         ]);
 
-        $typeSums = collect(self::MESSAGE_TYPES)->map(function ($type) {
-            $col = strtolower($type);
-            return "SUM(CASE WHEN message_type = '{$type}' THEN 1 ELSE 0 END) as type_{$col}";
-        })->implode(', ');
+        $typeColumns = WhatsappMessageTypeRegistry::resolveTypeColumns();
 
-        $rows = DB::table('whatsapp_message_logs')
+        $raw = DB::table('whatsapp_message_logs')
             ->whereBetween(DB::raw('DATE(created_at)'), [$request->from_date, $request->to_date])
             ->selectRaw("
                 DATE(created_at) as log_date,
-                COUNT(*) as total_count,
-                SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) as sent_count,
-                SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed_count,
-                {$typeSums}
+                message_type,
+                COUNT(*) as cnt,
+                SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) as sent,
+                SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed,
+                SUM(CASE WHEN status = 'SKIPPED' THEN 1 ELSE 0 END) as skipped
             ")
-            ->groupBy('log_date')
+            ->groupBy('log_date', 'message_type')
             ->orderBy('log_date')
-            ->get()
-            ->map(function ($row) {
-                return $this->decorateSummaryRow($row);
-            });
+            ->get();
+
+        $rows = $raw->groupBy('log_date')
+            ->map(fn($dayRows, $logDate) => $this->buildSummaryRow($logDate, $dayRows, $typeColumns))
+            ->values();
 
         return response()->json([
             'status' => true,
-            'rows' => $rows->values(),
-            'grand_total' => $this->sumSummaryRows($rows),
+            'type_columns' => collect($typeColumns)->map(fn($label, $key) => ['key' => $key, 'label' => $label])->values(),
+            'rows' => $rows,
+            'grand_total' => $this->sumSummaryRows($rows, $typeColumns),
         ]);
     }
 
@@ -85,6 +76,7 @@ class WhatsappMessageReportController extends Controller
             [
                 'rows' => $result['rows'],
                 'grandTotal' => $result['grand_total'],
+                'typeColumns' => $result['type_columns'],
                 'fromDate' => Carbon::parse($request->from_date),
                 'toDate' => Carbon::parse($request->to_date),
                 'printedBy' => optional(auth()->user())->name,
@@ -113,7 +105,7 @@ class WhatsappMessageReportController extends Controller
         $rows = DB::table('whatsapp_message_logs')
             ->whereDate('created_at', $request->date)
             ->orderBy('created_at')
-            ->get(['id', 'invoice_no', 'mobile_no', 'message_type', 'message_id', 'status', 'response', 'created_at'])
+            ->get(['id', 'invoice_no', 'patient_name', 'mobile_no', 'message_type', 'message_id', 'status', 'response', 'created_at'])
             ->map(function ($row) {
                 return $this->decorateDetailRow($row);
             });
@@ -154,46 +146,57 @@ class WhatsappMessageReportController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    private function decorateSummaryRow($row)
+    /**
+     * @param string $logDate
+     * @param \Illuminate\Support\Collection $dayRows one row per message_type present on this date
+     * @param array<string,string> $typeColumns full set of type columns to fill (0 where absent that day)
+     */
+    private function buildSummaryRow(string $logDate, $dayRows, array $typeColumns): array
     {
-        $row->date_fmt = Carbon::parse($row->log_date)->format('d-m-Y (D)');
-        $row->total_count = (int) $row->total_count;
-        $row->sent_count = (int) $row->sent_count;
-        $row->failed_count = (int) $row->failed_count;
-
-        foreach (self::MESSAGE_TYPES as $type) {
-            $col = 'type_' . strtolower($type);
-            $row->$col = (int) ($row->$col ?? 0);
+        $types = [];
+        foreach ($typeColumns as $key => $label) {
+            $match = $dayRows->firstWhere('message_type', $key);
+            $types[$key] = $match ? (int) $match->cnt : 0;
         }
 
-        return $row;
+        return [
+            'log_date' => $logDate,
+            'date_fmt' => Carbon::parse($logDate)->format('d-m-Y (D)'),
+            'total_count' => (int) $dayRows->sum('cnt'),
+            'sent_count' => (int) $dayRows->sum('sent'),
+            'failed_count' => (int) $dayRows->sum('failed'),
+            'skipped_count' => (int) $dayRows->sum('skipped'),
+            'types' => $types,
+        ];
     }
 
-    private function sumSummaryRows($rows): array
+    private function sumSummaryRows($rows, array $typeColumns): array
     {
         $totals = [
             'total_count' => (int) $rows->sum('total_count'),
             'sent_count' => (int) $rows->sum('sent_count'),
             'failed_count' => (int) $rows->sum('failed_count'),
+            'skipped_count' => (int) $rows->sum('skipped_count'),
         ];
 
-        foreach (self::MESSAGE_TYPES as $type) {
-            $col = 'type_' . strtolower($type);
-            $totals[$col] = (int) $rows->sum($col);
+        $types = [];
+        foreach ($typeColumns as $key => $label) {
+            $types[$key] = (int) $rows->sum(fn($row) => $row['types'][$key] ?? 0);
         }
+        $totals['types'] = $types;
 
         return $totals;
     }
 
     private function decorateDetailRow($row)
     {
-        $row->type_label = self::TYPE_LABELS[$row->message_type] ?? $row->message_type;
+        $row->type_label = WhatsappMessageTypeRegistry::label($row->message_type);
         $row->time_fmt = Carbon::parse($row->created_at)->format('h:i A');
 
         // Successful sends carry a large, mostly-irrelevant WATI contact
-        // payload -- not useful in a report. Failed sends carry the actual
-        // error, which is the whole point of showing this column.
-        $row->response_preview = $row->status === 'FAILED'
+        // payload -- not useful in a report. Failed and skipped sends carry
+        // the actual error/reason, which is the whole point of this column.
+        $row->response_preview = in_array($row->status, ['FAILED', 'SKIPPED'])
             ? \Illuminate\Support\Str::limit((string) $row->response, 200)
             : null;
 
@@ -204,17 +207,11 @@ class WhatsappMessageReportController extends Controller
 
     private function sumDetailRows($rows): array
     {
-        $summary = [
+        return [
             'total_count' => $rows->count(),
             'sent_count' => $rows->where('status', 'SENT')->count(),
             'failed_count' => $rows->where('status', 'FAILED')->count(),
+            'skipped_count' => $rows->where('status', 'SKIPPED')->count(),
         ];
-
-        foreach (self::MESSAGE_TYPES as $type) {
-            $col = 'type_' . strtolower($type);
-            $summary[$col] = $rows->where('message_type', $type)->count();
-        }
-
-        return $summary;
     }
 }

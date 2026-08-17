@@ -207,6 +207,8 @@ return [
 
     'MAINTENANCE_MODE'    => 'Maintenance Mode',
 
+    'WHATSAPP_AUTO_SEND_SETTINGS' => 'WhatsApp Auto-Send Settings',
+
     'CLOUD_BACKUP'        => 'Cloud Backup',
 
     'AUDIT'               => 'Audit',

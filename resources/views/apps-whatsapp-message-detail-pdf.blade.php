@@ -10,10 +10,11 @@
                 </title>
 
 @php
-function whatsappSuccessRate2($sent, $total)
+function whatsappSuccessRate2($sent, $failed)
 {
-    if (!$total) return '0%';
-    return round(($sent / $total) * 100) . '%';
+    $attempted = $sent + $failed;
+    if (!$attempted) return '0%';
+    return round(($sent / $attempted) * 100) . '%';
 }
 @endphp
 
@@ -115,11 +116,16 @@ function whatsappSuccessRate2($sent, $total)
 </tr>
 
 <tr>
-    <td class="label-blue">Success Rate</td>
-    <td><b>{{ whatsappSuccessRate2($summary['sent_count'], $summary['total_count']) }}</b></td>
+    <td class="label-blue">Skipped (Auto-Send Off)</td>
+    <td>{{ $summary['skipped_count'] }}</td>
 
+    <td class="label-blue">Success Rate</td>
+    <td><b>{{ whatsappSuccessRate2($summary['sent_count'], $summary['failed_count']) }}</b></td>
+</tr>
+
+<tr>
     <td class="label-blue">Printed By</td>
-    <td>{{ $printedBy }}</td>
+    <td colspan="3">{{ $printedBy }}</td>
 </tr>
 
 </table>
@@ -132,16 +138,17 @@ function whatsappSuccessRate2($sent, $total)
 
 <thead>
 <tr>
-    <th colspan="6" style="text-align:left; background-color:#e6e6e6;">
+    <th colspan="7" style="text-align:left; background-color:#e6e6e6;">
         Messages Sent On {{ $date->format('d-m-Y') }}
     </th>
 </tr>
 <tr>
-    <th width="8%">Time</th>
-    <th width="14%">Invoice No</th>
-    <th width="12%">Mobile No</th>
-    <th width="12%">Type</th>
-    <th width="8%">Status</th>
+    <th width="7%">Time</th>
+    <th width="12%">Invoice / Appt No</th>
+    <th width="14%">Patient / User</th>
+    <th width="11%">Mobile No</th>
+    <th width="11%">Type</th>
+    <th width="7%">Status</th>
     <th>Message ID / Error</th>
 </tr>
 </thead>
@@ -152,6 +159,7 @@ function whatsappSuccessRate2($sent, $total)
 <tr>
     <td>{{ $row['time_fmt'] }}</td>
     <td>{{ $row['invoice_no'] }}</td>
+    <td>{{ $row['patient_name'] ?? '-' }}</td>
     <td>{{ $row['mobile_no'] }}</td>
     <td>{{ $row['type_label'] }}</td>
     <td class="text-center">{{ $row['status'] }}</td>
@@ -159,7 +167,7 @@ function whatsappSuccessRate2($sent, $total)
 </tr>
 @empty
 <tr>
-    <td colspan="6" class="text-center">No WhatsApp messages found for this date.</td>
+    <td colspan="7" class="text-center">No WhatsApp messages found for this date.</td>
 </tr>
 @endforelse
 

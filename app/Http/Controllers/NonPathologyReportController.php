@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use App\Models\InvoiceItemMaster;
 use App\Models\NonPathologyReportFinding;
+use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
 use App\Services\WatiService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -199,7 +200,7 @@ class NonPathologyReportController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function confirm(Request $request, AuditService $auditService)
+    public function confirm(Request $request, AuditService $auditService, WatiService $wati)
     {
         $validator = Validator::make(
             $request->all(),
@@ -247,12 +248,15 @@ class NonPathologyReportController extends Controller
             'Non-Pathology report confirmed and locked'
         );
 
+        $whatsappStatus = $this->autoSendReportWhatsapp($finding, $wati, $auditService);
+
         return response()->json([
             'status' => true,
             'message' => 'Report confirmed.',
             'data' => [
                 'id' => $finding->id,
                 'confirmed_at' => $finding->confirmed_at->format('d-m-Y H:i'),
+                'whatsapp_status' => $whatsappStatus,
             ]
         ]);
     }
@@ -297,17 +301,35 @@ class NonPathologyReportController extends Controller
 
     public function sendWhatsapp($id, AuditService $auditService, WatiService $wati)
     {
+        $finding = NonPathologyReportFinding::findOrFail($id);
+
+        if (!$finding->confirmed_at) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Report must be confirmed before sending.'
+            ]);
+        }
+
+        $sent = $this->sendReportWhatsapp($finding, $wati, $auditService);
+
+        return response()->json([
+            'status' => $sent,
+            'message' => $sent
+                ? 'Report sent via WhatsApp successfully.'
+                : 'Unable to send report via WhatsApp.'
+        ], $sent ? 200 : 500);
+    }
+
+    /**
+     * Shared by the manual "Send WhatsApp" button (always runs, ungated)
+     * and the automatic send fired from confirm() (gated by
+     * WhatsappAutoSendSetting -- checked by the caller, not in here, so
+     * this method itself always actually attempts the send).
+     */
+    private function sendReportWhatsapp(NonPathologyReportFinding $finding, WatiService $wati, AuditService $auditService): bool
+    {
         try {
-
-            $finding = NonPathologyReportFinding::findOrFail($id);
-
-            if (!$finding->confirmed_at) {
-
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Report must be confirmed before sending.'
-                ]);
-            }
 
             [$invoice, , $doctor] = $this->loadReportContext($finding);
 
@@ -349,6 +371,7 @@ class NonPathologyReportController extends Controller
 
                 'invoice_no' => $finding->invoice_no,
                 'mobile_no' => $invoice->patient_mobile_no,
+                'patient_name' => $invoice->patient_name,
                 'message_type' => 'NON_PATHOLOGY_REPORT',
                 'status' => $sent ? 'SENT' : 'FAILED',
                 'response' => json_encode($watiResponse),
@@ -366,22 +389,30 @@ class NonPathologyReportController extends Controller
                 );
             }
 
-            return response()->json([
-                'status' => $sent,
-                'message' => $sent
-                    ? 'Report sent via WhatsApp successfully.'
-                    : 'Unable to send report via WhatsApp.'
-            ], $sent ? 200 : 500);
+            return $sent;
 
         } catch (\Exception $e) {
 
             \Log::error('Non-Pathology Report WhatsApp Send Failed: ' . $e->getMessage());
 
-            return response()->json([
-                'status' => false,
-                'message' => 'Unable to send report via WhatsApp.'
-            ], 500);
+            return false;
         }
+    }
+
+    /**
+     * Gated entry point for the automatic trigger fired from confirm().
+     * The manual sendWhatsapp() route above calls sendReportWhatsapp()
+     * directly, ungated, so staff always retain a working resend button.
+     */
+    private function autoSendReportWhatsapp(NonPathologyReportFinding $finding, WatiService $wati, AuditService $auditService): string
+    {
+        if (!WhatsappAutoSendSetting::isEnabled('NON_PATHOLOGY_REPORT')) {
+            [$invoice] = $this->loadReportContext($finding);
+            WhatsappAutoSendSetting::logSkipped('NON_PATHOLOGY_REPORT', $finding->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+            return 'skipped';
+        }
+
+        return $this->sendReportWhatsapp($finding, $wati, $auditService) ? 'sent' : 'failed';
     }
 
     /**

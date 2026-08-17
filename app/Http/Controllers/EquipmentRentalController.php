@@ -6,6 +6,7 @@ use App\Models\Invoice;
 use App\Models\EquipmentCategory;
 use App\Models\Ctrl;
 use App\Models\Patient;
+use App\Models\WhatsappAutoSendSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -313,7 +314,7 @@ class EquipmentRentalController extends Controller
                 'Equipment issued'
             );
 
-            $this->generateAndSendInvoice($invoice->id, false);
+            $this->autoSendInvoiceWhatsapp($invoice->id, false);
 
             if ($discountAmount > 0) {
 
@@ -621,7 +622,7 @@ class EquipmentRentalController extends Controller
                 'Equipment rental final settlement invoice created'
             );
 
-            $this->generateAndSendInvoice($finalInvoice->id, true, $invoice->paid_amount, $settlement);
+            $this->autoSendInvoiceWhatsapp($finalInvoice->id, true, $invoice->paid_amount, $settlement);
 
             if ($discountAmount > 0) {
 
@@ -865,6 +866,30 @@ class EquipmentRentalController extends Controller
         }
     }
 
+    /**
+     * Gated entry point for the two automatic triggers (issue + final
+     * settlement) -- both funnel through here so the toggle can't be
+     * bypassed by one site while forgetting the other. The manual
+     * sendWhatsapp($id) route calls generateAndSendInvoice() directly,
+     * ungated, so staff always retain a working resend button.
+     */
+    private function autoSendInvoiceWhatsapp(
+        $invoiceId,
+        bool $isFinal,
+        float $advanceAmount = 0,
+        float $settlement = 0
+    ): bool {
+        if (!WhatsappAutoSendSetting::isEnabled('INVOICE')) {
+            $invoice = Invoice::find($invoiceId);
+            if ($invoice) {
+                WhatsappAutoSendSetting::logSkipped('INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+            }
+            return false;
+        }
+
+        return $this->generateAndSendInvoice($invoiceId, $isFinal, $advanceAmount, $settlement);
+    }
+
     private function generateAndSendInvoice(
         $invoiceId,
         bool $isFinal,
@@ -938,6 +963,7 @@ class EquipmentRentalController extends Controller
 
                 'invoice_no' => $invoice->invoice_no,
                 'mobile_no' => $invoice->patient_mobile_no,
+                'patient_name' => $invoice->patient_name,
                 'message_type' => 'INVOICE',
                 'status' => $sent ? 'SENT' : 'FAILED',
                 'response' => $responseBody,

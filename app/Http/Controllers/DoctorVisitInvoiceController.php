@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Invoice;
 use App\Models\DoctorAppointment;
+use App\Models\WhatsappAutoSendSetting;
 use Illuminate\Support\Facades\Auth;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\File;
@@ -566,6 +567,9 @@ class DoctorVisitInvoiceController extends Controller
             'updated_at' => now(),
 
         ]);
+
+        $this->autoSendInvoiceWhatsapp($invoice);
+
         return response()->json([
 
             'status' => true,
@@ -843,258 +847,142 @@ class DoctorVisitInvoiceController extends Controller
 
 
 
-               public function sendWhatsapp($id)
-            {
+    public function sendWhatsapp($id)
+    {
+        try {
 
-       
-            try {
+            $invoice = Invoice::findOrFail($id);
 
-                $invoice = Invoice::findOrFail($id);
-            \Log::info('DOCTOR WHATSAPP STEP 1', [
-                'invoice_id' => $id
-            ]);
-
-                if ($invoice->cancelled == 'Y') {
-
-                    return response()->json([
-                        'status' => false,
-                        'message' => 'Cancelled invoice cannot be sent'
-                    ]);
-                }
-
-                $appointment =
-                    DoctorAppointment::leftJoin(
-                        'doctors',
-                        'doctor_appointments.doctor_id',
-                        '=',
-                        'doctors.id'
-                    )
-                    ->select(
-                        'doctor_appointments.*',
-                        'doctors.doctor_name'
-                    )
-                    ->where(
-                        'doctor_appointments.id',
-                        $invoice->appointment_id
-                    )
-                    ->first();
-
-                /*
-                |--------------------------------------------------------------------------
-                | GENERATE PDF
-                |--------------------------------------------------------------------------
-                */
-
-                $folderPath =
-                    public_path('invoices');
-
-                if (!File::exists($folderPath)) {
-
-                    File::makeDirectory(
-                        $folderPath,
-                        0777,
-                        true,
-                        true
-                    );
-                }
-
-                $safeInvoiceNo =
-                    str_replace(
-                        '/',
-                        '_',
-                        $invoice->invoice_no
-                    );
-
-                $fileName =
-                    $safeInvoiceNo . '.pdf';
-
-                $filePath =
-                    $folderPath . '/' . $fileName;
-
-                $pdf = Pdf::loadView(
-                    'apps-doctor-visit-invoice-pdf',
-                    compact(
-                        'invoice',
-                        'appointment'
-                    )
-                );
-
-                $pdf->setPaper('A4', 'portrait');
-
-                $pdf->save($filePath);
-
-           
-
-                /*
-                |--------------------------------------------------------------------------
-                | PUBLIC PDF URL
-                |--------------------------------------------------------------------------
-                */
-
-                $pdfUrl =
-                    asset(
-                        'invoices/' .
-                        $fileName
-                    );
-           
-
-                /*
-                |--------------------------------------------------------------------------
-                | SEND WHATSAPP
-                |--------------------------------------------------------------------------
-                */
-
-                $parameters = [
-
-                    [
-                        "name" => "1",
-                        "value" => $pdfUrl
-                    ],
-
-                    [
-                        "name" => "2",
-                        "value" => $invoice->patient_name
-                    ],
-
-                    [
-                        "name" => "3",
-                        "value" => preg_replace('/^dr\.?\s+/i', '', $appointment->doctor_name ?? '')
-                    ],
-
-                    [
-                        "name" => "4",
-                        "value" => now()->format('d-m-Y H:i')
-                    ],
-
-                    [
-                        "name" => "5",
-                        "value" => $invoice->invoice_no
-                    ]
-                ];
-           
-
-            $response =
-                (new WatiService())
-                    ->sendTemplateMessage(
-                        '91' . preg_replace(
-                            '/\D/',
-                            '',
-                            $invoice->patient_mobile_no
-                        ),
-                        'invoice_doctor',
-                        'invoice_doctor_send',
-                        $parameters
-                    );
-
-            \Log::info('DOCTOR WHATSAPP STEP 4', [
-                'response' => $response
-            ]);
-
-                /*
-                |--------------------------------------------------------------------------
-                | LOG RESPONSE
-                |--------------------------------------------------------------------------
-                */
-
-                DB::table(
-                    'whatsapp_message_logs'
-                )->insert([
-
-                    'invoice_no' =>
-                        $invoice->invoice_no,
-
-                    'mobile_no' =>
-                        $invoice->patient_mobile_no,
-
-                    'message_type' =>
-                        'INVOICE',
-
-                        'status' =>
-                            (
-                                isset($response['result'])
-                                && $response['result'] == true
-                            )
-                            ? 'SENT'
-                            : 'FAILED',
-
-                        'response' =>
-                            json_encode($response),
-
-                    'created_at' =>
-                        now(),
-
-                    'updated_at' =>
-                        now()
-                ]);
-
-                if (
-                        isset($response['result'])
-                        && $response['result'] == true
-                    ) {
-                        $status = 'SENT';
-                    } else {
-                        $status = 'FAILED';
-                    }
-                    \Log::info(
-                        'DOCTOR WHATSAPP RESPONSE',
-                        [
-                            'response' => $response
-                        ]
-                    );
-
-                    if ($status !== 'SENT') {
-
-                        return response()->json([
-                            'status' => false,
-                            'message' => json_encode($response)
-                        ]);
-                    }
-                    $invoice->update([
-
-                        'whatsapp_sent_at' =>
-                            $status == 'SENT'
-                            ? now()
-                            : null,
-
-                        'whatsapp_status' =>
-                            $status,
-
-                        'whatsapp_send_count' =>
-                            $status == 'SENT'
-                            ? DB::raw('whatsapp_send_count + 1')
-                            : DB::raw('whatsapp_send_count')
-                    ]);
+            if ($invoice->cancelled == 'Y') {
 
                 return response()->json([
-
-                    'status' => true,
-
-                    'message' =>
-                        'WhatsApp sent successfully'
-                ]);
-
-            } catch (\Exception $e) {
-
-                \Log::error(
-                    'Doctor Visit Invoice WhatsApp Error',
-                    [
-                        'message' =>
-                            $e->getMessage()
-                    ]
-                );
-
-                return response()->json([
-
                     'status' => false,
-
-                    'message' =>
-                        $e->getMessage()
-
-                ], 500);
+                    'message' => 'Cancelled invoice cannot be sent'
+                ]);
             }
-            
 
+            $result = $this->sendInvoiceWhatsapp($invoice);
+
+            if (!$result['sent']) {
+
+                return response()->json([
+                    'status' => false,
+                    'message' => json_encode($result['response'])
+                ]);
             }
+
+            return response()->json([
+                'status' => true,
+                'message' => 'WhatsApp sent successfully'
+            ]);
+
+        } catch (\Exception $e) {
+
+            \Log::error('Doctor Visit Invoice WhatsApp Error', [
+                'message' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Shared by the manual "Send WhatsApp" button (always runs, ungated)
+     * and the automatic send fired from store() (gated by
+     * WhatsappAutoSendSetting -- checked by the caller, not in here, so
+     * this method itself always actually attempts the send).
+     */
+    private function sendInvoiceWhatsapp(Invoice $invoice): array
+    {
+        $appointment = DoctorAppointment::leftJoin(
+                'doctors',
+                'doctor_appointments.doctor_id',
+                '=',
+                'doctors.id'
+            )
+            ->select('doctor_appointments.*', 'doctors.doctor_name')
+            ->where('doctor_appointments.id', $invoice->appointment_id)
+            ->first();
+
+        $folderPath = public_path('invoices');
+
+        if (!File::exists($folderPath)) {
+            File::makeDirectory($folderPath, 0777, true, true);
+        }
+
+        $safeInvoiceNo = str_replace('/', '_', $invoice->invoice_no);
+        $fileName = $safeInvoiceNo . '.pdf';
+        $filePath = $folderPath . '/' . $fileName;
+
+        $pdf = Pdf::loadView('apps-doctor-visit-invoice-pdf', compact('invoice', 'appointment'));
+        $pdf->setPaper('A4', 'portrait');
+        $pdf->save($filePath);
+
+        $pdfUrl = asset('invoices/' . $fileName);
+
+        $parameters = [
+            ["name" => "1", "value" => $pdfUrl],
+            ["name" => "2", "value" => $invoice->patient_name],
+            ["name" => "3", "value" => preg_replace('/^dr\.?\s+/i', '', $appointment->doctor_name ?? '')],
+            ["name" => "4", "value" => now()->format('d-m-Y H:i')],
+            ["name" => "5", "value" => $invoice->invoice_no],
+        ];
+
+        $response = (new WatiService())->sendTemplateMessage(
+            '91' . preg_replace('/\D/', '', $invoice->patient_mobile_no),
+            'invoice_doctor',
+            'invoice_doctor_send',
+            $parameters
+        );
+
+        $sent = isset($response['result']) && $response['result'] == true;
+        $status = $sent ? 'SENT' : 'FAILED';
+
+        DB::table('whatsapp_message_logs')->insert([
+            'invoice_no' => $invoice->invoice_no,
+            'mobile_no' => $invoice->patient_mobile_no,
+            'patient_name' => $invoice->patient_name,
+            'message_type' => 'INVOICE',
+            'status' => $status,
+            'response' => json_encode($response),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $invoice->update([
+            'whatsapp_sent_at' => $sent ? now() : null,
+            'whatsapp_status' => $status,
+            'whatsapp_send_count' => $sent
+                ? DB::raw('whatsapp_send_count + 1')
+                : DB::raw('whatsapp_send_count'),
+        ]);
+
+        return ['sent' => $sent, 'response' => $response];
+    }
+
+    /**
+     * Gated entry point for the automatic trigger fired from store().
+     * The manual sendWhatsapp() route above calls sendInvoiceWhatsapp()
+     * directly, ungated, so staff always retain a working resend button.
+     * Swallows its own exceptions -- a WhatsApp/PDF failure here must never
+     * fail invoice creation itself.
+     */
+    private function autoSendInvoiceWhatsapp(Invoice $invoice): void
+    {
+        if (!WhatsappAutoSendSetting::isEnabled('INVOICE')) {
+            WhatsappAutoSendSetting::logSkipped('INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+            return;
+        }
+
+        try {
+            $this->sendInvoiceWhatsapp($invoice);
+        } catch (\Exception $e) {
+            \Log::error('Doctor Visit Invoice Auto WhatsApp Error', ['message' => $e->getMessage()]);
+        }
+    }
 
 
 

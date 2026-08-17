@@ -83,6 +83,8 @@ return [
     'cloud-backup.destroy' => 'cloud-backup',
     'maintenance-mode.index' => 'maintenance-mode',
     'maintenance-mode.toggle' => 'maintenance-mode',
+    'whatsapp-auto-send-settings.index' => 'whatsapp-auto-send-settings',
+    'whatsapp-auto-send-settings.toggle' => 'whatsapp-auto-send-settings',
     'user-invoice-report.index' => 'user-invoice-report',
     'all-invoices-report.index' => 'all-invoices-report',
     'doctor-settlement-by-user.index' => 'doctor-settlement-by-user',

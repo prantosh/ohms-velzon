@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AmbulanceDestinationMaster;
 use App\Models\Invoice;
+use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
 use App\Services\WatiService;
 use App\Mail\DiscountApprovedMail;
@@ -289,7 +290,11 @@ class AmbulanceRentalController extends Controller
                 'Ambulance rental invoice created'
             );
 
-            $this->generateAndSendInvoice($invoice->id);
+            if (WhatsappAutoSendSetting::isEnabled('INVOICE')) {
+                $this->generateAndSendInvoice($invoice->id);
+            } else {
+                WhatsappAutoSendSetting::logSkipped('INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+            }
 
             if ($discountAmount > 0) {
 
@@ -542,6 +547,7 @@ class AmbulanceRentalController extends Controller
 
                 'invoice_no' => $invoice->invoice_no,
                 'mobile_no' => $invoice->patient_mobile_no,
+                'patient_name' => $invoice->patient_name,
                 'message_type' => 'INVOICE',
                 'status' => $response->successful() ? 'SENT' : 'FAILED',
                 'response' => $response->body(),

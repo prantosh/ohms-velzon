@@ -7,6 +7,7 @@ use App\Models\DoctorAppointment;
 use App\Models\DoctorScheduleException;
 use App\Models\DoctorScheduleSession;
 use App\Models\Invoice;
+use App\Models\WhatsappAutoSendSetting;
 use App\Support\OfflineMode;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
@@ -273,6 +274,16 @@ class AppointmentReassignmentService
 
             $doctor = $doctorsCache[$item['doctor_id']];
 
+            if (!WhatsappAutoSendSetting::isEnabled('DOCTOR_APPOINTMENT_REASSIGNED')) {
+                WhatsappAutoSendSetting::logSkipped(
+                    'DOCTOR_APPOINTMENT_REASSIGNED',
+                    $item['appointment_no'],
+                    $item['patient_mobile_no'],
+                    $item['patient_name']
+                );
+                continue;
+            }
+
             $mobile = '91' . preg_replace('/\D/', '', $item['patient_mobile_no']);
             $sent = false;
             $responseBody = null;
@@ -305,6 +316,7 @@ class AppointmentReassignmentService
             DB::table('whatsapp_message_logs')->insert([
                 'invoice_no' => $item['appointment_no'],
                 'mobile_no' => $item['patient_mobile_no'],
+                'patient_name' => $item['patient_name'],
                 'message_type' => 'DOCTOR_APPOINTMENT_REASSIGNED',
                 'status' => $sent ? 'SENT' : 'FAILED',
                 'response' => $responseBody,

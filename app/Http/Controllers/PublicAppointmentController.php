@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PatientOtp;
 use App\Models\Specialisation;
+use App\Models\WhatsappAutoSendSetting;
 use App\Services\AppointmentBookingService;
 use App\Services\DoctorScheduleQueryService;
 use App\Services\WatiService;
@@ -86,6 +87,16 @@ class PublicAppointmentController extends Controller
 
         $mobile = $request->mobile_no;
 
+        // Checked before the cooldown/quota reads and before any OTP row is
+        // created -- a disabled category must not consume a user's resend
+        // cooldown or hourly quota on a message that can never arrive.
+        if (!WhatsappAutoSendSetting::isEnabled('OTP_APPOINTMENT_BOOKING')) {
+            return response()->json([
+                'status' => false,
+                'message' => 'OTP delivery is temporarily unavailable. Please contact the clinic directly to book your appointment.',
+            ]);
+        }
+
         $recentlySent = PatientOtp::where('mobile_no', $mobile)
             ->where('purpose', self::OTP_PURPOSE)
             ->where('created_at', '>', now()->subSeconds(self::OTP_RESEND_COOLDOWN_SECONDS))
@@ -149,7 +160,7 @@ class PublicAppointmentController extends Controller
         DB::table('whatsapp_message_logs')->insert([
             'invoice_no' => 'OTP-' . $otp->id,
             'mobile_no' => $mobile,
-            'message_type' => 'OTP',
+            'message_type' => 'OTP_APPOINTMENT_BOOKING',
             'status' => $whatsappSent ? 'SENT' : 'FAILED',
             'response' => json_encode($whatsappResponse),
             'created_at' => now(),

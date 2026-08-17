@@ -7,9 +7,12 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
-function successRate(sent, total) {
-    if (!total) return '0%';
-    return Math.round((sent / total) * 100) + '%';
+function successRate(sent, failed) {
+    // Based on attempted sends only -- an admin-skipped send was never
+    // attempted, so it shouldn't drag the percentage down.
+    let attempted = sent + failed;
+    if (!attempted) return '0%';
+    return Math.round((sent / attempted) * 100) + '%';
 }
 
 /* ==========================================================
@@ -52,24 +55,37 @@ async function loadSummary() {
     document.getElementById('grand-total_count').innerText = g.total_count;
     document.getElementById('grand-sent_count').innerText = g.sent_count;
     document.getElementById('grand-failed_count').innerText = g.failed_count;
-    document.getElementById('grand-success_rate').innerText = successRate(g.sent_count, g.total_count);
+    document.getElementById('grand-skipped_count').innerText = g.skipped_count;
+    document.getElementById('grand-success_rate').innerText = successRate(g.sent_count, g.failed_count);
 
     document.getElementById('summaryTotalsRow').style.display = 'flex';
+
+    // Category columns are whatever distinct message types actually exist in
+    // whatsapp_message_logs -- rebuild the header every load so a brand-new
+    // category shows up automatically, no markup change needed.
+    const typeColumns = result.type_columns || [];
+    const headRow = document.getElementById('summaryTableHeadRow');
+    headRow.querySelectorAll('.dynamic-type-col').forEach(th => th.remove());
+    const actionTh = headRow.lastElementChild;
+    typeColumns.forEach(col => {
+        let th = document.createElement('th');
+        th.className = 'text-end dynamic-type-col';
+        th.textContent = col.label;
+        headRow.insertBefore(th, actionTh);
+    });
 
     let tbody = document.getElementById('summaryTableBody');
     tbody.innerHTML = '';
 
     result.rows.forEach(row => {
+        let typeCells = typeColumns.map(col => `<td class="text-end">${row.types[col.key] ?? 0}</td>`).join('');
         tbody.innerHTML += `
         <tr>
             <td class="fw-semibold">${escapeHtml(row.date_fmt)}</td>
             <td class="text-end">${row.total_count}</td>
             <td class="text-end text-success">${row.sent_count}</td>
             <td class="text-end ${row.failed_count > 0 ? 'text-danger fw-semibold' : ''}">${row.failed_count}</td>
-            <td class="text-end">${row.type_invoice}</td>
-            <td class="text-end">${row.type_test_report}</td>
-            <td class="text-end">${row.type_appointment}</td>
-            <td class="text-end">${row.type_otp}</td>
+            ${typeCells}
             <td class="text-center">
                 <button type="button" class="btn btn-sm btn-soft-primary view-day-btn" data-date="${row.log_date}">
                     <i class="ri-eye-line"></i> View
@@ -79,16 +95,14 @@ async function loadSummary() {
         `;
     });
 
+    let totalTypeCells = typeColumns.map(col => `<td class="text-end">${g.types[col.key] ?? 0}</td>`).join('');
     tbody.innerHTML += `
     <tr class="table-light fw-bold">
         <td>Total</td>
         <td class="text-end">${g.total_count}</td>
         <td class="text-end">${g.sent_count}</td>
         <td class="text-end">${g.failed_count}</td>
-        <td class="text-end">${g.type_invoice}</td>
-        <td class="text-end">${g.type_test_report}</td>
-        <td class="text-end">${g.type_appointment}</td>
-        <td class="text-end">${g.type_otp}</td>
+        ${totalTypeCells}
         <td></td>
     </tr>
     `;
@@ -121,7 +135,13 @@ let typeBadgeClass = {
     'Invoice': 'bg-primary',
     'Test Report': 'bg-info text-dark',
     'Appointment': 'bg-success',
-    'OTP': 'bg-secondary',
+    'OTP (Legacy)': 'bg-secondary',
+    'Appointment Booking OTP': 'bg-secondary',
+    'Password Reset OTP': 'bg-dark',
+    'Appointment Reassigned (Blackout)': 'bg-warning text-dark',
+    'Doctor Schedule Change': 'bg-warning text-dark',
+    'Non-Pathology Report': 'bg-info text-dark',
+    'USG Report': 'bg-info text-dark',
 };
 
 let detailRequestSeq = 0;
@@ -159,13 +179,15 @@ async function loadDetail() {
     document.getElementById('detail-total_count').innerText = s.total_count;
     document.getElementById('detail-sent_count').innerText = s.sent_count;
     document.getElementById('detail-failed_count').innerText = s.failed_count;
-    document.getElementById('detail-success_rate').innerText = successRate(s.sent_count, s.total_count);
+    document.getElementById('detail-skipped_count').innerText = s.skipped_count;
+    document.getElementById('detail-success_rate').innerText = successRate(s.sent_count, s.failed_count);
 
     document.getElementById('detailTotalsRow').style.display = 'flex';
 
     let statusBadgeClass = {
         'SENT': 'bg-success',
         'FAILED': 'bg-danger',
+        'SKIPPED': 'bg-secondary',
     };
 
     let tbody = document.getElementById('detailTableBody');
@@ -176,6 +198,7 @@ async function loadDetail() {
         <tr>
             <td>${escapeHtml(row.time_fmt)}</td>
             <td class="fw-semibold">${escapeHtml(row.invoice_no)}</td>
+            <td>${escapeHtml(row.patient_name) || '-'}</td>
             <td>${escapeHtml(row.mobile_no)}</td>
             <td><span class="badge ${typeBadgeClass[row.type_label] ?? 'bg-secondary'}">${escapeHtml(row.type_label)}</span></td>
             <td><span class="badge ${statusBadgeClass[row.status] ?? 'bg-secondary'}">${escapeHtml(row.status)}</span></td>

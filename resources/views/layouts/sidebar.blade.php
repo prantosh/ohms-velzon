@@ -79,6 +79,11 @@
                                         <a href="{{ route('maintenance-mode.index') }}" class="nav-link">@lang('translation.maintenancemode')</a>
                                         </li>
                             @endif
+                            @if(is_null($allowedPages) || in_array('whatsapp-auto-send-settings', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('whatsapp-auto-send-settings.index') }}" class="nav-link">@lang('translation.whatsappautosendsettings')</a>
+                                        </li>
+                            @endif
                             @if(is_null($allowedPages) || in_array('role-page-access', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('role-page-access.index') }}" class="nav-link">@lang('translation.rolepageaccess')</a>

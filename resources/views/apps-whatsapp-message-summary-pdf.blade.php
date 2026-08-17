@@ -10,10 +10,11 @@
                 </title>
 
 @php
-function whatsappSuccessRate($sent, $total)
+function whatsappSuccessRate($sent, $failed)
 {
-    if (!$total) return '0%';
-    return round(($sent / $total) * 100) . '%';
+    $attempted = $sent + $failed;
+    if (!$attempted) return '0%';
+    return round(($sent / $attempted) * 100) . '%';
 }
 @endphp
 
@@ -117,13 +118,16 @@ function whatsappSuccessRate($sent, $total)
     <td class="label-blue">Failed</td>
     <td>{{ $grandTotal['failed_count'] }}</td>
 
-    <td class="label-blue">Success Rate</td>
-    <td><b>{{ whatsappSuccessRate($grandTotal['sent_count'], $grandTotal['total_count']) }}</b></td>
+    <td class="label-blue">Skipped (Auto-Send Off)</td>
+    <td>{{ $grandTotal['skipped_count'] }}</td>
 </tr>
 
 <tr>
+    <td class="label-blue">Success Rate</td>
+    <td><b>{{ whatsappSuccessRate($grandTotal['sent_count'], $grandTotal['failed_count']) }}</b></td>
+
     <td class="label-blue">Printed By</td>
-    <td colspan="3">{{ $printedBy }}</td>
+    <td>{{ $printedBy }}</td>
 </tr>
 
 </table>
@@ -134,9 +138,11 @@ function whatsappSuccessRate($sent, $total)
 
 <table>
 
+@php $colCount = 4 + count($typeColumns); @endphp
+
 <thead>
 <tr>
-    <th colspan="8" style="text-align:left; background-color:#e6e6e6;">
+    <th colspan="{{ $colCount }}" style="text-align:left; background-color:#e6e6e6;">
         Day-Wise Message Count for {{ $fromDate->format('d-m-Y') }} to {{ $toDate->format('d-m-Y') }}
     </th>
 </tr>
@@ -145,10 +151,9 @@ function whatsappSuccessRate($sent, $total)
     <th width="10%">Total</th>
     <th width="10%">Sent</th>
     <th width="10%">Failed</th>
-    <th width="14%">Invoice</th>
-    <th width="14%">Test Report</th>
-    <th width="14%">Appointment</th>
-    <th width="14%">OTP</th>
+    @foreach($typeColumns as $col)
+    <th>{{ $col['label'] }}</th>
+    @endforeach
 </tr>
 </thead>
 
@@ -160,14 +165,13 @@ function whatsappSuccessRate($sent, $total)
     <td class="text-end">{{ $row['total_count'] }}</td>
     <td class="text-end">{{ $row['sent_count'] }}</td>
     <td class="text-end">{{ $row['failed_count'] }}</td>
-    <td class="text-end">{{ $row['type_invoice'] }}</td>
-    <td class="text-end">{{ $row['type_test_report'] }}</td>
-    <td class="text-end">{{ $row['type_appointment'] }}</td>
-    <td class="text-end">{{ $row['type_otp'] }}</td>
+    @foreach($typeColumns as $col)
+    <td class="text-end">{{ $row['types'][$col['key']] ?? 0 }}</td>
+    @endforeach
 </tr>
 @empty
 <tr>
-    <td colspan="8" class="text-center">No WhatsApp messages found in this date range.</td>
+    <td colspan="{{ $colCount }}" class="text-center">No WhatsApp messages found in this date range.</td>
 </tr>
 @endforelse
 
@@ -176,10 +180,9 @@ function whatsappSuccessRate($sent, $total)
     <td class="text-end">{{ $grandTotal['total_count'] }}</td>
     <td class="text-end">{{ $grandTotal['sent_count'] }}</td>
     <td class="text-end">{{ $grandTotal['failed_count'] }}</td>
-    <td class="text-end">{{ $grandTotal['type_invoice'] }}</td>
-    <td class="text-end">{{ $grandTotal['type_test_report'] }}</td>
-    <td class="text-end">{{ $grandTotal['type_appointment'] }}</td>
-    <td class="text-end">{{ $grandTotal['type_otp'] }}</td>
+    @foreach($typeColumns as $col)
+    <td class="text-end">{{ $grandTotal['types'][$col['key']] ?? 0 }}</td>
+    @endforeach
 </tr>
 
 </tbody>

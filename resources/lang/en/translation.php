@@ -63,6 +63,7 @@ return [
     "membershipfeestatus" => "Membership Fee Payment Status",
     "cloudbackup" => "Cloud Database Backup",
     "maintenancemode" => "Maintenance Mode",
+    "whatsappautosendsettings" => "WhatsApp Auto-Send Settings",
     "userinvoicereport" => "User Invoice Reconciliation",
     "allinvoicesreport" => "All Invoices Report",
     "doctorsettlementbyuser" => "Doctor Settlement (By User)",

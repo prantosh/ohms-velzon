@@ -59,6 +59,7 @@ use App\Http\Controllers\GoodsIssueReportController;
 use App\Http\Controllers\StockAsOnDateController;
 use App\Http\Controllers\CloudBackupController;
 use App\Http\Controllers\MaintenanceController;
+use App\Http\Controllers\WhatsappAutoSendSettingController;
 use App\Http\Controllers\PatientCardController;
 use App\Http\Controllers\ExpenditureCategoryController;
 use App\Http\Controllers\ExpenditureAgencyController;
@@ -1497,6 +1498,16 @@ Route::prefix('maintenance-mode')->group(function () {
 
     Route::post('/toggle', [MaintenanceController::class, 'toggle'])
         ->name('maintenance-mode.toggle');
+
+});
+
+Route::prefix('whatsapp-auto-send-settings')->group(function () {
+
+    Route::get('/', [WhatsappAutoSendSettingController::class, 'index'])
+        ->name('whatsapp-auto-send-settings.index');
+
+    Route::post('/toggle', [WhatsappAutoSendSettingController::class, 'toggle'])
+        ->name('whatsapp-auto-send-settings.toggle');
 
 });
 

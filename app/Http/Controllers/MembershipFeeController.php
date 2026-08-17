@@ -6,6 +6,7 @@ use App\Models\Invoice;
 use App\Models\MembershipFeePayment;
 use App\Models\MembershipFeeRate;
 use App\Models\User;
+use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
 use App\Services\WatiService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -305,7 +306,12 @@ class MembershipFeeController extends Controller
                 'Membership fee collected'
             );
 
-            $whatsappSent = $this->generateAndSendInvoice($invoice->id);
+            if (WhatsappAutoSendSetting::isEnabled('INVOICE')) {
+                $whatsappSent = $this->generateAndSendInvoice($invoice->id);
+            } else {
+                WhatsappAutoSendSetting::logSkipped('INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+                $whatsappSent = false;
+            }
 
             return response()->json([
                 'status' => true,
@@ -565,6 +571,7 @@ class MembershipFeeController extends Controller
 
                 'invoice_no' => $invoice->invoice_no,
                 'mobile_no' => $invoice->patient_mobile_no,
+                'patient_name' => $invoice->patient_name,
                 'message_type' => 'INVOICE',
                 'status' => $sent ? 'SENT' : 'FAILED',
                 'response' => $responseBody,

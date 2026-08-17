@@ -7,6 +7,7 @@ use App\Models\DoctorAppointment;
 use App\Models\DoctorScheduleException;
 use App\Models\DoctorScheduleSession;
 use App\Models\Patient;
+use App\Models\WhatsappAutoSendSetting;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -281,6 +282,16 @@ class AppointmentBookingService
 
     private function sendConfirmation(DoctorAppointment $appointment, Doctor $doctor, array $data): void
     {
+        if (!WhatsappAutoSendSetting::isEnabled('APPOINTMENT')) {
+            WhatsappAutoSendSetting::logSkipped(
+                'APPOINTMENT',
+                $appointment->appointment_no,
+                $data['patient_mobile_no'],
+                $data['patient_name']
+            );
+            return;
+        }
+
         $whatsappResponse = null;
         $whatsappSent = false;
 
@@ -318,6 +329,7 @@ class AppointmentBookingService
         DB::table('whatsapp_message_logs')->insert([
             'invoice_no' => $appointment->appointment_no,
             'mobile_no' => $data['patient_mobile_no'],
+            'patient_name' => $data['patient_name'],
             'message_type' => 'APPOINTMENT',
             'status' => $whatsappSent ? 'SENT' : 'FAILED',
             'response' => json_encode($whatsappResponse),

@@ -34,9 +34,9 @@
 
         <div class="alert alert-info">
             <i class="ri-whatsapp-line"></i>
-            Based on the <code>whatsapp_message_logs</code> table -- covers invoice, test report, appointment and OTP
-            WhatsApp sends. <b>Summary</b> shows a day-wise Sent/Failed count across a date range. <b>Detail</b> lists
-            every individual message sent on a single day.
+            Based on the <code>whatsapp_message_logs</code> table -- covers every WhatsApp message category the system
+            sends. <b>Summary</b> shows a day-wise Sent/Failed count across a date range, broken down per category.
+            <b>Detail</b> lists every individual message sent on a single day.
         </div>
 
         <ul class="nav nav-tabs nav-tabs-custom mb-3" role="tablist">
@@ -102,28 +102,35 @@
 
                 <div class="row" id="summaryTotalsRow" style="display:none;">
 
-                    <div class="col-md-3 mb-3">
+                    <div class="col mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0" id="grand-total_count">0</h5>
                             <small class="text-muted">Total Messages</small>
                         </div></div>
                     </div>
 
-                    <div class="col-md-3 mb-3">
+                    <div class="col mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-success" id="grand-sent_count">0</h5>
                             <small class="text-muted">Sent</small>
                         </div></div>
                     </div>
 
-                    <div class="col-md-3 mb-3">
+                    <div class="col mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-danger" id="grand-failed_count">0</h5>
                             <small class="text-muted">Failed</small>
                         </div></div>
                     </div>
 
-                    <div class="col-md-3 mb-3">
+                    <div class="col mb-3">
+                        <div class="card h-100"><div class="card-body text-center">
+                            <h5 class="mb-0 text-secondary" id="grand-skipped_count">0</h5>
+                            <small class="text-muted">Skipped (Auto-Send Off)</small>
+                        </div></div>
+                    </div>
+
+                    <div class="col mb-3">
                         <div class="card h-100 border border-success"><div class="card-body text-center">
                             <h5 class="mb-0 text-success" id="grand-success_rate">0%</h5>
                             <small class="text-muted fw-semibold">Success Rate</small>
@@ -145,15 +152,13 @@
                             <table class="table table-bordered align-middle">
 
                                 <thead class="table-light">
-                                    <tr>
+                                    <tr id="summaryTableHeadRow">
                                         <th width="130">Date</th>
                                         <th width="90" class="text-end">Total</th>
                                         <th width="90" class="text-end">Sent</th>
                                         <th width="90" class="text-end">Failed</th>
-                                        <th width="90" class="text-end">Invoice</th>
-                                        <th width="100" class="text-end">Test Report</th>
-                                        <th width="100" class="text-end">Appointment</th>
-                                        <th width="80" class="text-end">OTP</th>
+                                        <!-- category columns injected dynamically by JS, one per distinct
+                                             message_type found in whatsapp_message_logs -->
                                         <th width="90"></th>
                                     </tr>
                                 </thead>
@@ -217,28 +222,35 @@
 
                 <div class="row" id="detailTotalsRow" style="display:none;">
 
-                    <div class="col-md-3 mb-3">
+                    <div class="col mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0" id="detail-total_count">0</h5>
                             <small class="text-muted">Total Messages</small>
                         </div></div>
                     </div>
 
-                    <div class="col-md-3 mb-3">
+                    <div class="col mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-success" id="detail-sent_count">0</h5>
                             <small class="text-muted">Sent</small>
                         </div></div>
                     </div>
 
-                    <div class="col-md-3 mb-3">
+                    <div class="col mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-danger" id="detail-failed_count">0</h5>
                             <small class="text-muted">Failed</small>
                         </div></div>
                     </div>
 
-                    <div class="col-md-3 mb-3">
+                    <div class="col mb-3">
+                        <div class="card h-100"><div class="card-body text-center">
+                            <h5 class="mb-0 text-secondary" id="detail-skipped_count">0</h5>
+                            <small class="text-muted">Skipped (Auto-Send Off)</small>
+                        </div></div>
+                    </div>
+
+                    <div class="col mb-3">
                         <div class="card h-100 border border-success"><div class="card-body text-center">
                             <h5 class="mb-0 text-success" id="detail-success_rate">0%</h5>
                             <small class="text-muted fw-semibold">Success Rate</small>
@@ -262,7 +274,8 @@
                                 <thead class="table-light">
                                     <tr>
                                         <th width="90">Time</th>
-                                        <th>Invoice No</th>
+                                        <th>Invoice / Appt No</th>
+                                        <th>Patient / User</th>
                                         <th width="120">Mobile No</th>
                                         <th width="110">Type</th>
                                         <th width="90">Status</th>

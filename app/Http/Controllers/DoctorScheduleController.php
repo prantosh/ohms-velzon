@@ -6,6 +6,7 @@ use App\Models\DoctorSchedule;
 use App\Models\DoctorScheduleSession;
 use App\Models\Doctor;
 use App\Models\DoctorAppointment;
+use App\Models\WhatsappAutoSendSetting;
 use App\Services\WatiService;
 use App\Services\AuditService;
 use Illuminate\Support\Facades\Auth;
@@ -603,6 +604,16 @@ class DoctorScheduleController extends Controller
 
     private function sendScheduleChangeWhatsapp(array $item, ?Doctor $doctor): bool
     {
+        if (!WhatsappAutoSendSetting::isEnabled('DOCTOR_SCHEDULE_CHANGE')) {
+            WhatsappAutoSendSetting::logSkipped(
+                'DOCTOR_SCHEDULE_CHANGE',
+                $item['appointment_no'],
+                $item['patient_mobile_no'],
+                $item['patient_name']
+            );
+            return false;
+        }
+
         $sent = false;
 
         $responseBody = null;
@@ -644,6 +655,7 @@ class DoctorScheduleController extends Controller
 
             'invoice_no' => $item['appointment_no'],
             'mobile_no' => $item['patient_mobile_no'],
+            'patient_name' => $item['patient_name'],
             'message_type' => 'DOCTOR_SCHEDULE_CHANGE',
             'status' => $sent ? 'SENT' : 'FAILED',
             'response' => $responseBody,

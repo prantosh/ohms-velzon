@@ -16,6 +16,7 @@ use App\Models\DoctorPayable;
 use App\Models\Doctor;
 use App\Models\InvoiceItemDetail;
 use App\Models\User;
+use App\Models\WhatsappAutoSendSetting;
 use App\Mail\DiscountApprovedMail;
 use App\Services\AuditService;
 use Illuminate\Support\Facades\Log;
@@ -1070,7 +1071,7 @@ class DiagnosticInvoiceController extends Controller
                 }
             }
 
-            $this->sendInvoiceWhatsapp(
+            $this->autoSendInvoiceWhatsapp(
                 $invoice->id
             );
             return response()->json([
@@ -1167,6 +1168,26 @@ class DiagnosticInvoiceController extends Controller
     }
 
 
+
+    /**
+     * Gated entry point for the two automatic triggers (store() and the
+     * update()/due-payment-collection path) -- both funnel through here so
+     * the toggle can't be bypassed by one site while forgetting the other.
+     * The manual sendWhatsapp($id) route calls sendInvoiceWhatsapp()
+     * directly, ungated, so staff always retain a working resend button.
+     */
+    private function autoSendInvoiceWhatsapp($invoiceId): array
+    {
+        if (!WhatsappAutoSendSetting::isEnabled('INVOICE')) {
+            $invoice = Invoice::find($invoiceId);
+            if ($invoice) {
+                WhatsappAutoSendSetting::logSkipped('INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+            }
+            return ['success' => false, 'skipped' => true];
+        }
+
+        return $this->sendInvoiceWhatsapp($invoiceId);
+    }
 
     private function sendInvoiceWhatsapp($invoiceId): array
     {
@@ -1276,6 +1297,9 @@ class DiagnosticInvoiceController extends Controller
 
                         'mobile_no' =>
                             $invoice->patient_mobile_no,
+
+                        'patient_name' =>
+                            $invoice->patient_name,
 
                         'message_type' =>
                             'INVOICE',
@@ -1987,7 +2011,7 @@ class DiagnosticInvoiceController extends Controller
                 'Diagnostic invoice due payment collected'
             );
 
-            $this->sendInvoiceWhatsapp(
+            $this->autoSendInvoiceWhatsapp(
                 $invoice->id
             );
             return response()->json([
