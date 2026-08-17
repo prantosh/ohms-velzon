@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\InvoiceItemDetail;
 use App\Models\UsgReportTemplate;
 use App\Services\AuditService;
+use App\Services\HtmlSanitizerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -96,9 +97,9 @@ class UsgReportTemplateController extends Controller
                 'title' => trim($request->title),
                 'item_code_sub' => $request->item_code_sub,
 
-                'clinical_history' => $request->clinical_history,
-                'findings' => $request->findings,
-                'impression' => $request->impression,
+                'clinical_history' => HtmlSanitizerService::sanitizeClinicalText($request->clinical_history),
+                'findings' => HtmlSanitizerService::sanitizeClinicalText($request->findings),
+                'impression' => HtmlSanitizerService::sanitizeClinicalText($request->impression),
 
                 'status' => $request->status,
 
@@ -167,9 +168,9 @@ class UsgReportTemplateController extends Controller
                 'title' => trim($request->title),
                 'item_code_sub' => $request->item_code_sub,
 
-                'clinical_history' => $request->clinical_history,
-                'findings' => $request->findings,
-                'impression' => $request->impression,
+                'clinical_history' => HtmlSanitizerService::sanitizeClinicalText($request->clinical_history),
+                'findings' => HtmlSanitizerService::sanitizeClinicalText($request->findings),
+                'impression' => HtmlSanitizerService::sanitizeClinicalText($request->impression),
 
                 'status' => $request->status,
 

@@ -16,6 +16,54 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
+/*
+|--------------------------------------------------------------------------
+| RICH-TEXT EDITORS -- Clinical History / Findings / Impression
+|--------------------------------------------------------------------------
+*/
+
+const { ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo } = CKEDITOR;
+
+const USG_EDITOR_CONFIG = {
+    licenseKey: 'GPL',
+    plugins: [Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo],
+    toolbar: [
+        'bold', 'italic', 'underline', '|',
+        'alignment', '|',
+        'fontSize', '|',
+        'bulletedList', 'numberedList', '|',
+        'undo', 'redo'
+    ]
+};
+
+let usgEditors = {};
+
+async function initUsgTemplateEditors() {
+
+    const fields = ['clinical_history', 'findings', 'impression'];
+
+    for (const field of fields) {
+        usgEditors[field] = await ClassicEditor.create(
+            document.querySelector(`#${field}-field`),
+            USG_EDITOR_CONFIG
+        );
+    }
+}
+
+// Records saved before rich-text editing existed are plain text with literal
+// newlines. Each line becomes its own paragraph (not just a <br> within one
+// shared paragraph) so alignment/formatting can target one line -- e.g. an
+// organ heading like "LIVER" -- without dragging the rest of the text along
+// with it, since text-align always applies to the whole enclosing paragraph.
+// Already-HTML content (post-feature) passes through untouched.
+function usgToEditorHtml(text) {
+    if (!text) return '';
+    if (text.includes('<')) return text;
+    return text.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('');
+}
+
+let usgEditorsReady = initUsgTemplateEditors();
+
 async function loadCopyFromOptions() {
 
     const response = await fetch('/usg-report-template/all');
@@ -42,15 +90,17 @@ document.querySelector('#copy-from-field').addEventListener('change', async func
 
     if (!id) return;
 
+    await usgEditorsReady;
+
     const response = await fetch(`/usg-report-template/edit/${id}`);
     const result = await response.json();
 
     if (result.status) {
         document.querySelector('#title-field').value = result.data.title;
         document.querySelector('#item_code_sub-field').value = result.data.item_code_sub;
-        document.querySelector('#clinical_history-field').value = result.data.clinical_history ?? '';
-        document.querySelector('#findings-field').value = result.data.findings ?? '';
-        document.querySelector('#impression-field').value = result.data.impression ?? '';
+        usgEditors.clinical_history.setData(usgToEditorHtml(result.data.clinical_history));
+        usgEditors.findings.setData(usgToEditorHtml(result.data.findings));
+        usgEditors.impression.setData(usgToEditorHtml(result.data.impression));
         document.querySelector('#status-field').value = result.data.status;
     }
 
@@ -144,15 +194,17 @@ document.querySelector('.tablelist-form').addEventListener('submit', async funct
         }
     });
 
+    await usgEditorsReady;
+
     let editId = document.querySelector('#edit-id').value;
 
     let formData = new FormData();
 
     formData.append('title', document.querySelector('#title-field').value);
     formData.append('item_code_sub', document.querySelector('#item_code_sub-field').value);
-    formData.append('clinical_history', document.querySelector('#clinical_history-field').value);
-    formData.append('findings', document.querySelector('#findings-field').value);
-    formData.append('impression', document.querySelector('#impression-field').value);
+    formData.append('clinical_history', usgEditors.clinical_history.getData());
+    formData.append('findings', usgEditors.findings.getData());
+    formData.append('impression', usgEditors.impression.getData());
     formData.append('status', document.querySelector('#status-field').value);
 
     let url = '/usg-report-template/store';
@@ -200,9 +252,17 @@ document.querySelector('.tablelist-form').addEventListener('submit', async funct
     loadCopyFromOptions();
 });
 
-document.getElementById('showModal').addEventListener('hidden.bs.modal', function () {
+document.getElementById('showModal').addEventListener('hidden.bs.modal', async function () {
 
     document.querySelector('.tablelist-form').reset();
+
+    // form.reset() only touches the native form fields -- CKEditor's visible
+    // content lives in a separate contenteditable div and needs clearing
+    // explicitly, or stale content would carry over into the next Add.
+    await usgEditorsReady;
+    usgEditors.clinical_history.setData('');
+    usgEditors.findings.setData('');
+    usgEditors.impression.setData('');
 
     document.querySelector('#edit-id').value = '';
 
@@ -244,15 +304,17 @@ document.addEventListener('click', async function (e) {
 
         document.querySelector('#edit-id').value = id;
 
+        await usgEditorsReady;
+
         const response = await fetch(`/usg-report-template/edit/${id}`);
         const result = await response.json();
 
         if (result.status) {
             document.querySelector('#title-field').value = result.data.title;
             document.querySelector('#item_code_sub-field').value = result.data.item_code_sub;
-            document.querySelector('#clinical_history-field').value = result.data.clinical_history ?? '';
-            document.querySelector('#findings-field').value = result.data.findings ?? '';
-            document.querySelector('#impression-field').value = result.data.impression ?? '';
+            usgEditors.clinical_history.setData(usgToEditorHtml(result.data.clinical_history));
+            usgEditors.findings.setData(usgToEditorHtml(result.data.findings));
+            usgEditors.impression.setData(usgToEditorHtml(result.data.impression));
             document.querySelector('#status-field').value = result.data.status;
         }
 

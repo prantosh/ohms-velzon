@@ -10,6 +10,10 @@
       rel="stylesheet"
       type="text/css" />
 
+<link href="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.css') }}"
+      rel="stylesheet"
+      type="text/css" />
+
 @endsection
 
 @section('content')
@@ -242,8 +246,7 @@
                             </label>
 
                             <textarea id="clinical_history-field"
-                                      class="form-control"
-                                      rows="2"></textarea>
+                                      class="form-control"></textarea>
 
                         </div>
 
@@ -254,8 +257,7 @@
                             </label>
 
                             <textarea id="findings-field"
-                                      class="form-control"
-                                      rows="6"></textarea>
+                                      class="form-control"></textarea>
 
                         </div>
 
@@ -266,8 +268,7 @@
                             </label>
 
                             <textarea id="impression-field"
-                                      class="form-control"
-                                      rows="3"></textarea>
+                                      class="form-control"></textarea>
 
                         </div>
 
@@ -309,6 +310,8 @@
 @section('script')
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
+
+<script src="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.umd.js') }}"></script>
 
 <script src="{{ URL::asset('build/js/pages/usg-report-template.init.js') }}"></script>
 

@@ -24,24 +24,70 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
-// Grows a textarea to fit its content so long template text is fully
-// visible instead of scrolling inside a fixed-height box.
-function autoGrowTextarea(el) {
+/*
+|--------------------------------------------------------------------------
+| RICH-TEXT EDITORS -- Clinical History / Findings / Impression
+|--------------------------------------------------------------------------
+| One card per billed USG line, each with its own independent set of 3
+| CKEditor instances (cards are cloned dynamically from usgStudyCardTemplate
+| and can come and go as the user searches different invoices), tracked on
+| the card's own root DOM node so instance lifetime follows the card.
+*/
 
-    if (!el) {
-        return;
-    }
+const { ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo } = CKEDITOR;
 
-    el.style.height = 'auto';
-    el.style.height = el.scrollHeight + 'px';
+const USG_EDITOR_CONFIG = {
+    licenseKey: 'GPL',
+    plugins: [Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo],
+    toolbar: [
+        'bold', 'italic', 'underline', '|',
+        'alignment', '|',
+        'fontSize', '|',
+        'bulletedList', 'numberedList', '|',
+        'undo', 'redo'
+    ]
+};
+
+const USG_LOCK_ID = 'usg-confirmed';
+
+// Records saved before rich-text editing existed are plain text with literal
+// newlines. Each line becomes its own paragraph (not just a <br> within one
+// shared paragraph) so alignment/formatting can target one line -- e.g. an
+// organ heading like "LIVER" -- without dragging the rest of the text along
+// with it, since text-align always applies to the whole enclosing paragraph.
+// Already-HTML content (post-feature) passes through untouched.
+function usgToEditorHtml(text) {
+    if (!text) return '';
+    if (text.includes('<')) return text;
+    return text.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('');
 }
 
-document.addEventListener('input', function (e) {
+async function createCardEditors(root) {
 
-    if (e.target.matches('.study-clinical-history, .study-findings, .study-impression')) {
-        autoGrowTextarea(e.target);
+    const fields = {
+        clinical_history: '.study-clinical-history',
+        findings: '.study-findings',
+        impression: '.study-impression'
+    };
+
+    root.usgEditors = {};
+
+    for (const [key, selector] of Object.entries(fields)) {
+        root.usgEditors[key] = await ClassicEditor.create(root.querySelector(selector), USG_EDITOR_CONFIG);
     }
-});
+}
+
+async function destroyAllCardEditors() {
+
+    let cards = document.querySelectorAll('#studiesWrap .usg-study-card');
+
+    for (const root of cards) {
+
+        if (root.usgEditors) {
+            await Promise.all(Object.values(root.usgEditors).map(ed => ed.destroy()));
+        }
+    }
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -166,6 +212,10 @@ async function searchInvoice(invoiceNo) {
     document.getElementById('invoiceNotFoundMsg').style.display = 'none';
     document.getElementById('invoiceInfoWrap').style.display = 'none';
     document.getElementById('noStudiesMsg').style.display = 'none';
+
+    // Destroy any editors from a previous search before wiping the cards
+    // out from under them, or the old CKEditor instances leak.
+    await destroyAllCardEditors();
     document.getElementById('studiesWrap').innerHTML = '';
 
     const response = await fetch('/usg-report/search', {
@@ -204,7 +254,7 @@ async function searchInvoice(invoiceNo) {
     let wrap = document.getElementById('studiesWrap');
     let template = document.getElementById('usgStudyCardTemplate');
 
-    result.lines.forEach(function (line) {
+    result.lines.forEach(async function (line) {
 
         let card = template.content.cloneNode(true);
         let root = card.querySelector('.usg-study-card');
@@ -217,13 +267,14 @@ async function searchInvoice(invoiceNo) {
         root.querySelector('.study-item-code-sub').innerText = line.item_code_sub ? `(${line.item_code_sub})` : '';
         root.querySelector('.study-doctor-name').innerText = line.doctor_name ?? '-';
 
-        let historyEl = root.querySelector('.study-clinical-history');
-        let findingsEl = root.querySelector('.study-findings');
-        let impressionEl = root.querySelector('.study-impression');
+        wrap.appendChild(card);
 
-        historyEl.value = line.clinical_history ?? '';
-        findingsEl.value = line.findings ?? '';
-        impressionEl.value = line.impression ?? '';
+        // CKEditor must be created against an attached DOM node.
+        await createCardEditors(root);
+
+        root.usgEditors.clinical_history.setData(usgToEditorHtml(line.clinical_history));
+        root.usgEditors.findings.setData(usgToEditorHtml(line.findings));
+        root.usgEditors.impression.setData(usgToEditorHtml(line.impression));
 
         if (line.confirmed_at) {
 
@@ -233,14 +284,6 @@ async function searchInvoice(invoiceNo) {
 
             loadTemplatesForCard(root, line.item_code_sub);
         }
-
-        wrap.appendChild(card);
-
-        // Elements must be attached to the DOM before scrollHeight is
-        // meaningful, so grow the textareas after appending the card.
-        autoGrowTextarea(historyEl);
-        autoGrowTextarea(findingsEl);
-        autoGrowTextarea(impressionEl);
     });
 }
 
@@ -295,14 +338,17 @@ document.addEventListener('change', async function (e) {
 
     let root = picker.closest('.usg-study-card');
 
-    let historyField = root.querySelector('.study-clinical-history');
-    let findingsField = root.querySelector('.study-findings');
-    let impressionField = root.querySelector('.study-impression');
+    if (!root.usgEditors) {
+        picker.value = '';
+        return;
+    }
 
-    let hasExistingContent =
-        historyField.value.trim() ||
-        findingsField.value.trim() ||
-        impressionField.value.trim();
+    // A CKEditor with no real content still returns a non-empty string
+    // (e.g. "<p>&nbsp;</p>"), so strip tags before checking for anything
+    // the user would actually notice being overwritten.
+    let hasExistingContent = ['clinical_history', 'findings', 'impression'].some(
+        field => root.usgEditors[field].getData().replace(/<[^>]*>/g, '').trim()
+    );
 
     if (hasExistingContent) {
 
@@ -320,20 +366,19 @@ document.addEventListener('change', async function (e) {
         }
     }
 
-    historyField.value = tpl.clinical_history ?? '';
-    findingsField.value = tpl.findings ?? '';
-    impressionField.value = tpl.impression ?? '';
-
-    autoGrowTextarea(historyField);
-    autoGrowTextarea(findingsField);
-    autoGrowTextarea(impressionField);
+    root.usgEditors.clinical_history.setData(usgToEditorHtml(tpl.clinical_history));
+    root.usgEditors.findings.setData(usgToEditorHtml(tpl.findings));
+    root.usgEditors.impression.setData(usgToEditorHtml(tpl.impression));
 
     picker.value = '';
 });
 
 function lockStudyCard(root, findingId) {
 
-    root.querySelectorAll('textarea').forEach(t => t.disabled = true);
+    if (root.usgEditors) {
+        Object.values(root.usgEditors).forEach(ed => ed.enableReadOnlyMode(USG_LOCK_ID));
+    }
+
     root.querySelector('.study-template-picker').style.display = 'none';
     root.querySelector('.study-confirmed-badge').style.display = 'inline-block';
     root.querySelector('.study-save-btn').style.display = 'none';
@@ -412,6 +457,10 @@ document.addEventListener('click', async function (e) {
 
         let root = saveBtn.closest('.usg-study-card');
 
+        if (!root.usgEditors) {
+            return;
+        }
+
         saveBtn.disabled = true;
 
         const response = await fetch('/usg-report/save', {
@@ -422,9 +471,9 @@ document.addEventListener('click', async function (e) {
             },
             body: JSON.stringify({
                 invoice_detail_id: root.dataset.invoiceDetailId,
-                clinical_history: root.querySelector('.study-clinical-history').value,
-                findings: root.querySelector('.study-findings').value,
-                impression: root.querySelector('.study-impression').value
+                clinical_history: root.usgEditors.clinical_history.getData(),
+                findings: root.usgEditors.findings.getData(),
+                impression: root.usgEditors.impression.getData()
             })
         });
 
@@ -452,6 +501,10 @@ document.addEventListener('click', async function (e) {
 
         let root = previewBtn.closest('.usg-study-card');
 
+        if (!root.usgEditors) {
+            return;
+        }
+
         previewBtn.disabled = true;
 
         try {
@@ -464,9 +517,9 @@ document.addEventListener('click', async function (e) {
                 },
                 body: JSON.stringify({
                     invoice_detail_id: root.dataset.invoiceDetailId,
-                    clinical_history: root.querySelector('.study-clinical-history').value,
-                    findings: root.querySelector('.study-findings').value,
-                    impression: root.querySelector('.study-impression').value
+                    clinical_history: root.usgEditors.clinical_history.getData(),
+                    findings: root.usgEditors.findings.getData(),
+                    impression: root.usgEditors.impression.getData()
                 })
             });
 

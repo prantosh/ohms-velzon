@@ -29,7 +29,6 @@
         "vite": "^5.0.12"
     },
     "dependencies": {
-        "@ckeditor/ckeditor5-build-classic": "^44.3.0",
         "@simonwep/pickr": "^1.9.1",
         "@tarekraafat/autocomplete.js": "^10.2.9",
         "aos": "^2.3.4",
@@ -38,6 +37,7 @@
         "card": "^2.5.4",
         "chart.js": "4.5.1",
         "choices.js": "^11.2.1",
+        "ckeditor5": "^48.4.0",
         "cleave.js": "^1.6.0",
         "dom-autoscroller": "^2.3.4",
         "dragula": "^3.7.3",

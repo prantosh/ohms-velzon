@@ -10,6 +10,10 @@
       rel="stylesheet"
       type="text/css" />
 
+<link href="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.css') }}"
+      rel="stylesheet"
+      type="text/css" />
+
 <style>
 
 .result-status-Pending { background:#f1963380; color:#7a4b00; }
@@ -270,17 +274,17 @@
 
             <div class="mb-3">
                 <label class="form-label fw-semibold">Clinical History</label>
-                <textarea class="form-control study-clinical-history" rows="2" style="overflow-y:hidden; resize:none;"></textarea>
+                <textarea class="form-control study-clinical-history"></textarea>
             </div>
 
             <div class="mb-3">
                 <label class="form-label fw-semibold">Findings</label>
-                <textarea class="form-control study-findings" rows="6" style="overflow-y:hidden; resize:none;"></textarea>
+                <textarea class="form-control study-findings"></textarea>
             </div>
 
             <div class="mb-3">
                 <label class="form-label fw-semibold">Impression</label>
-                <textarea class="form-control study-impression" rows="3" style="overflow-y:hidden; resize:none;"></textarea>
+                <textarea class="form-control study-impression"></textarea>
             </div>
 
             <div class="d-flex justify-content-end gap-2">
@@ -323,6 +327,8 @@
 @section('script')
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
+
+<script src="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.umd.js') }}"></script>
 
 <script src="{{ URL::asset('build/js/pages/usg-report.init.js') }}"></script>
 

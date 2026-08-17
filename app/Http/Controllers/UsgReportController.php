@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use App\Models\UsgReportFinding;
 use App\Services\AuditService;
+use App\Services\HtmlSanitizerService;
 use App\Services\WatiService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -231,9 +232,9 @@ class UsgReportController extends Controller
             $request->all(),
             [
                 'invoice_detail_id' => 'required|integer',
-                'clinical_history' => 'nullable|max:5000',
-                'findings' => 'nullable|max:5000',
-                'impression' => 'nullable|max:5000',
+                'clinical_history' => 'nullable|max:20000',
+                'findings' => 'nullable|max:20000',
+                'impression' => 'nullable|max:20000',
             ]
         );
 
@@ -274,9 +275,9 @@ class UsgReportController extends Controller
                 'invoice_no' => $line->invoice_no,
                 'item_code_sub' => $line->item_code_sub,
                 'item_description' => $line->item_description,
-                'clinical_history' => $request->clinical_history,
-                'findings' => $request->findings,
-                'impression' => $request->impression,
+                'clinical_history' => HtmlSanitizerService::sanitizeClinicalText($request->clinical_history),
+                'findings' => HtmlSanitizerService::sanitizeClinicalText($request->findings),
+                'impression' => HtmlSanitizerService::sanitizeClinicalText($request->impression),
                 'created_by' => $existing->created_by ?? Auth::id(),
                 'updated_by' => Auth::id(),
             ]
@@ -309,9 +310,9 @@ class UsgReportController extends Controller
             $request->all(),
             [
                 'invoice_detail_id' => 'required|integer',
-                'clinical_history' => 'nullable|max:5000',
-                'findings' => 'nullable|max:5000',
-                'impression' => 'nullable|max:5000',
+                'clinical_history' => 'nullable|max:20000',
+                'findings' => 'nullable|max:20000',
+                'impression' => 'nullable|max:20000',
             ]
         );
 
@@ -347,9 +348,9 @@ class UsgReportController extends Controller
         // model method, so the unsaved draft text can flow straight through.
         $finding = (object) [
             'item_description' => $line->item_description,
-            'clinical_history' => $request->clinical_history,
-            'findings' => $request->findings,
-            'impression' => $request->impression,
+            'clinical_history' => HtmlSanitizerService::sanitizeClinicalText($request->clinical_history),
+            'findings' => HtmlSanitizerService::sanitizeClinicalText($request->findings),
+            'impression' => HtmlSanitizerService::sanitizeClinicalText($request->impression),
             'confirmed_at' => null,
         ];
 
