@@ -243,6 +243,10 @@ Route::middleware(['auth'])->group(function () {
         [DoctorAppointmentController::class, 'getAvailableSlots']
     )->name('doctor-appointments.get-slots');
     Route::post(
+        '/doctor-appointments/bulk-reassign',
+        [DoctorAppointmentController::class, 'bulkReassign']
+    )->name('doctor-appointments.bulk-reassign');
+    Route::post(
         '/doctor-appointments/get-total-patients',
         [DoctorAppointmentController::class, 'getTotalPatients']
     );

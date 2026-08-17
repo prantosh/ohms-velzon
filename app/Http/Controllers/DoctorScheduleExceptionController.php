@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Doctor;
 use App\Models\DoctorAppointment;
 use App\Models\DoctorScheduleException;
+use App\Services\AppointmentReassignmentService;
 use App\Services\AuditService;
 use Carbon\Carbon;
 use Exception;
@@ -61,7 +62,7 @@ class DoctorScheduleExceptionController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function store(Request $request, AuditService $auditService)
+    public function store(Request $request, AuditService $auditService, AppointmentReassignmentService $reassignmentService)
     {
         $request->validate([
             'doctor_id' => 'required|exists:doctors,id',
@@ -127,9 +128,29 @@ class DoctorScheduleExceptionController extends Controller
                 $message .= ' ' . implode(' ', $warnings);
             }
 
+            // Read-only: builds suggested reassignments for whatever's already
+            // booked on the newly-blacked-out dates, doesn't touch those rows.
+            $affectedAppointments = [];
+
+            if (!empty($created)) {
+
+                $affected = DoctorAppointment::where('doctor_id', $doctor->id)
+                    ->whereIn('appointment_date', $created)
+                    ->where('appointment_status', 'Booked')
+                    ->orderBy('appointment_date')
+                    ->orderBy('token_no')
+                    ->get();
+
+                if ($affected->isNotEmpty()) {
+                    $affectedAppointments = $reassignmentService->suggestReassignments($doctor->id, $affected);
+                }
+            }
+
             return response()->json([
                 'status' => true,
                 'message' => $message,
+                'reassignment_needed' => !empty($affectedAppointments),
+                'affected_appointments' => $affectedAppointments,
             ]);
 
         } catch (Exception $e) {

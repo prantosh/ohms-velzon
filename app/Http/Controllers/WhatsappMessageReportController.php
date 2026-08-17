@@ -9,13 +9,14 @@ use Illuminate\Support\Facades\DB;
 
 class WhatsappMessageReportController extends Controller
 {
-    private const MESSAGE_TYPES = ['INVOICE', 'TEST_REPORT', 'APPOINTMENT', 'OTP'];
+    private const MESSAGE_TYPES = ['INVOICE', 'TEST_REPORT', 'APPOINTMENT', 'OTP', 'DOCTOR_APPOINTMENT_REASSIGNED'];
 
     private const TYPE_LABELS = [
         'INVOICE' => 'Invoice',
         'TEST_REPORT' => 'Test Report',
         'APPOINTMENT' => 'Appointment',
         'OTP' => 'OTP',
+        'DOCTOR_APPOINTMENT_REASSIGNED' => 'Appointment Reassigned (Blackout)',
     ];
 
     /*

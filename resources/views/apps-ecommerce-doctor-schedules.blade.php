@@ -496,6 +496,105 @@
 
 </div>
 
+<!-- ==========================================================
+     REASSIGN AFFECTED APPOINTMENTS MODAL (opened after marking a
+     blackout date that already has Booked appointments on it)
+========================================================== -->
+
+<div class="modal fade"
+     id="reassignModal"
+     tabindex="-1"
+     data-bs-backdrop="static">
+
+    <div class="modal-dialog modal-xl">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5 class="modal-title">
+                    Reassign Affected Appointments -- <span id="reassignDoctorName"></span>
+                </h5>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal">
+                </button>
+
+            </div>
+
+            <div class="modal-body">
+
+                <div class="alert alert-info py-2 px-3 mb-3">
+                    <i class="ri-information-line align-middle me-1"></i>
+                    Each row below is pre-filled with the next available slot for that patient.
+                    Review and adjust any row before confirming -- nothing is changed or sent until
+                    you click "Confirm &amp; Notify".
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 mb-3" id="reassignSummaryRibbon">
+
+                    <div class="alert alert-secondary py-1 px-3 mb-0">
+                        Affected: <strong id="reassignCountTotal">0</strong>
+                    </div>
+
+                    <div class="alert alert-success py-1 px-3 mb-0">
+                        Auto-suggested: <strong id="reassignCountSuggested">0</strong>
+                    </div>
+
+                    <div class="alert alert-warning py-1 px-3 mb-0">
+                        Needs manual pick: <strong id="reassignCountManual">0</strong>
+                    </div>
+
+                </div>
+
+                <div class="table-responsive">
+
+                    <table class="table table-sm align-middle">
+
+                        <thead>
+                            <tr>
+                                <th>Patient</th>
+                                <th>Current</th>
+                                <th width="160">New Date</th>
+                                <th width="220">New Slot</th>
+                                <th width="90">Status</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="reassignTableBody"></tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+
+                <button
+                    type="button"
+                    class="btn btn-light"
+                    data-bs-dismiss="modal">
+                    Cancel
+                </button>
+
+                <button
+                    type="button"
+                    class="btn btn-success"
+                    id="confirmReassignBtn">
+                    <i class="ri-send-plane-line align-middle"></i> Confirm &amp; Notify
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
 @endsection
 
 @section('script')

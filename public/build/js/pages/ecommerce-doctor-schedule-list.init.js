@@ -554,6 +554,7 @@ $(document).on(
 
 let exceptionFlatpickr = null;
 let currentExceptionDoctorId = null;
+let reassignQueue = [];
 
 function loadExceptions() {
 
@@ -703,6 +704,10 @@ $(document).on('submit', '#exceptionForm', function (e) {
             if (exceptionFlatpickr) exceptionFlatpickr.clear();
 
             loadExceptions();
+
+            if (response.reassignment_needed) {
+                openReassignModal(response.affected_appointments);
+            }
         },
 
         error: function (xhr) {
@@ -722,6 +727,238 @@ $(document).on('submit', '#exceptionForm', function (e) {
             });
         }
     });
+});
+
+/*
+|--------------------------------------------------------------------------
+| REASSIGN AFFECTED APPOINTMENTS (opened automatically after marking a
+| blackout date that already had Booked appointments on it)
+|--------------------------------------------------------------------------
+*/
+
+function reassignRowHtml(row) {
+
+    let statusBadge = row.new_date && row.new_time && row.new_session_id
+        ? '<span class="badge bg-success">Suggested</span>'
+        : '<span class="badge bg-warning text-dark">Needs pick</span>';
+
+    let slotOption = row.new_time && row.new_session_id
+        ? `<option value="${row.new_session_id}|${row.new_time}" selected>${escapeAttr(row.suggested_time_display || row.new_time)}</option>`
+        : '<option value="">-- pick a date first --</option>';
+
+    return `
+        <tr data-appointment-id="${row.appointment_id}">
+            <td>
+                ${escapeAttr(row.patient_name)}
+                <div class="text-muted small">${escapeAttr(row.patient_mobile_no)}</div>
+            </td>
+            <td>${row.old_date}<br><span class="text-muted small">${row.old_time_display}</span></td>
+            <td>
+                <input type="date" class="form-control form-control-sm reassignDateInput" value="${row.new_date || ''}">
+            </td>
+            <td>
+                <select class="form-select form-select-sm reassignSlotSelect">
+                    ${slotOption}
+                </select>
+            </td>
+            <td class="reassignStatusCell">${statusBadge}</td>
+        </tr>
+    `;
+}
+
+function renderReassignSummary() {
+
+    let total = reassignQueue.length;
+    let suggested = reassignQueue.filter(r => r.new_date && r.new_time && r.new_session_id).length;
+
+    $('#reassignCountTotal').text(total);
+    $('#reassignCountSuggested').text(suggested);
+    $('#reassignCountManual').text(total - suggested);
+}
+
+function openReassignModal(affectedAppointments) {
+
+    reassignQueue = affectedAppointments.map(function (row) {
+        return Object.assign({}, row, {
+            new_date: row.suggested_date,
+            new_time: row.suggested_time,
+            new_session_id: row.suggested_session_id
+        });
+    });
+
+    $('#reassignDoctorName').text($('#exceptionDoctorName').text());
+
+    let html = reassignQueue.map(reassignRowHtml).join('');
+    $('#reassignTableBody').html(html);
+
+    renderReassignSummary();
+
+    bootstrap.Modal.getOrCreateInstance(
+        document.getElementById('reassignModal')
+    ).show();
+}
+
+$(document).on('change', '.reassignDateInput', function () {
+
+    let row = $(this).closest('tr');
+    let appointmentId = row.data('appointment-id');
+    let newDate = $(this).val();
+    let select = row.find('.reassignSlotSelect');
+    let statusCell = row.find('.reassignStatusCell');
+
+    let queueItem = reassignQueue.find(r => r.appointment_id === appointmentId);
+    if (!queueItem) return;
+
+    if (!newDate) {
+        queueItem.new_date = null;
+        queueItem.new_time = null;
+        queueItem.new_session_id = null;
+        select.html('<option value="">-- pick a date first --</option>');
+        statusCell.html('<span class="badge bg-warning text-dark">Needs pick</span>');
+        renderReassignSummary();
+        return;
+    }
+
+    select.html('<option value="">Loading...</option>');
+
+    $.ajax({
+        url: '/doctor-appointments/get-slots',
+        type: 'POST',
+        data: {
+            doctor_id: currentExceptionDoctorId,
+            appointment_date: newDate,
+            _token: $('meta[name="csrf-token"]').attr('content')
+        },
+        success: function (slots) {
+
+            if (!slots || !slots.length) {
+                select.html('<option value="">-- no slots on this date --</option>');
+                queueItem.new_date = newDate;
+                queueItem.new_time = null;
+                queueItem.new_session_id = null;
+                statusCell.html('<span class="badge bg-warning text-dark">Needs pick</span>');
+                renderReassignSummary();
+                return;
+            }
+
+            let options = slots.map(function (slot) {
+                return `<option value="${slot.session_id}|${slot.value}">${escapeAttr(slot.display)}</option>`;
+            }).join('');
+
+            select.html(options);
+
+            let first = slots[0];
+            queueItem.new_date = newDate;
+            queueItem.new_time = first.value;
+            queueItem.new_session_id = first.session_id;
+            statusCell.html('<span class="badge bg-success">Suggested</span>');
+            renderReassignSummary();
+        },
+        error: function () {
+            select.html('<option value="">-- failed to load slots --</option>');
+        }
+    });
+});
+
+$(document).on('change', '.reassignSlotSelect', function () {
+
+    let row = $(this).closest('tr');
+    let appointmentId = row.data('appointment-id');
+    let queueItem = reassignQueue.find(r => r.appointment_id === appointmentId);
+    if (!queueItem) return;
+
+    let parts = $(this).val().split('|');
+    queueItem.new_session_id = parts[0] || null;
+    queueItem.new_time = parts[1] || null;
+
+    row.find('.reassignStatusCell').html(
+        queueItem.new_date && queueItem.new_time && queueItem.new_session_id
+            ? '<span class="badge bg-success">Suggested</span>'
+            : '<span class="badge bg-warning text-dark">Needs pick</span>'
+    );
+    renderReassignSummary();
+});
+
+$(document).on('click', '#confirmReassignBtn', function () {
+
+    let ready = reassignQueue.filter(r => r.new_date && r.new_time && r.new_session_id);
+    let skipped = reassignQueue.filter(r => !(r.new_date && r.new_time && r.new_session_id));
+
+    if (!ready.length) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Nothing to reassign',
+            text: 'Pick a date and slot for at least one appointment first.'
+        });
+        return;
+    }
+
+    let proceed = function () {
+
+        Swal.fire({
+            title: "Reassigning....",
+            text: "Please wait",
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            didOpen: function () {
+                Swal.showLoading();
+            }
+        });
+
+        $.ajax({
+            url: '/doctor-appointments/bulk-reassign',
+            type: 'POST',
+            data: {
+                doctor_id: currentExceptionDoctorId,
+                assignments: ready.map(function (r) {
+                    return {
+                        appointment_id: r.appointment_id,
+                        new_date: r.new_date,
+                        new_time: r.new_time,
+                        new_session_id: r.new_session_id
+                    };
+                }),
+                _token: $('meta[name="csrf-token"]').attr('content')
+            },
+            success: function (response) {
+
+                Swal.fire({
+                    icon: (response.failed && response.failed.length) ? 'warning' : 'success',
+                    title: 'Done',
+                    text: response.message
+                });
+
+                bootstrap.Modal.getInstance(document.getElementById('reassignModal')).hide();
+                loadExceptions();
+            },
+            error: function (xhr) {
+
+                let message = xhr.responseJSON && xhr.responseJSON.message
+                    ? xhr.responseJSON.message
+                    : "Something went wrong. Please try again.";
+
+                Swal.fire({ icon: "error", title: "Reassign Failed", text: message });
+            }
+        });
+    };
+
+    if (skipped.length) {
+
+        Swal.fire({
+            icon: 'warning',
+            title: `${skipped.length} appointment(s) will be left as-is`,
+            text: 'They have no date/slot picked and will stay on the unavailable date. Continue with the rest?',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, continue'
+        }).then(function (result) {
+            if (result.isConfirmed) proceed();
+        });
+
+    } else {
+
+        proceed();
+    }
 });
 
 $(document).on('click', '.reEnableDateBtn', function () {

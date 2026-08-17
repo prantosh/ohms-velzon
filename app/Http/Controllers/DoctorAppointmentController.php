@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use App\Models\Specialisation;
 use App\Models\Patient;
 use App\Services\AppointmentBookingService;
+use App\Services\AppointmentReassignmentService;
 use App\Services\DoctorScheduleQueryService;
 use App\Services\AuditService;
 
@@ -17,11 +18,16 @@ class DoctorAppointmentController extends Controller
 
     protected $scheduleQuery;
     protected $bookingService;
+    protected $reassignmentService;
 
-    public function __construct(DoctorScheduleQueryService $scheduleQuery, AppointmentBookingService $bookingService)
-    {
+    public function __construct(
+        DoctorScheduleQueryService $scheduleQuery,
+        AppointmentBookingService $bookingService,
+        AppointmentReassignmentService $reassignmentService
+    ) {
         $this->scheduleQuery = $scheduleQuery;
         $this->bookingService = $bookingService;
+        $this->reassignmentService = $reassignmentService;
     }
     /**
      * Display a listing of the resource.
@@ -172,6 +178,40 @@ class DoctorAppointmentController extends Controller
         return response()->json(
             $this->scheduleQuery->getAvailableSlots($request->doctor_id, $request->appointment_date)
         );
+    }
+
+    /**
+     * Commits a reviewed batch of appointment reassignments -- see
+     * DoctorScheduleExceptionController::store(), which is where the
+     * suggestions this batch is built from originally come from (a doctor
+     * blackout date that already had Booked appointments on it).
+     */
+    public function bulkReassign(Request $request)
+    {
+        $request->validate([
+            'doctor_id' => 'required|exists:doctors,id',
+            'assignments' => 'required|array|min:1',
+            'assignments.*.appointment_id' => 'required|integer|exists:doctor_appointments,id',
+            'assignments.*.new_date' => 'required|date',
+            'assignments.*.new_time' => 'required',
+            'assignments.*.new_session_id' => 'required|integer|exists:doctor_schedule_sessions,id',
+        ]);
+
+        $result = $this->reassignmentService->commitReassignments($request->assignments, Auth::id());
+        $notifiedCount = $this->reassignmentService->notifyPatients($result['committed']);
+
+        $message = count($result['committed']) . ' appointment(s) reassigned, ' . $notifiedCount . ' patient(s) notified via WhatsApp.';
+
+        if (!empty($result['failed'])) {
+            $message .= ' ' . count($result['failed']) . ' could not be reassigned.';
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => $message,
+            'committed' => $result['committed'],
+            'failed' => $result['failed'],
+        ]);
     }
 
     public function getTotalPatients(Request $request)

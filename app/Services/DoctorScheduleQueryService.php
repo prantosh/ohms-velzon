@@ -135,6 +135,7 @@ class DoctorScheduleQueryService
                         'display' => $slotDisplay,
                         'value' => $slotValue,
                         'session_id' => $session->id,
+                        'remaining' => $session->max_patient - $bookingCount,
                     ];
                 }
 
