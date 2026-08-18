@@ -115,7 +115,10 @@ function fmtMoney9($v)
 
 <tr>
     <td class="label-blue">Total Amount</td>
-    <td colspan="3"><b>Rs. {{ fmtMoney9($grandTotal['amount']) }}</b></td>
+    <td><b>Rs. {{ fmtMoney9($grandTotal['amount']) }}</b></td>
+
+    <td class="label-blue">Settled Amount</td>
+    <td><b>Rs. {{ fmtMoney9($grandTotal['settled_amount'] ?? 0) }}</b></td>
 </tr>
 
 </table>
@@ -128,18 +131,20 @@ function fmtMoney9($v)
 
 <thead>
 <tr>
-    <th colspan="7" style="text-align:left; background-color:#e6e6e6;">
+    <th colspan="9" style="text-align:left; background-color:#e6e6e6;">
         Invoices billing {{ $itemName }} between {{ $fromDate->format('d-m-Y') }} and {{ $toDate->format('d-m-Y') }}
     </th>
 </tr>
 <tr>
-    <th width="6%">SL</th>
-    <th width="12%">Invoice No</th>
-    <th width="10%">Invoice Date</th>
+    <th width="4%">SL</th>
+    <th width="11%">Invoice No</th>
+    <th width="9%">Invoice Date</th>
     <th>Patient Name</th>
     <th>Test(s) / Item(s)</th>
-    <th width="12%">Amount</th>
-    <th width="10%">Status</th>
+    <th width="11%">Amount</th>
+    <th width="9%">Payment Mode</th>
+    <th width="8%">Status</th>
+    <th width="8%">Settled?</th>
 </tr>
 </thead>
 
@@ -153,18 +158,20 @@ function fmtMoney9($v)
     <td>{{ $row['patient_name'] ?: '-' }}</td>
     <td>{{ $row['sub_item_label'] ?: '-' }}</td>
     <td class="text-end">{{ fmtMoney9($row['item_amount']) }}</td>
+    <td class="text-center">{{ $row['payment_mode'] ?? '-' }}</td>
     <td class="text-center">{{ $row['payment_status'] }}</td>
+    <td class="text-center">{{ ($row['is_settled'] ?? false) ? 'Settled' : 'Pending' }}</td>
 </tr>
 @empty
 <tr>
-    <td colspan="7" class="text-center">No invoices found for this item in the selected period.</td>
+    <td colspan="9" class="text-center">No invoices found for this item in the selected period.</td>
 </tr>
 @endforelse
 
 <tr style="background-color:#f0f0f0; font-weight:bold;">
     <td colspan="5" class="text-end">Total</td>
     <td class="text-end">{{ fmtMoney9($grandTotal['amount']) }}</td>
-    <td></td>
+    <td colspan="3"></td>
 </tr>
 
 </tbody>

@@ -51,7 +51,6 @@ return [
     'inventory-item' => 'Inventory Item Master',
     'invoice-cancellation' => 'Invoice Cancellation',
     'item-wise-report' => 'Item Wise Report',
-    'item-wise-summary-report' => 'Item Wise Summary Report',
     'kit-master' => 'Kit Master',
     'maintenance-mode' => 'Maintenance Mode',
     'membership-fee' => 'Membership Fee Collection',

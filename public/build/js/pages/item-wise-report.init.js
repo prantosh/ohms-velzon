@@ -41,15 +41,136 @@ document.getElementById('detailTableBody')?.addEventListener('click', function (
         });
 });
 
-let requestSeq = 0;
-
-function currentFilters() {
+function periodFilters() {
     return {
-        item_code: document.getElementById('item_code-field').value,
         from_date: document.getElementById('from_date-field').value,
         to_date: document.getElementById('to_date-field').value,
     };
 }
+
+function itemFilters() {
+    return Object.assign(periodFilters(), {
+        item_code: document.getElementById('item_code-field').value,
+    });
+}
+
+/* ==========================================================
+   TAB 1: ALL ITEMS SUMMARY
+========================================================== */
+
+let allItemsSeq = 0;
+
+function renderAllItemsSummary(result, params) {
+
+    document.getElementById('allItemsTotalsRow').style.display = 'none';
+    document.getElementById('allItemsSummaryCard').style.display = 'none';
+    document.getElementById('allItemsNoDataWrap').style.display = 'none';
+    document.getElementById('printAllItemsSummaryBtn').style.display = 'none';
+
+    if (!result.status || !result.rows.length) {
+        document.getElementById('allItemsNoDataWrap').style.display = 'block';
+        return;
+    }
+
+    let g = result.grand_total;
+
+    document.getElementById('allitems-invoice_count').innerText = g.invoice_count;
+    document.getElementById('allitems-receivable').innerText = '₹' + fmtMoney(g.receivable);
+    document.getElementById('allitems-received_total').innerText = '₹' + fmtMoney(g.received_total);
+    document.getElementById('allitems-settled_amount').innerText = '₹' + fmtMoney(g.settled_amount);
+    document.getElementById('allitems-deposited').innerText = '₹' + fmtMoney(g.deposited);
+
+    document.getElementById('allItemsTotalsRow').style.display = 'flex';
+
+    let tbody = document.getElementById('allItemsSummaryTableBody');
+    tbody.innerHTML = '';
+
+    result.rows.forEach(row => {
+        tbody.innerHTML += `
+        <tr>
+            <td>${escapeHtml(row.item_name)}</td>
+            <td>${escapeHtml(row.item_code)}</td>
+            <td class="text-center">${row.invoice_count}</td>
+            <td class="text-end">${fmtMoney(row.receivable)}</td>
+            <td class="text-end">${fmtMoney(row.received_cash)}</td>
+            <td class="text-end">${fmtMoney(row.received_noncash)}</td>
+            <td class="text-end">${fmtMoney(row.received_total)}</td>
+            <td class="text-end">${fmtMoney(row.settled_amount)}</td>
+            <td class="text-end">${fmtMoney(row.refund_cash)}</td>
+            <td class="text-end">${fmtMoney(row.doctor_payment_cash)}</td>
+            <td class="text-end fw-semibold">${fmtMoney(row.deposited)}</td>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-outline-primary viewDetailBtn" data-code="${escapeHtml(row.item_code)}" title="View Detail">
+                    <i class="ri-eye-line"></i>
+                </button>
+            </td>
+        </tr>
+        `;
+    });
+
+    tbody.innerHTML += `
+    <tr class="table-light fw-bold">
+        <td colspan="2" class="text-end">Total</td>
+        <td class="text-center">${g.invoice_count}</td>
+        <td class="text-end">${fmtMoney(g.receivable)}</td>
+        <td class="text-end">${fmtMoney(g.received_cash)}</td>
+        <td class="text-end">${fmtMoney(g.received_noncash)}</td>
+        <td class="text-end">${fmtMoney(g.received_total)}</td>
+        <td class="text-end">${fmtMoney(g.settled_amount)}</td>
+        <td class="text-end">${fmtMoney(g.refund_cash)}</td>
+        <td class="text-end">${fmtMoney(g.doctor_payment_cash)}</td>
+        <td class="text-end">${fmtMoney(g.deposited)}</td>
+        <td></td>
+    </tr>
+    `;
+
+    document.getElementById('allItemsSummaryCard').style.display = 'block';
+
+    let printBtn = document.getElementById('printAllItemsSummaryBtn');
+    printBtn.href = `/item-wise-report/print-all-items-summary?${params.toString()}`;
+    printBtn.style.display = 'inline-block';
+}
+
+async function loadAllItemsSummary() {
+
+    let filters = periodFilters();
+
+    if (!filters.from_date || !filters.to_date) {
+        Swal.fire({ icon: 'warning', title: 'Missing Filters', text: 'Please select both dates.' });
+        return;
+    }
+
+    const mySeq = ++allItemsSeq;
+    const params = new URLSearchParams(filters);
+
+    const response = await fetch(`/item-wise-report/all-items-summary?${params.toString()}`);
+    const result = await response.json();
+
+    if (mySeq !== allItemsSeq) return;
+
+    renderAllItemsSummary(result, params);
+}
+
+document.getElementById('loadReportBtn').addEventListener('click', loadAllItemsSummary);
+
+document.getElementById('allItemsSummaryTableBody').addEventListener('click', function (e) {
+    const btn = e.target.closest('.viewDetailBtn');
+    if (!btn) return;
+
+    document.getElementById('item_code-field').value = btn.getAttribute('data-code');
+
+    let detailTabLink = document.querySelector('a[href="#detailTab"]');
+    bootstrap.Tab.getOrCreateInstance(detailTabLink).show();
+
+    loadItemViews();
+});
+
+/* ==========================================================
+   TABS 2 & 3: ITEM DETAIL + ITEM SUMMARY (loaded together --
+   both need the same item + date range)
+========================================================== */
+
+let itemViewsSeq = 0;
 
 function renderDetail(result, params) {
 
@@ -67,7 +188,9 @@ function renderDetail(result, params) {
 
     document.getElementById('detail-invoice_count').innerText = g.invoice_count;
     document.getElementById('detail-amount').innerText = '₹' + fmtMoney(g.amount);
+    document.getElementById('detail-settled_amount').innerText = '₹' + fmtMoney(g.settled_amount);
     document.getElementById('detail-item_name').innerText = result.item_name ?? '-';
+    document.getElementById('detailCardTitle').innerText = 'Invoice Detail — ' + (result.item_name ?? '-');
 
     document.getElementById('detailTotalsRow').style.display = 'flex';
 
@@ -88,7 +211,11 @@ function renderDetail(result, params) {
             <td>${escapeHtml(row.patient_name) || '-'}</td>
             <td>${escapeHtml(row.sub_item_label) || '-'}</td>
             <td class="text-end">${fmtMoney(row.item_amount)}</td>
+            <td>${escapeHtml(row.payment_mode)}</td>
             <td><span class="badge ${statusBadgeClass[row.payment_status] ?? 'bg-secondary'}">${escapeHtml(row.payment_status)}</span></td>
+            <td class="text-center">
+                <span class="badge ${row.is_settled ? 'bg-success' : 'bg-warning text-dark'}">${row.is_settled ? 'Settled' : 'Pending'}</span>
+            </td>
             <td class="text-center">${printButtonHtml(row)}</td>
         </tr>
         `;
@@ -101,7 +228,7 @@ function renderDetail(result, params) {
     printBtn.style.display = 'inline-block';
 }
 
-function renderSummary(result, params) {
+function renderItemSummary(result, params) {
 
     document.getElementById('summaryTotalsRow').style.display = 'none';
     document.getElementById('summaryByDateCard').style.display = 'none';
@@ -163,16 +290,16 @@ function renderSummary(result, params) {
     printBtn.style.display = 'inline-block';
 }
 
-async function loadReport() {
+async function loadItemViews() {
 
-    let filters = currentFilters();
+    let filters = itemFilters();
 
     if (!filters.item_code || !filters.from_date || !filters.to_date) {
         Swal.fire({ icon: 'warning', title: 'Missing Filters', text: 'Please select an item and both dates.' });
         return;
     }
 
-    const mySeq = ++requestSeq;
+    const mySeq = ++itemViewsSeq;
 
     const params = new URLSearchParams(filters);
 
@@ -184,13 +311,13 @@ async function loadReport() {
     const detailResult = await detailResponse.json();
     const summaryResult = await summaryResponse.json();
 
-    if (mySeq !== requestSeq) return;
+    if (mySeq !== itemViewsSeq) return;
 
     renderDetail(detailResult, params);
-    renderSummary(summaryResult, params);
+    renderItemSummary(summaryResult, params);
 }
 
-document.getElementById('loadReportBtn').addEventListener('click', loadReport);
+document.getElementById('loadItemBtn').addEventListener('click', loadItemViews);
 
 /* ==========================================================
    INIT (default: last 30 days)

@@ -80,7 +80,6 @@ use App\Http\Controllers\DoctorWisePaymentReportController;
 use App\Http\Controllers\DailyTransactionReportController;
 use App\Http\Controllers\WhatsappMessageReportController;
 use App\Http\Controllers\ItemWiseReportController;
-use App\Http\Controllers\ItemWiseSummaryReportController;
 use App\Http\Controllers\MonthlyReconciliationReportController;
 use App\Http\Controllers\ReportingGroupSummaryReportController;
 use App\Http\Controllers\UserInvoiceReportController;
@@ -1610,27 +1609,22 @@ Route::middleware(['auth'])->prefix('whatsapp-message-report')->group(function (
 
 });
 
-Route::prefix('item-wise-report')->group(function () {
+// Merged former item-wise-report + item-wise-summary-report pages into one
+// dashboard -- wrapped in auth (neither of the two original groups had this;
+// same gap class already fixed for cash-submission-report,
+// reporting-group-summary-report, and the retired item-wise-summary-report
+// group below).
+Route::middleware(['auth'])->prefix('item-wise-report')->group(function () {
 
     Route::get('/', [ItemWiseReportController::class, 'index'])
         ->name('item-wise-report.index');
 
+    Route::get('/all-items-summary', [ItemWiseReportController::class, 'allItemsSummary']);
+    Route::get('/print-all-items-summary', [ItemWiseReportController::class, 'printAllItemsSummary']);
     Route::get('/detail', [ItemWiseReportController::class, 'detail']);
     Route::get('/print-detail', [ItemWiseReportController::class, 'printDetail']);
     Route::get('/summary', [ItemWiseReportController::class, 'summary']);
     Route::get('/print-summary', [ItemWiseReportController::class, 'printSummary']);
-
-});
-
-Route::prefix('item-wise-summary-report')->group(function () {
-
-    Route::get('/', [ItemWiseSummaryReportController::class, 'index'])
-        ->name('item-wise-summary-report.index');
-
-    Route::get('/summary', [ItemWiseSummaryReportController::class, 'summary']);
-    Route::get('/print-summary', [ItemWiseSummaryReportController::class, 'printSummary']);
-    Route::get('/detail', [ItemWiseSummaryReportController::class, 'detail']);
-    Route::get('/print-detail', [ItemWiseSummaryReportController::class, 'printDetail']);
 
 });
 

@@ -101,7 +101,6 @@ return [
     'daily-transaction-report.index' => 'daily-transaction-report',
     'whatsapp-message-report.index' => 'whatsapp-message-report',
     'item-wise-report.index' => 'item-wise-report',
-    'item-wise-summary-report.index' => 'item-wise-summary-report',
     'monthly-reconciliation-report.index' => 'monthly-reconciliation-report',
     'reporting-group-summary-report.index' => 'reporting-group-summary-report',
 

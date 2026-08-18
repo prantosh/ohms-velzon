@@ -80,7 +80,6 @@ return [
     "dailytransactionreport" => "Daily Transaction Report",
     "whatsappmessagereport" => "WhatsApp Message Report",
     "itemwisereport" => "Item Wise Report",
-    "itemwisesummaryreport" => "Item Wise Summary Report",
     "monthlyreconciliationreport" => "Monthly Reconciliation Report",
     "reportinggroupsummaryreport" => "Reporting Group Summary Report",
     "usermanagement" => "User Management",
