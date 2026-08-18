@@ -1,3 +1,25 @@
+<style>
+    /* Submenu (sidebar sub-item) hover -- bold + a distinct color, so it
+       reads clearly different from the default faint highlight. Scoped to
+       .menu-dropdown so top-level menu links (Admin, Report, etc.) are
+       untouched. */
+    .menu-dropdown .nav-link:hover,
+    .menu-dropdown .nav-link:focus {
+        font-weight: 700;
+        color: #0d6efd !important;
+    }
+
+    /* Every top-nav dropdown the same width as Master Management's (the
+       widest one -- its longest item label exceeds the theme's default
+       12rem/192px floor, so it grows to ~233px while every other menu
+       stays at the floor). Matches the theme's own selector scope so only
+       the horizontal top-nav dropdowns are affected, not the vertical
+       sidebar's collapsed-menu layout. */
+    [data-layout="horizontal"] .menu-dropdown {
+        width: 233px;
+    }
+</style>
+
 <!-- ========== App Menu ========== -->
 <div class="app-menu navbar-menu">
     <!-- LOGO -->
