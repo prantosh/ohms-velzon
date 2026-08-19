@@ -472,11 +472,10 @@
     foreach ($scheduleDays as $idx => $day) {
         $bookedColor = $columnColors[$col % count($columnColors)];
         $col++;
-        $confirmedColor = null;
-        if ($idx === 0) {
-            $confirmedColor = $columnColors[$col % count($columnColors)];
-            $col++;
-        }
+        // Today's "Patients Booked" / "Patients Confirmed" are a single
+        // logical pair (the only day with two sub-columns) -- same color,
+        // not two different ones from the palette.
+        $confirmedColor = $idx === 0 ? $bookedColor : null;
         $dayColumnColors[$idx] = ['booked' => $bookedColor, 'confirmed' => $confirmedColor];
     }
 @endphp
