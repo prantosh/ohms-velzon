@@ -24,6 +24,26 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
+// Without an explicit Accept header, fetch() doesn't tell Laravel this is an
+// AJAX call -- a validation failure then 302-redirects to a normal HTML page
+// instead of returning JSON, response.json() throws, and (uncaught) whatever
+// loading indicator/disabled button is showing stays stuck forever. This
+// forces the Accept header and turns a non-JSON response into a clear,
+// catchable error instead.
+async function fetchJson(url, options = {}) {
+    const headers = Object.assign({ 'Accept': 'application/json' }, options.headers || {});
+    const response = await fetch(url, Object.assign({}, options, { headers }));
+
+    let result;
+    try {
+        result = await response.json();
+    } catch (e) {
+        throw new Error(`Unexpected server response (HTTP ${response.status}). Please try again.`);
+    }
+
+    return { response, result };
+}
+
 /*
 |--------------------------------------------------------------------------
 | RICH-TEXT EDITORS -- Clinical History / Findings / Impression
@@ -34,18 +54,31 @@ function escapeHtml(value) {
 | the card's own root DOM node so instance lifetime follows the card.
 */
 
-const { ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo } = CKEDITOR;
+const {
+    ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
+    Table, TableToolbar, TableProperties, TableCellProperties
+} = CKEDITOR;
 
 const USG_EDITOR_CONFIG = {
     licenseKey: 'GPL',
-    plugins: [Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo],
+    plugins: [
+        Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
+        Table, TableToolbar, TableProperties, TableCellProperties
+    ],
     toolbar: [
         'bold', 'italic', 'underline', '|',
         'alignment', '|',
         'fontSize', '|',
         'bulletedList', 'numberedList', '|',
+        'insertTable', '|',
         'undo', 'redo'
-    ]
+    ],
+    table: {
+        contentToolbar: [
+            'tableColumn', 'tableRow', 'mergeTableCells',
+            'tableProperties', 'tableCellProperties'
+        ]
+    }
 };
 
 const USG_LOCK_ID = 'usg-confirmed';
@@ -124,8 +157,7 @@ async function loadDashboard(page = 1) {
         params.set('search', dashSearch);
     }
 
-    const response = await fetch(`/usg-report/list?${params.toString()}`);
-    const result = await response.json();
+    const { result } = await fetchJson(`/usg-report/list?${params.toString()}`);
 
     let tbody = document.getElementById('dashTableBody');
     tbody.innerHTML = '';
@@ -218,7 +250,7 @@ async function searchInvoice(invoiceNo) {
     await destroyAllCardEditors();
     document.getElementById('studiesWrap').innerHTML = '';
 
-    const response = await fetch('/usg-report/search', {
+    const { result } = await fetchJson('/usg-report/search', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -226,8 +258,6 @@ async function searchInvoice(invoiceNo) {
         },
         body: JSON.stringify({ invoice_no: invoiceNo })
     });
-
-    const result = await response.json();
 
     if (!result.status) {
 
@@ -297,8 +327,7 @@ async function searchInvoice(invoiceNo) {
 
 async function loadTemplatesForCard(root, itemCodeSub) {
 
-    const response = await fetch(`/usg-report-template/for-study/${itemCodeSub}`);
-    const result = await response.json();
+    const { result } = await fetchJson(`/usg-report-template/for-study/${itemCodeSub}`);
 
     if (!result.status || !result.data.length) {
         return;
@@ -463,35 +492,46 @@ document.addEventListener('click', async function (e) {
 
         saveBtn.disabled = true;
 
-        const response = await fetch('/usg-report/save', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken()
-            },
-            body: JSON.stringify({
-                invoice_detail_id: root.dataset.invoiceDetailId,
-                clinical_history: root.usgEditors.clinical_history.getData(),
-                findings: root.usgEditors.findings.getData(),
-                impression: root.usgEditors.impression.getData()
-            })
-        });
+        try {
 
-        const result = await response.json();
+            const { result } = await fetchJson('/usg-report/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken()
+                },
+                body: JSON.stringify({
+                    invoice_detail_id: root.dataset.invoiceDetailId,
+                    clinical_history: root.usgEditors.clinical_history.getData(),
+                    findings: root.usgEditors.findings.getData(),
+                    impression: root.usgEditors.impression.getData()
+                })
+            });
 
-        saveBtn.disabled = false;
+            if (result.status && result.data && result.data.id) {
+                root.dataset.findingId = result.data.id;
+            }
 
-        if (result.status && result.data && result.data.id) {
-            root.dataset.findingId = result.data.id;
+            Swal.fire({
+                icon: result.status ? 'success' : 'error',
+                title: result.status ? 'Saved' : 'Error',
+                text: result.message ?? (result.errors ? Object.values(result.errors).flat().join(', ') : ''),
+                timer: result.status ? 1200 : undefined,
+                showConfirmButton: !result.status
+            });
+
+        } catch (err) {
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: err.message || 'Unable to save report.'
+            });
+
+        } finally {
+
+            saveBtn.disabled = false;
         }
-
-        Swal.fire({
-            icon: result.status ? 'success' : 'error',
-            title: result.status ? 'Saved' : 'Error',
-            text: result.message ?? (result.errors ? Object.values(result.errors).flat().join(', ') : ''),
-            timer: result.status ? 1200 : undefined,
-            showConfirmButton: !result.status
-        });
 
         return;
     }
@@ -513,7 +553,8 @@ document.addEventListener('click', async function (e) {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken()
+                    'X-CSRF-TOKEN': csrfToken(),
+                    'Accept': 'application/pdf, application/json'
                 },
                 body: JSON.stringify({
                     invoice_detail_id: root.dataset.invoiceDetailId,
@@ -525,12 +566,20 @@ document.addEventListener('click', async function (e) {
 
             if (!response.ok || (response.headers.get('Content-Type') || '').includes('application/json')) {
 
-                const result = await response.json();
+                let message = `Unable to generate preview (HTTP ${response.status}).`;
+
+                try {
+                    const result = await response.json();
+                    message = result.message ?? (result.errors ? Object.values(result.errors).flat().join(', ') : message);
+                } catch (e) {
+                    // Non-JSON error body (e.g. a redirected HTML page) -- fall
+                    // back to the generic message above instead of throwing.
+                }
 
                 Swal.fire({
                     icon: 'error',
                     title: 'Error',
-                    text: result.message ?? (result.errors ? Object.values(result.errors).flat().join(', ') : 'Unable to generate preview.')
+                    text: message
                 });
 
                 return;
@@ -584,36 +633,47 @@ document.addEventListener('click', async function (e) {
 
         confirmBtn.disabled = true;
 
-        const response = await fetch('/usg-report/confirm', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken()
-            },
-            body: JSON.stringify({ invoice_detail_id: root.dataset.invoiceDetailId })
-        });
+        try {
 
-        const result = await response.json();
-
-        confirmBtn.disabled = false;
-
-        if (result.status) {
-
-            lockStudyCard(root, root.dataset.findingId);
-
-            Swal.fire({
-                icon: 'success',
-                title: 'Confirmed',
-                text: result.message
+            const { result } = await fetchJson('/usg-report/confirm', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken()
+                },
+                body: JSON.stringify({ invoice_detail_id: root.dataset.invoiceDetailId })
             });
 
-        } else {
+            if (result.status) {
+
+                lockStudyCard(root, root.dataset.findingId);
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Confirmed',
+                    text: result.message
+                });
+
+            } else {
+
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: result.message
+                });
+            }
+
+        } catch (err) {
 
             Swal.fire({
                 icon: 'error',
                 title: 'Error',
-                text: result.message
+                text: err.message || 'Unable to confirm report.'
             });
+
+        } finally {
+
+            confirmBtn.disabled = false;
         }
 
         return;
@@ -638,20 +698,31 @@ document.addEventListener('click', async function (e) {
             }
         });
 
-        const response = await fetch(`/usg-report/send-whatsapp/${findingId}`, {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': csrfToken() }
-        });
+        try {
 
-        const result = await response.json();
+            const { result } = await fetchJson(`/usg-report/send-whatsapp/${findingId}`, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': csrfToken() }
+            });
 
-        whatsappBtn.disabled = false;
+            Swal.fire({
+                icon: result.status ? 'success' : 'error',
+                title: result.status ? 'Sent' : 'Error',
+                text: result.message
+            });
 
-        Swal.fire({
-            icon: result.status ? 'success' : 'error',
-            title: result.status ? 'Sent' : 'Error',
-            text: result.message
-        });
+        } catch (err) {
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: err.message || 'Unable to send WhatsApp message.'
+            });
+
+        } finally {
+
+            whatsappBtn.disabled = false;
+        }
     }
 });
 

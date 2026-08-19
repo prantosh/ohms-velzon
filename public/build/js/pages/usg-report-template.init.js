@@ -16,24 +16,56 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
+// Without an explicit Accept header, fetch() doesn't tell Laravel this is an
+// AJAX call -- a validation failure then 302-redirects to a normal HTML page
+// instead of returning JSON, response.json() throws, and (uncaught) whatever
+// loading indicator is showing stays stuck forever. This forces the Accept
+// header and turns a non-JSON response into a clear, catchable error instead.
+async function fetchJson(url, options = {}) {
+    const headers = Object.assign({ 'Accept': 'application/json' }, options.headers || {});
+    const response = await fetch(url, Object.assign({}, options, { headers }));
+
+    let result;
+    try {
+        result = await response.json();
+    } catch (e) {
+        throw new Error(`Unexpected server response (HTTP ${response.status}). Please try again.`);
+    }
+
+    return { response, result };
+}
+
 /*
 |--------------------------------------------------------------------------
 | RICH-TEXT EDITORS -- Clinical History / Findings / Impression
 |--------------------------------------------------------------------------
 */
 
-const { ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo } = CKEDITOR;
+const {
+    ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
+    Table, TableToolbar, TableProperties, TableCellProperties
+} = CKEDITOR;
 
 const USG_EDITOR_CONFIG = {
     licenseKey: 'GPL',
-    plugins: [Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo],
+    plugins: [
+        Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
+        Table, TableToolbar, TableProperties, TableCellProperties
+    ],
     toolbar: [
         'bold', 'italic', 'underline', '|',
         'alignment', '|',
         'fontSize', '|',
         'bulletedList', 'numberedList', '|',
+        'insertTable', '|',
         'undo', 'redo'
-    ]
+    ],
+    table: {
+        contentToolbar: [
+            'tableColumn', 'tableRow', 'mergeTableCells',
+            'tableProperties', 'tableCellProperties'
+        ]
+    }
 };
 
 let usgEditors = {};
@@ -66,8 +98,7 @@ let usgEditorsReady = initUsgTemplateEditors();
 
 async function loadCopyFromOptions() {
 
-    const response = await fetch('/usg-report-template/all');
-    const result = await response.json();
+    const { result } = await fetchJson('/usg-report-template/all');
 
     let select = document.querySelector('#copy-from-field');
 
@@ -92,8 +123,7 @@ document.querySelector('#copy-from-field').addEventListener('change', async func
 
     await usgEditorsReady;
 
-    const response = await fetch(`/usg-report-template/edit/${id}`);
-    const result = await response.json();
+    const { result } = await fetchJson(`/usg-report-template/edit/${id}`);
 
     if (result.status) {
         document.querySelector('#title-field').value = result.data.title;
@@ -110,11 +140,9 @@ document.querySelector('#copy-from-field').addEventListener('change', async func
 async function loadTemplates(page = 1) {
     currentPage = page;
 
-    const response = await fetch(
+    const { result } = await fetchJson(
         `/usg-report-template/list?page=${page}&per_page=${perPage}&search=${encodeURIComponent(searchTerm)}`
     );
-
-    const result = await response.json();
 
     let tbody = document.querySelector('#templateTable tbody');
 
@@ -194,62 +222,73 @@ document.querySelector('.tablelist-form').addEventListener('submit', async funct
         }
     });
 
-    await usgEditorsReady;
+    let form = this;
 
-    let editId = document.querySelector('#edit-id').value;
+    try {
 
-    let formData = new FormData();
+        await usgEditorsReady;
 
-    formData.append('title', document.querySelector('#title-field').value);
-    formData.append('item_code_sub', document.querySelector('#item_code_sub-field').value);
-    formData.append('clinical_history', usgEditors.clinical_history.getData());
-    formData.append('findings', usgEditors.findings.getData());
-    formData.append('impression', usgEditors.impression.getData());
-    formData.append('status', document.querySelector('#status-field').value);
+        let editId = document.querySelector('#edit-id').value;
 
-    let url = '/usg-report-template/store';
+        let formData = new FormData();
 
-    if (editId) {
-        url = `/usg-report-template/update/${editId}`;
-    }
+        formData.append('title', document.querySelector('#title-field').value);
+        formData.append('item_code_sub', document.querySelector('#item_code_sub-field').value);
+        formData.append('clinical_history', usgEditors.clinical_history.getData());
+        formData.append('findings', usgEditors.findings.getData());
+        formData.append('impression', usgEditors.impression.getData());
+        formData.append('status', document.querySelector('#status-field').value);
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': csrfToken()
-        },
-        body: formData
-    });
+        let url = '/usg-report-template/store';
 
-    const result = await response.json();
+        if (editId) {
+            url = `/usg-report-template/update/${editId}`;
+        }
 
-    if (!response.ok || !result.status) {
+        const { response, result } = await fetchJson(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken()
+            },
+            body: formData
+        });
 
-        let errorText = result.errors
-            ? Object.values(result.errors).flat().join(', ')
-            : (result.message ?? 'Unable to save template.');
+        if (!response.ok || !result.status) {
+
+            let errorText = result.errors
+                ? Object.values(result.errors).flat().join(', ')
+                : (result.message ?? 'Unable to save template.');
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: errorText
+            });
+
+            return;
+        }
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Success',
+            text: result.message
+        });
+
+        bootstrap.Modal.getInstance(document.getElementById('showModal')).hide();
+
+        form.reset();
+
+        loadTemplates(currentPage);
+        loadCopyFromOptions();
+
+    } catch (err) {
 
         Swal.fire({
             icon: 'error',
             title: 'Error',
-            text: errorText
+            text: err.message || 'Unable to save template.'
         });
-
-        return;
     }
-
-    Swal.fire({
-        icon: 'success',
-        title: 'Success',
-        text: result.message
-    });
-
-    bootstrap.Modal.getInstance(document.getElementById('showModal')).hide();
-
-    this.reset();
-
-    loadTemplates(currentPage);
-    loadCopyFromOptions();
 });
 
 document.getElementById('showModal').addEventListener('hidden.bs.modal', async function () {
@@ -306,8 +345,7 @@ document.addEventListener('click', async function (e) {
 
         await usgEditorsReady;
 
-        const response = await fetch(`/usg-report-template/edit/${id}`);
-        const result = await response.json();
+        const { result } = await fetchJson(`/usg-report-template/edit/${id}`);
 
         if (result.status) {
             document.querySelector('#title-field').value = result.data.title;
@@ -339,14 +377,12 @@ document.addEventListener('click', async function (e) {
 
         if (!confirm.isConfirmed) return;
 
-        let response = await fetch(`/usg-report-template/delete/${id}`, {
+        const { result } = await fetchJson(`/usg-report-template/delete/${id}`, {
             method: 'DELETE',
             headers: {
                 'X-CSRF-TOKEN': csrfToken()
             }
         });
-
-        let result = await response.json();
 
         Swal.fire({
             icon: result.status ? 'success' : 'error',
