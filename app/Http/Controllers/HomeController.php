@@ -622,20 +622,45 @@ class HomeController extends Controller
         }
 
         if ($request->file('avatar')) {
-            $avatar = $request->file('avatar');
-            $avatarName = time() . '.' . $avatar->getClientOriginalExtension();
-            $avatarPath = public_path('/images/');
-            $avatar->move($avatarPath, $avatarName);
-            $user->avatar = $avatarName;
 
-            // Keep the Users master dashboard (which reads user_image) in sync
-            // with the photo uploaded here.
-            $userImageDir = public_path('uploads/users');
-            if (!is_dir($userImageDir)) {
-                mkdir($userImageDir, 0755, true);
+            try {
+
+                $avatar = $request->file('avatar');
+                $avatarName = time() . '.' . $avatar->getClientOriginalExtension();
+
+                $avatarPath = public_path('/images/');
+                if (!is_dir($avatarPath)) {
+                    mkdir($avatarPath, 0755, true);
+                }
+
+                $avatar->move($avatarPath, $avatarName);
+                $user->avatar = $avatarName;
+
+                // Keep the Users master dashboard (which reads user_image) in sync
+                // with the photo uploaded here.
+                $userImageDir = public_path('uploads/users');
+                if (!is_dir($userImageDir)) {
+                    mkdir($userImageDir, 0755, true);
+                }
+                copy($avatarPath . $avatarName, $userImageDir . '/' . $avatarName);
+                $user->user_image = $avatarName;
+
+            } catch (\Exception $e) {
+
+                // A folder-permission problem here must not also wipe out
+                // the rest of this save (name/email/etc. were already valid
+                // and about to be persisted below) -- log it for the admin
+                // to investigate and tell the user plainly what happened,
+                // instead of leaking a raw exception as an unhandled 500.
+                \Log::error('Profile picture upload failed: ' . $e->getMessage());
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Could not save the profile picture (a server folder permission issue). '
+                        . 'Your other profile details were not saved -- please try again without a picture, '
+                        . 'or contact the administrator.',
+                ], 500);
             }
-            copy($avatarPath . $avatarName, $userImageDir . '/' . $avatarName);
-            $user->user_image = $avatarName;
         }
 
         $user->save();
