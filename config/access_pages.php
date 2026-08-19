@@ -83,6 +83,8 @@ return [
     'users' => 'User Management',
     'usg-report' => 'USG Report',
     'usg-report-template' => 'USG Report Template Master',
+    'cardiology-report' => 'Cardiology Report',
+    'cardiology-report-template' => 'Cardiology Report Template Master',
     'whatsapp-auto-send-settings' => 'WhatsApp Auto-Send Settings',
     'whatsapp-message-report' => 'WhatsApp Message Report',
 ];

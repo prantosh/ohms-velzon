@@ -20,7 +20,7 @@ class WhatsappMessageTypeRegistry
         'INVOICE', 'TEST_REPORT', 'APPOINTMENT',
         'OTP_APPOINTMENT_BOOKING', 'OTP_FORGOT_PASSWORD', 'OTP',
         'DOCTOR_APPOINTMENT_REASSIGNED', 'DOCTOR_SCHEDULE_CHANGE',
-        'NON_PATHOLOGY_REPORT', 'USG_REPORT',
+        'NON_PATHOLOGY_REPORT', 'USG_REPORT', 'CARDIOLOGY_REPORT',
     ];
 
     public const TYPE_LABELS = [
@@ -36,6 +36,7 @@ class WhatsappMessageTypeRegistry
         'DOCTOR_SCHEDULE_CHANGE' => 'Doctor Schedule Change',
         'NON_PATHOLOGY_REPORT' => 'Non-Pathology Report',
         'USG_REPORT' => 'USG Report',
+        'CARDIOLOGY_REPORT' => 'Cardiology (Echo) Report',
     ];
 
     /**

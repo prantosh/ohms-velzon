@@ -39,6 +39,8 @@ use App\Http\Controllers\DetailRangeMasterController;
 use App\Http\Controllers\TestParameterController;
 use App\Http\Controllers\TestResultEntryController;
 use App\Http\Controllers\UsgReportController;
+use App\Http\Controllers\CardiologyReportTemplateController;
+use App\Http\Controllers\CardiologyReportController;
 use App\Http\Controllers\NonPathologyReportController;
 use App\Http\Controllers\TestReportDashboardController;
 use App\Http\Controllers\DiagnosticTestReportController;
@@ -1865,6 +1867,55 @@ Route::prefix('usg-report-template')->group(function () {
 
 });
 
+Route::prefix('cardiology-report-template')->group(function () {
+
+    Route::get(
+        '/',
+        [CardiologyReportTemplateController::class, 'index']
+    )->name('cardiology-report-template.index');
+
+    Route::get(
+        '/list',
+        [CardiologyReportTemplateController::class, 'list']
+    );
+
+    Route::post(
+        '/store',
+        [CardiologyReportTemplateController::class, 'store']
+    );
+
+    Route::get(
+        '/edit/{id}',
+        [CardiologyReportTemplateController::class, 'edit']
+    );
+
+    Route::post(
+        '/update/{id}',
+        [CardiologyReportTemplateController::class, 'update']
+    );
+
+    Route::delete(
+        '/delete/{id}',
+        [CardiologyReportTemplateController::class, 'destroy']
+    );
+
+    // Lightweight lookup used by the Cardiology report entry screen's
+    // template picker -- deliberately separate from the paginated admin
+    // /list above.
+    Route::get(
+        '/for-study/{itemCodeSub}',
+        [CardiologyReportTemplateController::class, 'forStudy']
+    );
+
+    // Lightweight, unpaginated listing used by the "Copy from existing
+    // template" picker in the Add Template modal.
+    Route::get(
+        '/all',
+        [CardiologyReportTemplateController::class, 'all']
+    );
+
+});
+
 Route::prefix('test-report-template')->group(function () {
 
     Route::get(
@@ -2456,6 +2507,52 @@ Route::middleware(['auth'])->prefix('usg-report')->group(function () {
         '/send-whatsapp/{id}',
         [UsgReportController::class, 'sendWhatsapp']
     )->name('usg-report.send-whatsapp');
+
+});
+
+// Standalone Cardiology (2D-Echo) live-entry dashboard -- mirrors the
+// usg-report group above (one report per billed ECHO line).
+Route::middleware(['auth'])->prefix('cardiology-report')->group(function () {
+
+    Route::get(
+        '/',
+        [CardiologyReportController::class, 'index']
+    )->name('cardiology-report.index');
+
+    Route::get(
+        '/list',
+        [CardiologyReportController::class, 'list']
+    )->name('cardiology-report.list');
+
+    Route::post(
+        '/search',
+        [CardiologyReportController::class, 'search']
+    )->name('cardiology-report.search');
+
+    Route::post(
+        '/save',
+        [CardiologyReportController::class, 'store']
+    )->name('cardiology-report.save');
+
+    Route::post(
+        '/preview',
+        [CardiologyReportController::class, 'preview']
+    )->name('cardiology-report.preview');
+
+    Route::post(
+        '/confirm',
+        [CardiologyReportController::class, 'confirm']
+    )->name('cardiology-report.confirm');
+
+    Route::get(
+        '/print/{id}',
+        [CardiologyReportController::class, 'printReport']
+    )->name('cardiology-report.print');
+
+    Route::post(
+        '/send-whatsapp/{id}',
+        [CardiologyReportController::class, 'sendWhatsapp']
+    )->name('cardiology-report.send-whatsapp');
 
 });
 

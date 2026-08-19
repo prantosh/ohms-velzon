@@ -85,6 +85,12 @@ class NonPathologyReportController extends Controller
             })
             ->where('d.invoice_no', $invoice->invoice_no)
             ->whereIn('d.item_code', $this->qualifyingItemCodes())
+            // The 6 real Echo sub-items of CRD001 have their own dedicated
+            // structured module now (CardiologyReportController) -- excluded
+            // here so the two systems don't both claim the same line. The
+            // other CRD001 sub-items (ECG, Holter, ABPM, Sleep Study) are
+            // untouched and keep using this generic system.
+            ->whereNotIn('d.item_code_sub', \App\Support\CardiologyReportFields::ITEM_CODE_SUBS)
             ->where('iid.is_outsourced', 0)
             ->orderBy('d.line_no')
             ->get([
@@ -145,6 +151,7 @@ class NonPathologyReportController extends Controller
         $line = DB::table('invoice_details')
             ->where('id', $request->invoice_detail_id)
             ->whereIn('item_code', $this->qualifyingItemCodes())
+            ->whereNotIn('item_code_sub', \App\Support\CardiologyReportFields::ITEM_CODE_SUBS)
             ->first();
 
         if (!$line) {

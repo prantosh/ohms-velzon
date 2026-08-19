@@ -125,6 +125,7 @@ return [
 
     'USG_REPORT'          => 'USG Report',
     'NON_PATHOLOGY_REPORT' => 'Non-Pathology Report',
+    'CARDIOLOGY_REPORT' => 'Cardiology Report',
 
     'DIAGNOSTIC_TEST_REPORT' => 'Diagnostic Test Report',
 
@@ -151,6 +152,7 @@ return [
 
     'TEST_GROUP_MASTER' => 'Test Group Master',
     'USG_REPORT_TEMPLATE' => 'USG Report Template',
+    'CARDIOLOGY_REPORT_TEMPLATE' => 'Cardiology Report Template',
     'TEST_REPORT_TEMPLATE' => 'Test Report Template',
 
     'TEST_SUB_GROUP' => 'Test Sub Group',
