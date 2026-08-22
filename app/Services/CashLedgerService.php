@@ -551,12 +551,27 @@ class CashLedgerService
             return strcmp((string) $timeA, (string) $timeB);
         });
 
+        // A doctor-payment or refund row can reference an invoice raised
+        // outside this date range (see the settlement-date comment above),
+        // so $invoiceByNo alone isn't a complete lookup -- fetch due_amount
+        // fresh for every invoice_no actually appearing in the ledger.
+        $dueAmountByInvoiceNo = DB::table('invoices')
+            ->whereIn('invoice_no', collect($ledger)->pluck('invoice_no')->unique())
+            ->pluck('due_amount', 'invoice_no');
+
         foreach ($ledger as &$row) {
 
             $time = $row['receive_time'] ?? $row['refund_time'] ?? $row['doctor_settlement_time'];
 
             $row['invoice_date_fmt'] = $row['invoice_date'] ? Carbon::parse($row['invoice_date'])->format('d-m-Y') : '-';
             $row['time_fmt'] = $time ? Carbon::parse($time)->format('h:i A') : '-';
+
+            // Mirrors ItemWiseReportController::decorateDetailRow()'s
+            // payment_status convention -- 'Partial' when the invoice still
+            // has a due balance, blank otherwise (fully paid invoices don't
+            // need a status called out on the deposit slip).
+            $dueAmount = (float) ($dueAmountByInvoiceNo[$row['invoice_no']] ?? 0);
+            $row['payment_status'] = $dueAmount > 0 ? 'Partial' : '';
         }
         unset($row);
 

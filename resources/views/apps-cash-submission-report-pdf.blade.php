@@ -244,18 +244,19 @@ $groupPairs = collect($groupBreakdown)->chunk(2);
 
 <thead>
 <tr>
-    <th colspan="7" style="text-align:left; background-color:#e6e6e6;">
+    <th colspan="8" style="text-align:left; background-color:#e6e6e6;">
         {{ $user->name }} &mdash; Daily Cash Submission Ledger for {{ $date->format('d-m-Y (l)') }}
     </th>
 </tr>
 <tr>
     <th width="12%">Invoice No</th>
-    <th width="15%">Category</th>
-    <th width="10%">Txn No</th>
-    <th width="25%">Txn From/To</th>
-    <th width="9%">Time</th>
-    <th width="10%">Amount</th>
-    <th width="19%">Type</th>
+    <th width="9%">Payment Status</th>
+    <th width="14%">Category</th>
+    <th width="9%">Txn No</th>
+    <th width="22%">Txn From/To</th>
+    <th width="8%">Time</th>
+    <th width="9%">Amount</th>
+    <th width="17%">Type</th>
 </tr>
 </thead>
 
@@ -264,6 +265,7 @@ $groupPairs = collect($groupBreakdown)->chunk(2);
 @forelse($ledger as $row)
 <tr>
     <td>{{ $row['invoice_no'] }}</td>
+    <td class="text-center">{{ $row['payment_status'] }}</td>
     <td>{{ $row['category'] }}</td>
     <td>{{ $row['transaction_no'] }}</td>
     <td>{{ $row['transaction_to'] }}</td>
@@ -273,7 +275,7 @@ $groupPairs = collect($groupBreakdown)->chunk(2);
 </tr>
 @empty
 <tr>
-    <td colspan="7" class="text-center">No cash transactions found for this date.</td>
+    <td colspan="8" class="text-center">No cash transactions found for this date.</td>
 </tr>
 @endforelse
 
