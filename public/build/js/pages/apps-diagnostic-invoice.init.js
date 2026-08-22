@@ -1969,9 +1969,15 @@ function calculateTotal() {
                 detailRow.find('.additionalDiscountAmount').val()
             ) || 0;
 
+        // Must mirror the per-line .amount calculation in the
+        // standardDiscount/additionalDiscountPercent handler above (and
+        // DiagnosticInvoiceController::roundToNearestTen() server-side) --
+        // otherwise Gross Amount (summed from already-rounded .amount
+        // fields) and Total Discount disagree by the rounding difference
+        // whenever a percent discount doesn't land on an exact multiple of 10.
         totalDiscount +=
-            ((rate * standard) / 100)
-            + ((rate * addlPercent) / 100)
+            roundToNearestTen((rate * standard) / 100)
+            + roundToNearestTen((rate * addlPercent) / 100)
             + addlAmount;
     });
 
