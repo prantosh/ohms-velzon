@@ -112,6 +112,11 @@ class CashLedgerService
         $cashRefunded = round((float) $cashRefunded, 2);
         $cashPaidToDoctors = round((float) $cashPaidToDoctors, 2);
 
+        // Outstanding balance across this user's own invoices in the range --
+        // used by User History's "Pending Payments" column. Additive only;
+        // every other existing caller of buildSummary() ignores unknown keys.
+        $dueAmount = round((float) (clone $invoiceQuery)->sum('due_amount'), 2);
+
         return [
             'invoice_count' => $invoiceCount,
             'cash_collected' => $cashCollected,
@@ -119,6 +124,7 @@ class CashLedgerService
             'cash_refunded' => $cashRefunded,
             'cash_paid_to_doctors' => $cashPaidToDoctors,
             'net_cash_to_deposit' => round($cashCollected - $cashRefunded - $cashPaidToDoctors, 2),
+            'due_amount' => $dueAmount,
         ];
     }
 

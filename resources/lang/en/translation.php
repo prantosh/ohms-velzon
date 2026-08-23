@@ -38,6 +38,9 @@ return [
     "membershipfeeratemaster" => "Membership Fee Rate Master",
     "membershipfeecollection" => "Membership Fee Collection",
     "patienthistory" => "Patient History",
+    "userhistory" => "User History",
+    "doctoractivityhistory" => "Doctor History",
+    "history" => "History",
 
     "inventory" => "Inventory",
     "inventorycategorymaster" => "Inventory Category Master",

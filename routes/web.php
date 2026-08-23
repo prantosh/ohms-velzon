@@ -49,6 +49,8 @@ use App\Http\Controllers\AmbulanceRentalController;
 use App\Http\Controllers\MembershipFeeRateController;
 use App\Http\Controllers\MembershipFeeController;
 use App\Http\Controllers\PatientHistoryController;
+use App\Http\Controllers\UserHistoryController;
+use App\Http\Controllers\DoctorActivityHistoryController;
 use App\Http\Controllers\InventoryCategoryController;
 use App\Http\Controllers\InventoryItemController;
 use App\Http\Controllers\PurchaseOrderController;
@@ -1214,6 +1216,50 @@ Route::middleware(['auth'])->prefix('patient-history')->group(function () {
     Route::post(
         '/update-patient',
         [PatientHistoryController::class, 'updatePatient']
+    );
+
+});
+
+// Per-staff-user activity history (one row per day + login/logout log) --
+// mirrors patient-history's shape/auth-gating above.
+Route::middleware(['auth'])->prefix('user-history')->group(function () {
+
+    Route::get(
+        '/',
+        [UserHistoryController::class, 'index']
+    )->name('user-history.index');
+
+    Route::post(
+        '/get-daily-summary',
+        [UserHistoryController::class, 'getDailySummary']
+    );
+
+    Route::post(
+        '/get-day-detail',
+        [UserHistoryController::class, 'getDayDetail']
+    );
+
+    Route::post(
+        '/get-login-logs',
+        [UserHistoryController::class, 'getLoginLogs']
+    );
+
+});
+
+// Per-doctor activity history (appointments, consultation invoices,
+// diagnostic-test referral involvement, settlements received) -- distinct
+// from doctor-history above (DoctorHistoryController, an admin multi-doctor
+// visit report); mirrors patient-history's shape/auth-gating.
+Route::middleware(['auth'])->prefix('doctor-activity-history')->group(function () {
+
+    Route::get(
+        '/',
+        [DoctorActivityHistoryController::class, 'index']
+    )->name('doctor-activity-history.index');
+
+    Route::post(
+        '/get-history',
+        [DoctorActivityHistoryController::class, 'getHistory']
     );
 
 });

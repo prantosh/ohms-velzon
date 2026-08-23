@@ -61,6 +61,8 @@ return [
     'note-master' => 'Note Master',
     'patient-card' => 'Patient Card Master',
     'patient-history' => 'Patient History',
+    'user-history' => 'User History',
+    'doctor-activity-history' => 'Doctor History',
     'purchase-order' => 'Purchase Order',
     'purchase-order-report' => 'Purchase Order Report',
     'remarks-master' => 'Remarks Master',

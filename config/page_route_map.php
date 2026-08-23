@@ -55,6 +55,8 @@ return [
     'membership-fee-rate.index' => 'membership-fee-rate',
     'membership-fee.index' => 'membership-fee',
     'patient-history.index' => 'patient-history',
+    'user-history.index' => 'user-history',
+    'doctor-activity-history.index' => 'doctor-activity-history',
 
     'inventory-category.index' => 'inventory-category',
     'inventory-item.index' => 'inventory-item',
