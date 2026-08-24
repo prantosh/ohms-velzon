@@ -220,6 +220,7 @@
                                 <option value="note">Note Master</option>
                                 <option value="microscopy">Microscopy Master</option>
                                 <option value="impression">Impression Master</option>
+                                <option value="finding">Finding Master</option>
                             </select>
 
                         </div>

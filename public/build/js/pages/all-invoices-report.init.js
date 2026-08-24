@@ -31,6 +31,10 @@ function currentUserId() {
     return document.getElementById('user_id-field').value;
 }
 
+function currentInvoiceType() {
+    return document.getElementById('invoice_type-field').value;
+}
+
 function statusBadge(row) {
     if (row.is_cancelled) {
         return '<span class="badge bg-danger-subtle text-danger">Cancelled</span>';
@@ -64,6 +68,7 @@ async function loadTab(tabKey, page = 1) {
         tab: tabKey,
         search: currentSearch(),
         user_id: currentUserId(),
+        invoice_type: currentInvoiceType(),
         per_page: state.perPage,
         page: page,
     });
@@ -123,6 +128,7 @@ async function loadCounts() {
         date: date,
         search: currentSearch(),
         user_id: currentUserId(),
+        invoice_type: currentInvoiceType(),
     });
 
     const response = await fetch(`/all-invoices-report/counts?${params.toString()}`);

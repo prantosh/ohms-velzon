@@ -1,6 +1,15 @@
 let currentPage = 1;
 let lastPage = 1;
 
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]').content;
 }
@@ -116,12 +125,25 @@ async function loadReports(page = 1) {
             `;
         }
 
+        if (row.can_edit_patient_name) {
+            actions += `
+            <button class="btn btn-sm btn-soft-dark edit-patient-name-btn me-1"
+                    data-id="${row.id}"
+                    data-current-name="${escapeHtml(row.patient_name ?? '')}"
+                    title="Fix Patient Name (typo correction)">
+                <i class="ri-edit-line"></i>
+            </button>
+            `;
+        }
+
         let blockDeliver = row.result_status === 'Pending' && !row.report_delivered_at;
 
         actions += `
             <button class="btn btn-sm ${row.report_delivered_at ? 'btn-soft-secondary' : 'btn-soft-primary'} toggle-delivered-btn"
                     data-id="${row.id}"
                     data-delivered="${row.report_delivered_at ? '1' : '0'}"
+                    data-payment-status="${row.payment_status}"
+                    data-due-amount="${row.due_amount}"
                     title="${blockDeliver ? 'No test results entered yet' : (row.report_delivered_at ? 'Mark as Not Delivered' : 'Mark as Delivered')}"
                     ${blockDeliver ? 'disabled' : ''}>
                 <i class="ri-${row.report_delivered_at ? 'close-circle-line' : 'checkbox-circle-line'}"></i>
@@ -224,18 +246,77 @@ document.getElementById('reportTableBody').addEventListener('click', async funct
         return;
     }
 
+    let editNameBtn = e.target.closest('.edit-patient-name-btn');
+    if (editNameBtn) {
+
+        let id = editNameBtn.dataset.id;
+        let currentName = editNameBtn.dataset.currentName;
+
+        const { value: newName } = await Swal.fire({
+            icon: 'warning',
+            title: 'Fix Patient Name',
+            html: 'Correcting a typo made during invoice creation. This permanently updates the patient\'s master record.',
+            input: 'text',
+            inputValue: currentName,
+            inputLabel: 'Corrected Patient Name',
+            showCancelButton: true,
+            confirmButtonText: 'Update',
+            inputValidator: (value) => {
+                if (!value || !value.trim()) return 'Patient name cannot be empty.';
+            }
+        });
+
+        if (!newName) return;
+
+        const response = await fetch(`/test-report-dashboard/update-patient-name/${id}`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken(),
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ patient_name: newName.trim() }),
+        });
+
+        const result = await response.json();
+
+        if (!result.status) {
+            Swal.fire({ icon: 'error', title: 'Error', text: result.message ?? 'Unable to update patient name.' });
+            return;
+        }
+
+        Swal.fire({ icon: 'success', title: 'Updated', text: 'Patient name has been updated.', timer: 1500, showConfirmButton: false });
+
+        loadReports(currentPage);
+
+        return;
+    }
+
     let toggleBtn = e.target.closest('.toggle-delivered-btn');
     if (toggleBtn && !toggleBtn.disabled) {
 
         let id = toggleBtn.dataset.id;
         let currentlyDelivered = toggleBtn.dataset.delivered === '1';
+        let paymentStatus = toggleBtn.dataset.paymentStatus;
+        let dueAmount = parseFloat(toggleBtn.dataset.dueAmount || '0');
 
-        Swal.fire({
-            icon: 'question',
-            title: currentlyDelivered ? 'Mark as not delivered?' : 'Mark this report as delivered?',
-            showCancelButton: true,
-            confirmButtonText: 'Yes',
-        }).then(async function (confirmResult) {
+        let confirmPromise = (!currentlyDelivered && paymentStatus === 'Partial')
+            ? Swal.fire({
+                icon: 'warning',
+                title: 'Payment is Partial',
+                html: `This invoice still has a due amount of <b>&#8377;${dueAmount.toFixed(2)}</b>.<br>Are you sure you want to mark the report as delivered?`,
+                showCancelButton: true,
+                confirmButtonText: 'Yes, Mark as Delivered',
+                confirmButtonColor: '#f7b84b',
+            })
+            : Swal.fire({
+                icon: 'question',
+                title: currentlyDelivered ? 'Mark as not delivered?' : 'Mark this report as delivered?',
+                showCancelButton: true,
+                confirmButtonText: 'Yes',
+            });
+
+        confirmPromise.then(async function (confirmResult) {
 
             if (!confirmResult.isConfirmed) return;
 

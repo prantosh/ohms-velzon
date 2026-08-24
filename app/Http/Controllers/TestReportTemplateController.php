@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FindingMaster;
 use App\Models\ImpressionMaster;
 use App\Models\InstrumentMaster;
 use App\Models\InvoiceItemDetail;
@@ -13,6 +14,7 @@ use App\Models\TestExtraFieldType;
 use App\Models\TestReportTemplate;
 use App\Models\TestReportTemplateValue;
 use App\Services\AuditService;
+use App\Services\HtmlSanitizerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +48,7 @@ class TestReportTemplateController extends Controller
             'note' => NoteMaster::where('status', 'ACTIVE')->orderBy('name')->pluck('name'),
             'microscopy' => MicroscopyMaster::where('status', 'ACTIVE')->orderBy('name')->pluck('name'),
             'impression' => ImpressionMaster::where('status', 'ACTIVE')->orderBy('name')->pluck('name'),
+            'finding' => FindingMaster::where('status', 'ACTIVE')->orderBy('name')->pluck('name'),
         ];
 
         $extraFieldTypes = $extraFieldTypes->map(function ($fieldType) use ($masterOptions) {
@@ -116,7 +119,7 @@ class TestReportTemplateController extends Controller
 
                 'title' => trim($data['title']),
                 'item_code_sub' => $data['item_code_sub'],
-                'remarks' => $data['remarks'] ?? null,
+                'remarks' => HtmlSanitizerService::sanitizeClinicalText($data['remarks'] ?? null),
                 'status' => $data['status'],
 
                 'created_by' => Auth::id(),
@@ -185,7 +188,7 @@ class TestReportTemplateController extends Controller
 
                 'title' => trim($data['title']),
                 'item_code_sub' => $data['item_code_sub'],
-                'remarks' => $data['remarks'] ?? null,
+                'remarks' => HtmlSanitizerService::sanitizeClinicalText($data['remarks'] ?? null),
                 'status' => $data['status'],
 
                 'updated_by' => Auth::id(),
@@ -309,9 +312,23 @@ class TestReportTemplateController extends Controller
     {
         TestReportTemplateValue::where('test_report_template_id', $template->id)->delete();
 
+        // TEXTAREA-type parameters are edited via CKEditor on the form (rich
+        // HTML) -- SELECT/TEXT ones are a plain option/typed string and
+        // don't need (or want) HTML sanitizing.
+        $inputTypesByFieldId = TestExtraFieldType::whereIn(
+            'id',
+            collect($parameters)->pluck('field_type_id')
+        )->pluck('input_type', 'id');
+
         foreach ($parameters as $param) {
 
-            $value = trim((string) ($param['value'] ?? ''));
+            $rawValue = (string) ($param['value'] ?? '');
+
+            $isTextarea = $inputTypesByFieldId->get($param['field_type_id']) === 'TEXTAREA';
+
+            $value = $isTextarea
+                ? (HtmlSanitizerService::sanitizeClinicalText($rawValue) ?? '')
+                : trim($rawValue);
 
             if ($value === '') {
                 continue;

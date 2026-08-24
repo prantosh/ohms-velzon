@@ -10,6 +10,7 @@ use App\Models\KitMaster;
 use App\Models\NoteMaster;
 use App\Models\MicroscopyMaster;
 use App\Models\ImpressionMaster;
+use App\Models\FindingMaster;
 use App\Models\TestAnalyte;
 use App\Models\TestExtraFieldType;
 use App\Models\TestReportConfirmation;
@@ -41,6 +42,7 @@ class TestResultEntryController extends Controller
             'note' => NoteMaster::where('status', 'ACTIVE')->orderBy('name')->pluck('name'),
             'microscopy' => MicroscopyMaster::where('status', 'ACTIVE')->orderBy('name')->pluck('name'),
             'impression' => ImpressionMaster::where('status', 'ACTIVE')->orderBy('name')->pluck('name'),
+            'finding' => FindingMaster::where('status', 'ACTIVE')->orderBy('name')->pluck('name'),
         ];
 
         $extraFieldTypes = $extraFieldTypes->map(function ($fieldType) use ($masterOptions) {

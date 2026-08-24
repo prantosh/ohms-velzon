@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\NoteMaster;
+use App\Models\FindingMaster;
 use App\Services\AuditService;
 use App\Services\HtmlSanitizerService;
 use Illuminate\Http\Request;
@@ -11,20 +11,20 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Exception;
 
-class NoteMasterController extends Controller
+class FindingMasterController extends Controller
 {
-    private const MODULE_CODE = 'NOTE_MASTER';
+    private const MODULE_CODE = 'FINDING_MASTER';
 
     public function index()
     {
-        return view('apps-note-master');
+        return view('apps-finding-master');
     }
 
     public function list(Request $request)
     {
         $perPage = $request->get('per_page', 10);
 
-        $query = NoteMaster::query();
+        $query = FindingMaster::query();
 
         if ($request->filled('search')) {
 
@@ -51,7 +51,7 @@ class NoteMasterController extends Controller
     public function store(Request $request, AuditService $auditService)
     {
         $request->validate([
-            'name' => 'required|max:50000|unique:note_masters,name',
+            'name' => 'required|max:50000|unique:finding_masters,name',
             'status' => 'required|in:ACTIVE,INACTIVE'
         ]);
 
@@ -59,7 +59,7 @@ class NoteMasterController extends Controller
 
         try {
 
-            $row = NoteMaster::create([
+            $row = FindingMaster::create([
 
                 'name' => HtmlSanitizerService::sanitizeClinicalText($request->name) ?? '',
 
@@ -76,12 +76,12 @@ class NoteMasterController extends Controller
                 self::MODULE_CODE,
                 $row,
                 $row->only($row->getFillable()),
-                'Note created'
+                'Finding created'
             );
 
             return response()->json([
                 'status' => true,
-                'message' => 'Note created successfully.'
+                'message' => 'Finding created successfully.'
             ]);
 
         } catch (Exception $e) {
@@ -92,14 +92,14 @@ class NoteMasterController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => 'Unable to save note.'
+                'message' => 'Unable to save finding.'
             ], 500);
         }
     }
 
     public function edit($id)
     {
-        $row = NoteMaster::findOrFail($id);
+        $row = FindingMaster::findOrFail($id);
 
         return response()->json([
             'status' => true,
@@ -110,7 +110,7 @@ class NoteMasterController extends Controller
     public function update(Request $request, $id, AuditService $auditService)
     {
         $request->validate([
-            'name' => 'required|max:50000|unique:note_masters,name,' . $id,
+            'name' => 'required|max:50000|unique:finding_masters,name,' . $id,
             'status' => 'required|in:ACTIVE,INACTIVE'
         ]);
 
@@ -118,7 +118,7 @@ class NoteMasterController extends Controller
 
         try {
 
-            $row = NoteMaster::findOrFail($id);
+            $row = FindingMaster::findOrFail($id);
 
             $oldData = $row->only($row->getFillable());
 
@@ -138,12 +138,12 @@ class NoteMasterController extends Controller
                 $row,
                 $oldData,
                 $row->only($row->getFillable()),
-                'Note updated'
+                'Finding updated'
             );
 
             return response()->json([
                 'status' => true,
-                'message' => 'Note updated successfully.'
+                'message' => 'Finding updated successfully.'
             ]);
 
         } catch (Exception $e) {
@@ -154,7 +154,7 @@ class NoteMasterController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => 'Unable to update note.'
+                'message' => 'Unable to update finding.'
             ], 500);
         }
     }
@@ -163,7 +163,7 @@ class NoteMasterController extends Controller
     {
         try {
 
-            $row = NoteMaster::findOrFail($id);
+            $row = FindingMaster::findOrFail($id);
 
             $oldData = $row->only($row->getFillable());
 
@@ -173,12 +173,12 @@ class NoteMasterController extends Controller
                 self::MODULE_CODE,
                 $row,
                 $oldData,
-                'Note deleted'
+                'Finding deleted'
             );
 
             return response()->json([
                 'status' => true,
-                'message' => 'Note deleted successfully.'
+                'message' => 'Finding deleted successfully.'
             ]);
 
         } catch (Exception $e) {
@@ -187,7 +187,7 @@ class NoteMasterController extends Controller
 
             return response()->json([
                 'status' => false,
-                'message' => 'Unable to delete note.'
+                'message' => 'Unable to delete finding.'
             ], 500);
         }
     }

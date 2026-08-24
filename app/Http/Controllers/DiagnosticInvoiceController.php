@@ -19,11 +19,42 @@ use App\Models\User;
 use App\Models\WhatsappAutoSendSetting;
 use App\Mail\DiscountApprovedMail;
 use App\Services\AuditService;
+use App\Services\PatientIdentityGuard;
 use Illuminate\Support\Facades\Log;
 class DiagnosticInvoiceController extends Controller
 {
     private const MODULE_CODE = 'DIAGNOSTIC_INVOICE';
     private const PATIENT_MODULE_CODE = 'PATIENT';
+
+    /**
+     * Above this many billable test rows, the invoice PDF falls back to
+     * the original (STANDARD) content layout instead of the compacted
+     * SHORT one.
+     */
+    private const PDF_SHORT_MAX_TESTS = 4;
+
+    /**
+     * The page itself stays standard A4 either way -- SHORT invoices
+     * print on ordinary A4 paper, not a custom/half-sized sheet, so no
+     * special printer paper-tray setup is ever needed. What changes for
+     * SHORT is only the CONTENT: apps-diagnostic-invoice-pdf.blade.php
+     * compacts it (7px font, 1-2px cell padding, tight margins) so it
+     * naturally ends well within the top half of the A4 page -- html
+     * content height is independent of the page's total height, so it
+     * lands in the top ~420.94pt (half of A4's 841.89pt height) and
+     * leaves the rest of the sheet blank. Empirically verified: the
+     * worst case within the 6-test budget (6 test rows, all 3 payment
+     * phases populated -- initial + phase 1 + phase 2 -- with long
+     * wrapping test descriptions) fits in well under that half-height
+     * budget with room to spare.
+     */
+
+    private PatientIdentityGuard $identityGuard;
+
+    public function __construct(PatientIdentityGuard $identityGuard)
+    {
+        $this->identityGuard = $identityGuard;
+    }
 
     /**
      * A patient qualifies for the member-tier discount if a Member/Supervisor
@@ -181,7 +212,11 @@ class DiagnosticInvoiceController extends Controller
 
                     ->get();
 
-            $invoices->transform(function ($row) {
+            $protectedUsers = $this->identityGuard->protectedUsersForMobiles(
+                $invoices->pluck('patient_mobile_no')
+            );
+
+            $invoices->transform(function ($row) use ($protectedUsers) {
 
                 $row->invoice_date = $row->invoice_date
                     ? \Carbon\Carbon::parse($row->invoice_date)->format('d-m-Y')
@@ -190,6 +225,11 @@ class DiagnosticInvoiceController extends Controller
                 $row->test_date = $row->test_date
                     ? \Carbon\Carbon::parse($row->test_date)->format('d-m-Y')
                     : null;
+
+                // Quick typo-fix eligibility -- see PatientIdentityGuard.
+                // Skipped for cancelled rows, which show no action buttons.
+                $row->can_edit_patient_name = $row->cancelled !== 'Y'
+                    && !$this->identityGuard->isProtected($row->patient_mobile_no, $row->patient_name, $protectedUsers);
 
                 return $row;
             });
@@ -1245,20 +1285,25 @@ class DiagnosticInvoiceController extends Controller
                     return $row;
                 });
 
+            $paperSize = $this->invoicePdfPaperSize($tests->count());
+
             $pdf =
                 Pdf::loadView(
                     'apps-diagnostic-invoice-pdf',
                     [
                         'invoice' => $invoice,
-                        'tests' => $tests
+                        'tests' => $tests,
+                        'paperSize' => $paperSize,
                     ]
                 );
+
+            $this->applyInvoicePdfPaperSize($pdf, $paperSize);
 
             $pdfPath =
                 public_path(
                     'invoices/' . $fileName
                 );
-           
+
             $pdf->save($pdfPath);
            
             /*
@@ -2384,10 +2429,14 @@ class DiagnosticInvoiceController extends Controller
                 return $row;
             });
 
+        $paperSize = $this->invoicePdfPaperSize($tests->count());
+
         $pdf = Pdf::loadView(
             'apps-diagnostic-invoice-pdf',
-            compact('invoice', 'tests')
+            compact('invoice', 'tests', 'paperSize')
         );
+
+        $this->applyInvoicePdfPaperSize($pdf, $paperSize);
 
         $safeFileName =
             str_replace(
@@ -2397,6 +2446,27 @@ class DiagnosticInvoiceController extends Controller
             ) . '.pdf';
 
         return $pdf->stream($safeFileName);
+    }
+
+    /**
+     * @see self::PDF_SHORT_MAX_TESTS
+     */
+    private function invoicePdfPaperSize(int $testCount): string
+    {
+        return $testCount <= self::PDF_SHORT_MAX_TESTS ? 'SHORT' : 'STANDARD';
+    }
+
+    /**
+     * @see self::PDF_SHORT_WIDTH_PT
+     */
+    /**
+     * The page is always standard A4 -- $paperSize (SHORT/STANDARD) only
+     * controls the view's content compacting, not the physical page size.
+     * @see self::PDF_SHORT_MAX_TESTS
+     */
+    private function applyInvoicePdfPaperSize($pdf, string $paperSize): void
+    {
+        $pdf->setPaper('A4', 'portrait');
     }
 
     // Every percent-based discount (Standard Discount %, Additional Discount

@@ -145,47 +145,6 @@ $netCashInWords = ucwords($netCashFormatter->format((float) ($summary['net_cash_
 </table>
 
 <!-- =======================================================
-     DOCTOR PAYMENTS (CASH) MADE BY THIS USER
-======================================================= -->
-
-<table>
-
-<thead>
-<tr>
-    <th colspan="5" style="text-align:left; background-color:#e6e6e6;">
-        Doctor Payments Made (Cash) By {{ $user->name }} On {{ $date->format('d-m-Y') }}
-    </th>
-</tr>
-<tr>
-    <th>Invoice No</th>
-    <th>Doctor</th>
-    <th>Settlement No</th>
-    <th width="12%">Time</th>
-    <th width="15%">Amount</th>
-</tr>
-</thead>
-
-<tbody>
-
-@forelse($doctorPayments as $row)
-<tr>
-    <td>{{ $row['invoice_no'] }}</td>
-    <td>{{ $row['doctor_name'] }}</td>
-    <td>{{ $row['settlement_no'] }}</td>
-    <td>{{ $row['settlement_time'] }}</td>
-    <td class="text-end amt-negative">{{ fmtMoney4($row['amount']) }}</td>
-</tr>
-@empty
-<tr>
-    <td colspan="5" class="text-center">No cash payments made to doctors by this user on this date.</td>
-</tr>
-@endforelse
-
-</tbody>
-
-</table>
-
-<!-- =======================================================
      GROUP-WISE CASH DEPOSIT BREAKDOWN
 ======================================================= -->
 
@@ -244,19 +203,20 @@ $groupPairs = collect($groupBreakdown)->chunk(2);
 
 <thead>
 <tr>
-    <th colspan="8" style="text-align:left; background-color:#e6e6e6;">
+    <th colspan="9" style="text-align:left; background-color:#e6e6e6;">
         {{ $user->name }} &mdash; Daily Cash Submission Ledger for {{ $date->format('d-m-Y (l)') }}
     </th>
 </tr>
 <tr>
     <th width="12%">Invoice No</th>
-    <th width="9%">Payment Status</th>
-    <th width="14%">Category</th>
-    <th width="9%">Txn No</th>
-    <th width="22%">Txn From/To</th>
-    <th width="8%">Time</th>
+    <th width="8%">Payment Status</th>
+    <th width="13%">Category</th>
+    <th width="8%">Txn No</th>
+    <th width="20%">Txn From/To</th>
+    <th width="7%">Time</th>
     <th width="9%">Amount</th>
-    <th width="17%">Type</th>
+    <th width="15%">Type</th>
+    <th width="8%">Payment Mode</th>
 </tr>
 </thead>
 
@@ -272,10 +232,11 @@ $groupPairs = collect($groupBreakdown)->chunk(2);
     <td>{{ $row['time_fmt'] }}</td>
     <td class="text-end {{ $row['amount'] >= 0 ? 'amt-positive' : 'amt-negative' }}">{{ fmtMoney4($row['amount']) }}</td>
     <td>{{ $row['type'] }}</td>
+    <td>{{ $row['type'] === 'Collection' ? $row['payment_mode'] : '' }}</td>
 </tr>
 @empty
 <tr>
-    <td colspan="8" class="text-center">No cash transactions found for this date.</td>
+    <td colspan="9" class="text-center">No cash transactions found for this date.</td>
 </tr>
 @endforelse
 

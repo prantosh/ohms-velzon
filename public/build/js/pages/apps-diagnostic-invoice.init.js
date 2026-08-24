@@ -8,6 +8,16 @@ window.isSeniorCitizen = false;
 window.isEmployeeMember = false;
 window.isInHousePatient = false;
 
+function escapeHtml(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // Populated per-category by the .category change handler; reused for
 // client-side test-package expansion without extra AJAX round-trips.
 let testsByCategory = {};
@@ -147,6 +157,16 @@ function loadInvoices() {
 
                                 </a>
 
+                                ${row.can_edit_patient_name ? `
+                                <button
+                                    class="btn btn-dark btn-sm editPatientNameBtn"
+                                    data-id="${row.id}"
+                                    data-current-name="${escapeHtml(row.patient_name ?? '')}"
+                                    title="Fix Patient Name (typo correction)">
+                                    <i class="ri-user-settings-line"></i>
+                                </button>
+                                ` : ''}
+
                                 <a
                                     href="/diagnostic-invoice/print/${row.id}"
                                     target="_blank"
@@ -270,6 +290,65 @@ function loadPatientDoctorVisits(patientId) {
         }
     );
 }
+$(document).on(
+    'click',
+    '.editPatientNameBtn',
+    function () {
+
+        let id = $(this).data('id');
+        let currentName = $(this).data('currentName');
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Fix Patient Name',
+            html: 'Correcting a typo made during invoice creation. This permanently updates the patient\'s master record.',
+            input: 'text',
+            inputValue: currentName,
+            inputLabel: 'Corrected Patient Name',
+            showCancelButton: true,
+            confirmButtonText: 'Update',
+            inputValidator: function (value) {
+                if (!value || !value.trim()) return 'Patient name cannot be empty.';
+            }
+        }).then(function (result) {
+
+            if (!result.isConfirmed || !result.value) return;
+
+            $.ajax({
+
+                url: '/test-report-dashboard/update-patient-name/' + id,
+
+                type: 'POST',
+
+                data: {
+                    patient_name: result.value.trim(),
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                },
+
+                success: function (response) {
+
+                    if (!response.status) {
+                        Swal.fire({ icon: 'error', title: 'Error', text: response.message || 'Unable to update patient name.' });
+                        return;
+                    }
+
+                    Swal.fire({ icon: 'success', title: 'Updated', text: 'Patient name has been updated.', timer: 1500, showConfirmButton: false });
+
+                    loadInvoices();
+                },
+
+                error: function (xhr) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: xhr.responseJSON?.message || 'Unable to update patient name.'
+                    });
+                }
+            });
+        });
+    }
+);
+
 $(document).on(
     'click',
     '.resendWhatsapp',

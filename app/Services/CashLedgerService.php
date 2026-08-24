@@ -410,11 +410,15 @@ class CashLedgerService
 
             if ($txn->payment_mode !== 'Cash') {
                 $nonCashCollected += $amount;
-                continue;
+            } else {
+                $cashCollected += $amount;
             }
 
-            $cashCollected += $amount;
-
+            // Non-cash collections are included here too (not just cash) so
+            // the ledger's detail rows can be reconciled against BOTH the
+            // Cash Collected and Non-Cash Collected summary figures above --
+            // previously only cash rows were shown, leaving Non-Cash
+            // Collected with no supporting detail on the printed slip.
             $ledger[] = [
                 'type' => 'Collection',
                 'invoice_no' => $invoice->invoice_no,
@@ -427,6 +431,7 @@ class CashLedgerService
                 'doctor_settlement_time' => null,
                 'refund_time' => null,
                 'amount' => $amount,
+                'payment_mode' => $txn->payment_mode,
             ];
         }
 
@@ -440,7 +445,7 @@ class CashLedgerService
             ->where('transaction_type', 'REFUND')
             ->where('payment_mode', 'Cash')
             ->whereIn('invoice_reference', $invoiceByNo->keys())
-            ->get(['transaction_no', 'invoice_reference', 'patient_name', 'refund_amount', 'created_at']);
+            ->get(['transaction_no', 'invoice_reference', 'patient_name', 'refund_amount', 'created_at', 'payment_mode']);
 
         foreach ($refunds as $refund) {
 
@@ -462,6 +467,7 @@ class CashLedgerService
                 'doctor_settlement_time' => null,
                 'refund_time' => $refund->created_at,
                 'amount' => -$amount,
+                'payment_mode' => $refund->payment_mode,
             ];
         }
 
@@ -491,6 +497,7 @@ class CashLedgerService
                 'doctor_settlement_items.created_at as item_created_at',
                 'doctor_settlements.settlement_no',
                 'doctor_settlements.doctor_name',
+                'doctor_settlements.payment_mode',
             ]);
 
         $doctorPaymentInvoiceDates = DB::table('invoices')
@@ -521,6 +528,7 @@ class CashLedgerService
                 'doctor_settlement_time' => $payment->item_created_at,
                 'refund_time' => null,
                 'amount' => -$amount,
+                'payment_mode' => $payment->payment_mode,
             ];
 
             $doctorPaymentDetail[] = [
@@ -539,9 +547,19 @@ class CashLedgerService
         | GROUP-WISE CASH DEPOSIT BREAKDOWN
         | (invoice_details -> reporting_group_items -> reporting_groups)
         |----------------------------------------------------------------
+        | $ledger now also carries non-cash Collection rows (for the
+        | printed ledger's own detail/reconciliation against Non-Cash
+        | Collected -- see the loop above), but this breakdown's Total row
+        | is printed directly against net_cash_to_deposit, so it must stay
+        | cash-only or it would silently inflate past that figure.
         */
 
-        $groupBreakdown = $this->allocateLedgerToReportingGroups($ledger);
+        $cashOnlyLedger = array_values(array_filter(
+            $ledger,
+            fn($row) => strtoupper((string) $row['payment_mode']) === 'CASH'
+        ));
+
+        $groupBreakdown = $this->allocateLedgerToReportingGroups($cashOnlyLedger);
 
         /*
         |----------------------------------------------------------------
@@ -565,6 +583,8 @@ class CashLedgerService
             ->whereIn('invoice_no', collect($ledger)->pluck('invoice_no')->unique())
             ->pluck('due_amount', 'invoice_no');
 
+        $categoryByInvoiceNo = $this->resolveLedgerCategories($ledger);
+
         foreach ($ledger as &$row) {
 
             $time = $row['receive_time'] ?? $row['refund_time'] ?? $row['doctor_settlement_time'];
@@ -578,6 +598,14 @@ class CashLedgerService
             // need a status called out on the deposit slip).
             $dueAmount = (float) ($dueAmountByInvoiceNo[$row['invoice_no']] ?? 0);
             $row['payment_status'] = $dueAmount > 0 ? 'Partial' : '';
+
+            // Real invoice_item_masters.item_name (e.g. "Pathology", "USG",
+            // "Doctor Visit") instead of the coarser INVOICE_TYPE_LABELS
+            // value each row started with -- matches what "Category Wise
+            // Summary" already shows elsewhere on this same dashboard.
+            if (isset($categoryByInvoiceNo[$row['invoice_no']])) {
+                $row['category'] = $categoryByInvoiceNo[$row['invoice_no']];
+            }
         }
         unset($row);
 
@@ -699,5 +727,63 @@ class CashLedgerService
             ->all();
 
         return $breakdown;
+    }
+
+    /**
+     * invoice_item_masters.item_name per invoice_no appearing in the
+     * ledger -- e.g. "Pathology", "USG", "Doctor Visit" -- for display in
+     * the ledger's Category column. DIAGNOSTIC invoices are resolved from
+     * their real invoice_details.item_code line items (comma-joined when
+     * one invoice mixes categories, e.g. Pathology + X-Ray); every other
+     * invoice type has no invoice_details row at all, so it's resolved via
+     * FALLBACK_ITEM_CODE_BY_INVOICE_TYPE instead -- the same fixed
+     * item_code buildCategoryWiseSummary() already uses for those types.
+     *
+     * @return array<string,string> [invoice_no => item_name]
+     */
+    private function resolveLedgerCategories(array $ledger): array
+    {
+        $invoiceTypeByNo = collect($ledger)->pluck('invoice_type', 'invoice_no');
+
+        $itemCodeToName = DB::table('invoice_item_masters')->pluck('item_name', 'item_code');
+
+        $categories = [];
+
+        foreach ($invoiceTypeByNo as $invoiceNo => $invoiceType) {
+
+            $fallbackCode = self::FALLBACK_ITEM_CODE_BY_INVOICE_TYPE[$invoiceType] ?? null;
+
+            if ($fallbackCode) {
+                $categories[$invoiceNo] = $itemCodeToName[$fallbackCode] ?? $invoiceType;
+            }
+        }
+
+        $diagnosticInvoiceNos = collect($invoiceTypeByNo)
+            ->filter(fn($type) => $type === 'DIAGNOSTIC')
+            ->keys();
+
+        if ($diagnosticInvoiceNos->isNotEmpty()) {
+
+            $detailRows = DB::table('invoice_details')
+                ->whereIn('invoice_no', $diagnosticInvoiceNos)
+                ->select('invoice_no', 'item_code')
+                ->distinct()
+                ->get();
+
+            foreach ($detailRows->groupBy('invoice_no') as $invoiceNo => $rows) {
+
+                $names = $rows->pluck('item_code')
+                    ->map(fn($code) => $itemCodeToName[$code] ?? null)
+                    ->filter()
+                    ->unique()
+                    ->values();
+
+                if ($names->isNotEmpty()) {
+                    $categories[$invoiceNo] = $names->implode(', ');
+                }
+            }
+        }
+
+        return $categories;
     }
 }

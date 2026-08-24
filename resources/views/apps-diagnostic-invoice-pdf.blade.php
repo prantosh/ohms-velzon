@@ -22,23 +22,33 @@ function fmtDateTime($date)
         ? ''
         : \Carbon\Carbon::parse($date)->format('d-m-Y h:i:s A' );
 }
+
+// Short invoices (6 or fewer billable tests) print on ordinary A4 paper
+// like every other invoice -- only the content is compacted so it
+// naturally lands within the top half of the page (html content height
+// doesn't depend on the page's total height), leaving the rest blank.
+// See DiagnosticInvoiceController's paper-size decision, which counts
+// the same $tests collection this view renders. Defaults to STANDARD so
+// any other caller that doesn't pass $paperSize keeps the original
+// (uncompacted) layout.
+$isShort = ($paperSize ?? 'STANDARD') === 'SHORT';
 @endphp
                 <style>
 
                     @page {
-                            margin-top: 1in;
-                            margin-right: 40px;
-                            margin-bottom: 40px;
-                            margin-left: 40px;
+                            margin-top: {{ $isShort ? '8mm' : '1in' }};
+                            margin-right: {{ $isShort ? '8mm' : '40px' }};
+                            margin-bottom: {{ $isShort ? '8mm' : '40px' }};
+                            margin-left: {{ $isShort ? '8mm' : '40px' }};
                         }
 
                     @page :first {
-                            margin-top: 0.4in;
+                            margin-top: {{ $isShort ? '4mm' : '0.4in' }};
                         }
 
                     body {
                         font-family: DejaVu Sans, sans-serif;
-                        font-size: 12px;
+                        font-size: {{ $isShort ? '10px' : '12px' }};
                         color: #000;
                         margin: 0;
                         padding: 0;
@@ -65,13 +75,13 @@ function fmtDateTime($date)
                     table {
                         width: 100%;
                         border-collapse: collapse;
-                        margin-top: 10px;
+                        margin-top: {{ $isShort ? '3px' : '10px' }};
                     }
 
                         table th,
                         table td {
                             border: none;
-                            padding: 6px;
+                            padding: {{ $isShort ? '1px 3px' : '6px' }};
                             vertical-align: top;
                         }
 
@@ -118,7 +128,7 @@ function fmtDateTime($date)
                     }
 
                     .signature-section {
-                        margin-top: 50px;
+                        margin-top: {{ $isShort ? '9px' : '50px' }};
                     }
 
                     .signature {
@@ -132,7 +142,72 @@ function fmtDateTime($date)
 
         <body>
 
-@include('partials.pdf-header', ['reportTitle' => 'INVOICE', 'headerColor' => '#003399'])
+@if($isShort)
+{{-- Header taken as-is from apps-doctor-visit-invoice-pdf.blade.php,
+     including its own badge/text sizing -- kept clear of the shared
+     partials.pdf-header (used by 42 other reports, and still used by
+     this same view's STANDARD/>6-test branch below). --}}
+
+<div style="position: fixed; top: 90px; left: 0; right: 0; text-align: center; opacity: 0.08;">
+    <img src="{{ public_path('images/abssrk_logo.png') }}" style="width: 380px;">
+</div>
+
+<table style="border:none; margin:0; width:100%;">
+
+    <tr>
+
+        <td style="width:15%; border:none; text-align:left; vertical-align:middle;">
+            <img src="{{ public_path('images/iso.jpg') }}" style="height:50px;">
+        </td>
+
+        <td style="width:70%; border:none; text-align:center; vertical-align:middle;">
+
+            <div style="font-size:14px; font-weight:bold; color:#003399; white-space:nowrap;">
+                Dr. Amitava Basu Smriti Swastha Raksha Kendra
+            </div>
+
+            <div style="font-size:13px; font-weight:bold; color:#003399; margin-top:2px;">
+                Srayan Apartment, 19, M B Road, Kolkata - 700049
+            </div>
+
+            <div style="font-size:10px; margin-top:2px;">
+                Web: www.abssrk.online; Phone: (033)2513-7070/7439, 2539-2009
+                Mob: 8585882287/9051132429/9051129713/9038721959
+            </div>
+
+        </td>
+
+        <td style="width:15%; border:none; text-align:right; vertical-align:middle;">
+            <img src="{{ public_path('images/nabl.jpg') }}" style="height:50px;">
+        </td>
+
+    </tr>
+
+    <tr>
+
+        <td colspan="3" style="border:none; text-align:center; padding-top:3px; padding-bottom:0;">
+            <div style="font-size:16px; font-weight:bold; color:#003399;">
+                INVOICE
+            </div>
+        </td>
+
+    </tr>
+
+    <tr>
+
+        <td colspan="3" style="border:none; text-align:right; padding-top:1px; padding-bottom:0; font-size:9px; color:#555;">
+            Printed On: {{ now()->format('d-m-Y h:i A') }}
+        </td>
+
+    </tr>
+
+</table>
+@else
+@include('partials.pdf-header', [
+    'reportTitle' => 'INVOICE',
+    'headerColor' => '#003399',
+])
+@endif
 
 
 
@@ -183,7 +258,7 @@ function fmtDateTime($date)
 </tr>
 </table>
 
-<br>
+<div style="height: {{ $isShort ? '2px' : '10px' }};"></div>
 
 <!-- =======================================================
      TEST DETAILS
@@ -547,7 +622,7 @@ Report can be obtained from Monday to Sunday after 7 P.M.
 
 </table>
 
-<br><br>
+<div style="height: {{ $isShort ? '3px' : '20px' }};"></div>
 
 <!-- =======================================================
      SIGNATURES
@@ -559,7 +634,7 @@ Report can be obtained from Monday to Sunday after 7 P.M.
 
 
 
-<td class="no-border text-left">
+<td class="no-border text-right">
 
 _____________________
 

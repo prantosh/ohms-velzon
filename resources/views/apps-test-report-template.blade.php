@@ -10,6 +10,8 @@
       rel="stylesheet"
       type="text/css" />
 
+<link href="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.css') }}" rel="stylesheet" type="text/css" />
+
 @endsection
 
 @section('content')
@@ -285,6 +287,8 @@
 @section('script')
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
+
+<script src="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.umd.js') }}"></script>
 
 <script src="{{ URL::asset('build/js/pages/test-report-template.init.js') }}"></script>
 

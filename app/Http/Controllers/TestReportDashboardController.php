@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Invoice;
 use App\Models\InvoiceItemMaster;
+use App\Models\Patient;
 use App\Models\TestReportConfirmation;
+use App\Models\TestReportDelivery;
 use App\Services\AuditService;
+use App\Services\PatientIdentityGuard;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -20,6 +23,13 @@ use Illuminate\Support\Facades\DB;
 class TestReportDashboardController extends Controller
 {
     private const MODULE_CODE = 'DIAGNOSTIC_TEST_REPORT';
+
+    private PatientIdentityGuard $identityGuard;
+
+    public function __construct(PatientIdentityGuard $identityGuard)
+    {
+        $this->identityGuard = $identityGuard;
+    }
 
     public function index()
     {
@@ -90,6 +100,17 @@ class TestReportDashboardController extends Controller
             return $this->toRow($invoice, $qualifyingItemCodes);
         });
 
+        $protectedUsers = $this->identityGuard->protectedUsersForMobiles($rows->pluck('patient_mobile_no'));
+
+        $rows = $rows->map(function ($row) use ($protectedUsers) {
+            $row['can_edit_patient_name'] = !$this->identityGuard->isProtected(
+                $row['patient_mobile_no'],
+                $row['patient_name'],
+                $protectedUsers
+            );
+            return $row;
+        });
+
         return response()->json([
             'status' => true,
             'data' => $rows,
@@ -146,9 +167,26 @@ class TestReportDashboardController extends Controller
             ], 422);
         }
 
+        $deliveredAt = now();
+
         $invoice->update([
-            'report_delivered_at' => now(),
+            'report_delivered_at' => $deliveredAt,
             'report_delivered_by' => Auth::id(),
+        ]);
+
+        // Append-only delivery log -- unmarking never removes a row here, so
+        // an invoice unmarked and re-delivered later ends up with more than
+        // one entry, which is exactly what the delivery report needs.
+        TestReportDelivery::create([
+            'invoice_id' => $invoice->id,
+            'invoice_no' => $invoice->invoice_no,
+            'patient_name' => $invoice->patient_name,
+            'patient_mobile_no' => $invoice->patient_mobile_no,
+            'total_amount' => $invoice->total_amount,
+            'paid_amount' => $invoice->paid_amount,
+            'due_amount' => $invoice->due_amount,
+            'delivered_by' => Auth::id(),
+            'delivered_at' => $deliveredAt,
         ]);
 
         $auditService->logAction(
@@ -162,6 +200,73 @@ class TestReportDashboardController extends Controller
             'status' => true,
             'delivered' => true,
             'message' => 'Marked as delivered.'
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PATIENT NAME CORRECTION (typo fix from invoice creation)
+    |--------------------------------------------------------------------------
+    */
+
+    public function updatePatientName(Request $request, $id, AuditService $auditService)
+    {
+        $request->validate([
+            'patient_name' => 'required|string|max:150',
+        ]);
+
+        $invoice = Invoice::where('invoice_type', 'DIAGNOSTIC')->findOrFail($id);
+
+        $protectedUsers = $this->identityGuard->protectedUsersForMobiles([$invoice->patient_mobile_no]);
+
+        if ($this->identityGuard->isProtected($invoice->patient_mobile_no, $invoice->patient_name, $protectedUsers)) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This patient matches a Member/Admin/Supervisor account (or one of their registered family members) and cannot be renamed here.',
+            ], 422);
+        }
+
+        $newName = trim($request->patient_name);
+
+        if ($newName === '') {
+            return response()->json(['status' => false, 'message' => 'Patient name cannot be empty.'], 422);
+        }
+
+        $oldName = $invoice->patient_name;
+
+        DB::beginTransaction();
+
+        try {
+
+            $invoice->update(['patient_name' => $newName]);
+
+            // The permanent fix -- the patients master row, matched the same
+            // way DiagnosticInvoiceController links an invoice back to it.
+            if ($invoice->patient_id) {
+                Patient::where('patient_id', $invoice->patient_id)->update(['patient_name' => $newName]);
+            }
+
+            DB::commit();
+
+        } catch (\Exception $e) {
+
+            DB::rollBack();
+
+            return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $invoice,
+            'CUSTOM',
+            "Patient name corrected from \"{$oldName}\" to \"{$newName}\""
+        );
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Patient name updated.',
+            'patient_name' => $newName,
         ]);
     }
 

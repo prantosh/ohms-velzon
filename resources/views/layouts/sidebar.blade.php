@@ -199,7 +199,7 @@
                             </li>
                             @if(is_null($allowedPages) || collect([
                                 'test-extra-field-type', 'instrument-master', 'kit-master',
-                                'note-master', 'microscopy-master', 'impression-master',
+                                'note-master', 'microscopy-master', 'impression-master', 'finding-master',
                                 'detail-range-master', 'sample-master', 'uom-master', 'remarks-master',
                             ])->intersect($allowedPages)->isNotEmpty())
                             <li class="nav-item">
@@ -549,6 +549,11 @@
                                         <a href="{{ route('cash-submission-report.index') }}" class="nav-link">@lang('translation.cashsubmissionreport')</a>
                                         </li>
                             @endif
+                            @if(is_null($allowedPages) || in_array('daily-cash-settlement', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('daily-cash-settlement.index') }}" class="nav-link">@lang('translation.dailycashsettlement')</a>
+                                        </li>
+                            @endif
                             @if(is_null($allowedPages) || in_array('employee-performance', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('employee-performance.index') }}" class="nav-link">@lang('translation.employeeperformance')</a>
@@ -587,6 +592,11 @@
                             @if(is_null($allowedPages) || in_array('all-invoices-report', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('all-invoices-report.index') }}" class="nav-link">@lang('translation.allinvoicesreport')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('test-report-delivery-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('test-report-delivery-report.index') }}" class="nav-link">@lang('translation.testreportdeliveryreport')</a>
                                         </li>
                             @endif
                             

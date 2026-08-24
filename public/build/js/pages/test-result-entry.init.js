@@ -41,6 +41,24 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
+// A <select><option> can only ever show plain text -- master entries
+// created via CKEditor (Note/Impression/Microscopy/Finding) may contain
+// HTML, which would otherwise show up as literal markup in the dropdown.
+// This is display-only: the option's value keeps the full original
+// content (including formatting), only the visible label is stripped
+// and, since a whole rich-text entry can run to paragraphs, truncated.
+function stripHtmlToText(html) {
+    if (!html) return '';
+    let tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return (tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim();
+}
+
+function optionLabel(value, maxLen = 150) {
+    let text = stripHtmlToText(value);
+    return text.length > maxLen ? text.slice(0, maxLen).trim() + '...' : text;
+}
+
 /*
 |--------------------------------------------------------------------------
 | RESULT ROWS (atomic tests, and analyte sub-rows within a panel test)
@@ -159,7 +177,7 @@ function renderExtraParamCard(invoiceDetailId, fieldTypeId, fieldName, inputType
         inputHtml = `
         <select class="form-select form-select-sm extra-param-input" ${inputsLocked() ? 'disabled' : ''}>
             <option value="">-- Select --</option>
-            ${options.map(o => `<option value="${escapeHtml(o)}" ${o === value ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
+            ${options.map(o => `<option value="${escapeHtml(o)}" ${o === value ? 'selected' : ''}>${escapeHtml(optionLabel(o))}</option>`).join('')}
         </select>
         `;
 

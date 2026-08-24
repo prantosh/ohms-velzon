@@ -14,7 +14,8 @@ function sourceMasterLabel(sourceMaster) {
         kit: 'Kit Master',
         note: 'Note Master',
         microscopy: 'Microscopy Master',
-        impression: 'Impression Master'
+        impression: 'Impression Master',
+        finding: 'Finding Master'
     };
 
     return labels[sourceMaster] ?? '';

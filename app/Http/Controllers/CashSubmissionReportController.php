@@ -135,7 +135,6 @@ class CashSubmissionReportController extends Controller
             [
                 'user' => $user,
                 'ledger' => $result['ledger'],
-                'doctorPayments' => $result['doctor_payments'],
                 'groupBreakdown' => $result['group_breakdown'],
                 'summary' => $result['summary'],
                 'date' => $date,

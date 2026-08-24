@@ -43,7 +43,9 @@ class AllInvoicesReportController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'role']);
 
-        return view('apps-all-invoices-report', compact('users'));
+        $invoiceTypes = self::INVOICE_TYPE_LABELS;
+
+        return view('apps-all-invoices-report', compact('users', 'invoiceTypes'));
     }
 
     /*
@@ -59,6 +61,7 @@ class AllInvoicesReportController extends Controller
             'tab' => 'required|in:all,pending,cancelled',
             'search' => 'nullable|string',
             'user_id' => 'nullable|string',
+            'invoice_type' => 'nullable|in:' . implode(',', array_merge(['ALL'], array_keys(self::INVOICE_TYPE_LABELS))),
         ]);
 
         if ($request->filled('user_id') && $request->user_id !== 'ALL') {
@@ -121,6 +124,7 @@ class AllInvoicesReportController extends Controller
             'date' => 'required|date',
             'search' => 'nullable|string',
             'user_id' => 'nullable|string',
+            'invoice_type' => 'nullable|in:' . implode(',', array_merge(['ALL'], array_keys(self::INVOICE_TYPE_LABELS))),
         ]);
 
         if ($request->filled('user_id') && $request->user_id !== 'ALL') {
@@ -175,6 +179,10 @@ class AllInvoicesReportController extends Controller
 
         if ($request->filled('user_id') && $request->user_id !== 'ALL') {
             $query->where('created_by', $request->user_id);
+        }
+
+        if ($request->filled('invoice_type') && $request->invoice_type !== 'ALL') {
+            $query->where('invoice_type', $request->invoice_type);
         }
 
         return $query;

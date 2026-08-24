@@ -10,6 +10,8 @@
       rel="stylesheet"
       type="text/css" />
 
+<link href="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.css') }}" rel="stylesheet" type="text/css" />
+
 @endsection
 
 @section('content')
@@ -184,8 +186,7 @@
                             <textarea id="name-field"
                                       class="form-control"
                                       rows="4"
-                                      maxlength="1000"
-                                      required></textarea>
+                                      maxlength="1000"></textarea>
 
                         </div>
 
@@ -227,6 +228,8 @@
 @section('script')
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
+
+<script src="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.umd.js') }}"></script>
 
 <script src="{{ URL::asset('build/js/pages/note-master.init.js') }}"></script>
 

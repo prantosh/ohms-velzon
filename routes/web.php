@@ -16,6 +16,8 @@ use App\Http\Controllers\DoctorHistoryController;
 use App\Http\Controllers\DoctorPayableController;
 use App\Http\Controllers\DoctorPayableByUserController;
 use App\Http\Controllers\DoctorSettlementController;
+use App\Http\Controllers\DailyCashSettlementController;
+use App\Http\Controllers\TestReportDeliveryReportController;
 use App\Http\Controllers\InvoiceItemMasterController;
 use App\Http\Controllers\InvoiceItemDetailController;
 use App\Http\Controllers\EquipmentCategoryController;
@@ -35,6 +37,7 @@ use App\Http\Controllers\NoteMasterController;
 use App\Http\Controllers\RemarksMasterController;
 use App\Http\Controllers\MicroscopyMasterController;
 use App\Http\Controllers\ImpressionMasterController;
+use App\Http\Controllers\FindingMasterController;
 use App\Http\Controllers\DetailRangeMasterController;
 use App\Http\Controllers\TestParameterController;
 use App\Http\Controllers\TestResultEntryController;
@@ -864,6 +867,46 @@ Route::middleware(['auth'])
 
 /*
 |--------------------------------------------------------------------------
+| Test Report Delivery Log (report over test_report_deliveries)
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware(['auth'])
+    ->prefix('test-report-delivery-report')
+    ->name('test-report-delivery-report.')
+    ->controller(TestReportDeliveryReportController::class)
+    ->group(function () {
+
+        Route::get('/', 'index')->name('index');
+
+        Route::get('/list', 'list')->name('list');
+
+        Route::get('/print', 'print')->name('print');
+
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Daily Cash Settlement (doctor-wise settled report, by user + day)
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware(['auth'])
+    ->prefix('daily-cash-settlement')
+    ->name('daily-cash-settlement.')
+    ->controller(DailyCashSettlementController::class)
+    ->group(function () {
+
+        Route::get('/', 'index')->name('index');
+
+        Route::get('/list', 'list')->name('list');
+
+        Route::get('/print', 'print')->name('print');
+
+    });
+
+/*
+|--------------------------------------------------------------------------
 | Doctor Payable (by User) Dashboard
 |--------------------------------------------------------------------------
 */
@@ -879,6 +922,10 @@ Route::middleware(['auth'])
         Route::get('/list', 'list')->name('list');
 
         Route::get('/print', 'print')->name('print');
+
+        Route::get('/daily-summary', 'dailySummary')->name('daily-summary');
+
+        Route::get('/print-daily-summary', 'printDailySummary')->name('print-daily-summary');
 
     });
 // Preview before saving
@@ -2342,6 +2389,40 @@ Route::prefix('impression-master')->group(function () {
 
 });
 
+Route::prefix('finding-master')->group(function () {
+
+    Route::get(
+        '/',
+        [FindingMasterController::class, 'index']
+    )->name('finding-master.index');
+
+    Route::get(
+        '/list',
+        [FindingMasterController::class, 'list']
+    );
+
+    Route::post(
+        '/store',
+        [FindingMasterController::class, 'store']
+    );
+
+    Route::get(
+        '/edit/{id}',
+        [FindingMasterController::class, 'edit']
+    );
+
+    Route::post(
+        '/update/{id}',
+        [FindingMasterController::class, 'update']
+    );
+
+    Route::delete(
+        '/delete/{id}',
+        [FindingMasterController::class, 'destroy']
+    );
+
+});
+
 Route::prefix('detail-range-master')->group(function () {
 
     Route::get(
@@ -2670,6 +2751,11 @@ Route::middleware(['auth'])->prefix('test-report-dashboard')->group(function () 
         '/toggle-delivered/{id}',
         [TestReportDashboardController::class, 'toggleDelivered']
     )->name('test-report-dashboard.toggle-delivered');
+
+    Route::post(
+        '/update-patient-name/{id}',
+        [TestReportDashboardController::class, 'updatePatientName']
+    )->name('test-report-dashboard.update-patient-name');
 
 });
 

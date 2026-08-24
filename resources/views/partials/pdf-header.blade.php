@@ -6,14 +6,18 @@
     Optional 'compact' (default false) -- shrinks the badge images and
     drops the web/phone line, for PDFs (e.g. the prescription pad) that
     need to save vertical space for content below the header.
+    Optional 'badgeHeight' -- explicit override in px for the badge image
+    height, for pages tighter than 'compact' alone accounts for (e.g. the
+    diagnostic invoice's SHORT/half-A4 page). Defaults to 35 (compact) or
+    55 (normal) when not passed.
     Optional 'watermarkWidth' / 'watermarkTop' (default 380 / 280, tuned
-    for A4) -- override for smaller page sizes, e.g. the A5 doctor visit
-    invoice, so the watermark stays proportionate instead of dominating
-    the page.
+    for A4) -- override for smaller page sizes, e.g. the diagnostic
+    invoice's SHORT page, so the watermark stays proportionate instead of
+    dominating the page.
 --}}
 @php
     $isCompact = $compact ?? false;
-    $badgeHeight = $isCompact ? 35 : 55;
+    $badgeHeight = $badgeHeight ?? ($isCompact ? 35 : 55);
     $watermarkWidth = $watermarkWidth ?? 380;
     $watermarkTop = $watermarkTop ?? 280;
 @endphp

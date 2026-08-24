@@ -53,7 +53,7 @@ class TestExtraFieldTypeController extends Controller
         $request->validate([
             'field_name' => 'required|max:100|unique:test_extra_field_types,field_name',
             'input_type' => 'required|in:TEXT,TEXTAREA,SELECT',
-            'source_master' => 'required_if:input_type,SELECT|nullable|in:instrument,kit,note,microscopy,impression',
+            'source_master' => 'required_if:input_type,SELECT|nullable|in:instrument,kit,note,microscopy,impression,finding',
             'sort_order' => 'nullable|integer',
             'status' => 'required|in:ACTIVE,INACTIVE'
         ]);
@@ -121,7 +121,7 @@ class TestExtraFieldTypeController extends Controller
         $request->validate([
             'field_name' => 'required|max:100|unique:test_extra_field_types,field_name,' . $id,
             'input_type' => 'required|in:TEXT,TEXTAREA,SELECT',
-            'source_master' => 'required_if:input_type,SELECT|nullable|in:instrument,kit,note,microscopy,impression',
+            'source_master' => 'required_if:input_type,SELECT|nullable|in:instrument,kit,note,microscopy,impression,finding',
             'sort_order' => 'nullable|integer',
             'status' => 'required|in:ACTIVE,INACTIVE'
         ]);

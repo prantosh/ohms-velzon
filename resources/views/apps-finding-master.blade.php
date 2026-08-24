@@ -1,7 +1,7 @@
 @extends('layouts.master')
 
 @section('title')
-    Microscopy Master
+    Finding Master
 @endsection
 
 @section('css')
@@ -23,7 +23,7 @@
     @endslot
 
     @slot('title')
-        Microscopy Master
+        Finding Master
     @endslot
 
 @endcomponent
@@ -65,7 +65,7 @@
             <input type="text"
                    id="searchInput"
                    class="form-control form-control-sm"
-                   placeholder="Search microscopy">
+                   placeholder="Search finding">
         </div>
 
     </div>
@@ -76,10 +76,10 @@
                 class="btn btn-primary"
                 data-bs-toggle="modal"
                 data-bs-target="#showModal"
-                id="addMicroscopyBtn">
+                id="addFindingBtn">
 
             <i class="ri-add-line align-bottom me-1"></i>
-            Add Microscopy
+            Add Finding
 
         </button>
 
@@ -92,7 +92,7 @@
                 <div class="table-responsive">
 
                     <table class="table table-bordered align-middle"
-                           id="microscopyTable">
+                           id="findingTable">
 
                         <thead class="table-light">
 
@@ -102,7 +102,7 @@
                                 <input type="checkbox">
                             </th>
 
-                            <th>Microscopy</th>
+                            <th>Finding</th>
                             <th width="120">Status</th>
                             <th width="120">Action</th>
 
@@ -156,7 +156,7 @@
             <div class="modal-header bg-light p-3">
 
                 <h5 class="modal-title" id="modal-title">
-                    Add Microscopy
+                    Add Finding
                 </h5>
 
                 <button type="button"
@@ -179,7 +179,7 @@
                         <div class="col-md-12 mb-3">
 
                             <label class="form-label">
-                                Microscopy
+                                Finding
                                 <span class="text-danger">*</span>
                             </label>
 
@@ -211,7 +211,7 @@
 
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
 
-                    <button type="submit" class="btn btn-success" id="add-btn">Save Microscopy</button>
+                    <button type="submit" class="btn btn-success" id="add-btn">Save Finding</button>
 
                 </div>
 
@@ -231,6 +231,6 @@
 
 <script src="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.umd.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/microscopy-master.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/finding-master.init.js') }}"></script>
 
 @endsection

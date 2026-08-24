@@ -37,7 +37,7 @@ async function fetchJson(url, options = {}) {
 
 /*
 |--------------------------------------------------------------------------
-| RICH-TEXT EDITOR -- Note content
+| RICH-TEXT EDITOR -- Finding content
 |--------------------------------------------------------------------------
 */
 
@@ -82,14 +82,14 @@ function toEditorHtml(text) {
     return text.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('');
 }
 
-async function loadNotes(page = 1) {
+async function loadFindings(page = 1) {
     currentPage = page;
 
     const { result } = await fetchJson(
-        `/note-master/list?page=${page}&per_page=${perPage}&search=${encodeURIComponent(searchTerm)}`
+        `/finding-master/list?page=${page}&per_page=${perPage}&search=${encodeURIComponent(searchTerm)}`
     );
 
-    let tbody = document.querySelector('#noteTable tbody');
+    let tbody = document.querySelector('#findingTable tbody');
 
     tbody.innerHTML = '';
 
@@ -168,10 +168,10 @@ document.querySelector('.tablelist-form').addEventListener('submit', async funct
         formData.append('name', nameEditor.getData());
         formData.append('status', document.querySelector('#status-field').value);
 
-        let url = '/note-master/store';
+        let url = '/finding-master/store';
 
         if (editId) {
-            url = `/note-master/update/${editId}`;
+            url = `/finding-master/update/${editId}`;
         }
 
         const { response, result } = await fetchJson(url, {
@@ -186,7 +186,7 @@ document.querySelector('.tablelist-form').addEventListener('submit', async funct
 
             let errorText = result.errors
                 ? Object.values(result.errors).flat().join(', ')
-                : (result.message ?? 'Unable to save note.');
+                : (result.message ?? 'Unable to save finding.');
 
             Swal.fire({
                 icon: 'error',
@@ -207,14 +207,14 @@ document.querySelector('.tablelist-form').addEventListener('submit', async funct
 
         this.reset();
 
-        loadNotes(currentPage);
+        loadFindings(currentPage);
 
     } catch (err) {
 
         Swal.fire({
             icon: 'error',
             title: 'Error',
-            text: err.message || 'Unable to save note.'
+            text: err.message || 'Unable to save finding.'
         });
     }
 });
@@ -229,19 +229,19 @@ document.getElementById('showModal').addEventListener('hidden.bs.modal', functio
 
     document.querySelector('#edit-id').value = '';
 
-    document.querySelector('#modal-title').innerText = 'Add Note';
-    document.querySelector('#add-btn').innerText = 'Save Note';
+    document.querySelector('#modal-title').innerText = 'Add Finding';
+    document.querySelector('#add-btn').innerText = 'Save Finding';
 });
 
 document.addEventListener('click', async function (e) {
 
     if (e.target.closest('#prevPage')) {
-        if (currentPage > 1) loadNotes(currentPage - 1);
+        if (currentPage > 1) loadFindings(currentPage - 1);
         return;
     }
 
     if (e.target.closest('#nextPage')) {
-        if (currentPage < lastPage) loadNotes(currentPage + 1);
+        if (currentPage < lastPage) loadFindings(currentPage + 1);
         return;
     }
 
@@ -249,14 +249,14 @@ document.addEventListener('click', async function (e) {
 
     if (editBtn) {
 
-        document.querySelector('#modal-title').innerText = 'Update Note';
-        document.querySelector('#add-btn').innerText = 'Update Note';
+        document.querySelector('#modal-title').innerText = 'Update Finding';
+        document.querySelector('#add-btn').innerText = 'Update Finding';
 
         let id = editBtn.dataset.id;
 
         document.querySelector('#edit-id').value = id;
 
-        const { result } = await fetchJson(`/note-master/edit/${id}`);
+        const { result } = await fetchJson(`/finding-master/edit/${id}`);
 
         await nameEditorReady;
 
@@ -275,7 +275,7 @@ document.addEventListener('click', async function (e) {
         let id = deleteBtn.dataset.id;
 
         let confirm = await Swal.fire({
-            title: 'Delete this Note?',
+            title: 'Delete this Finding?',
             text: 'This record will be permanently deleted.',
             icon: 'warning',
             showCancelButton: true,
@@ -286,7 +286,7 @@ document.addEventListener('click', async function (e) {
 
         if (!confirm.isConfirmed) return;
 
-        const { result } = await fetchJson(`/note-master/delete/${id}`, {
+        const { result } = await fetchJson(`/finding-master/delete/${id}`, {
             method: 'DELETE',
             headers: {
                 'X-CSRF-TOKEN': csrfToken()
@@ -300,7 +300,7 @@ document.addEventListener('click', async function (e) {
         });
 
         if (result.status) {
-            loadNotes(currentPage);
+            loadFindings(currentPage);
         }
     }
 });
@@ -309,14 +309,14 @@ document.addEventListener('change', function (e) {
 
     if (e.target.id === 'perPage') {
         perPage = parseInt(e.target.value);
-        loadNotes(1);
+        loadFindings(1);
     }
 });
 
 document.getElementById('searchInput').addEventListener('input', function () {
 
     searchTerm = this.value;
-    loadNotes(1);
+    loadFindings(1);
 });
 
-loadNotes();
+loadFindings();

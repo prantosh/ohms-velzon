@@ -51,13 +51,14 @@ class DoctorPayableByUserController extends Controller
         $request->validate([
             'user_id' => 'required',
             'range' => 'nullable|in:3,7,30,6m,all',
+            'date' => 'nullable|date',
         ]);
 
         if ($request->user_id !== 'ALL') {
             $request->validate(['user_id' => 'exists:users,id']);
         }
 
-        $result = $this->buildDashboard($request->user_id, $request->range ?: '30');
+        $result = $this->buildDashboard($request->user_id, $request->range ?: '30', $request->date);
 
         return response()->json(array_merge(['status' => true], $result));
     }
@@ -73,13 +74,14 @@ class DoctorPayableByUserController extends Controller
         $request->validate([
             'user_id' => 'required',
             'range' => 'nullable|in:3,7,30,6m,all',
+            'date' => 'nullable|date',
         ]);
 
         if ($request->user_id !== 'ALL') {
             $request->validate(['user_id' => 'exists:users,id']);
         }
 
-        $result = $this->buildDashboard($request->user_id, $request->range ?: '30');
+        $result = $this->buildDashboard($request->user_id, $request->range ?: '30', $request->date);
 
         $isAllUsers = $request->user_id === 'ALL';
 
@@ -87,15 +89,22 @@ class DoctorPayableByUserController extends Controller
             ? 'All Users'
             : optional(User::find($request->user_id))->name;
 
-        // The printed slip is a pending payout worksheet only -- settled
-        // payables are already paid and don't need to be printed.
+        // Without a specific $date, the printed slip is a pending payout
+        // worksheet only -- settled payables are already paid and don't
+        // need to be printed for an open-ended range. Drilling into one
+        // specific day (from the daily summary's "Show Detail") is the
+        // opposite case -- the whole point is a printable record of what
+        // was actually settled that day, so the Settled section is
+        // included then.
         $pdf = Pdf::loadView(
             'apps-doctor-payable-by-user-pdf',
             [
                 'userLabel' => $userLabel,
                 'isAllUsers' => $isAllUsers,
-                'rangeLabel' => $result['range_label'],
+                'rangeLabel' => $request->date ? $result['date_fmt'] : $result['range_label'],
                 'pending' => $result['pending'],
+                'settled' => $result['settled'],
+                'showSettled' => (bool) $request->date,
                 'summary' => $result['summary'],
                 'printedBy' => optional(auth()->user())->name,
             ]
@@ -114,7 +123,7 @@ class DoctorPayableByUserController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    private function buildDashboard($userId, $range): array
+    private function buildDashboard($userId, $range, $date = null): array
     {
         $isAllUsers = $userId === 'ALL';
 
@@ -122,7 +131,7 @@ class DoctorPayableByUserController extends Controller
 
         /*
         |----------------------------------------------------------------
-        | PENDING (no date restriction). Split in two:
+        | UNSETTLED / PENDING. Split in two:
         |   - collected: doctor-inclusive amount already in a specific
         |     user's hand (due_amount = 0) -- attributed to that collector.
         |   - not yet collected (due_amount > 0): nobody's responsibility
@@ -130,30 +139,20 @@ class DoctorPayableByUserController extends Controller
         |     "COLLECTION DUE" marker instead of a name -- never attributed
         |     to a specific user's filtered view (see DoctorSettlementController
         |     for the same collected-vs-created distinction).
+        | $date (the "Show Detail" drill-down from the daily summary) scopes
+        | this to payables CREATED that day -- see buildDailySummaryRows()'s
+        | comment for why created_at is the shared date basis for both
+        | settled and unsettled.
         |----------------------------------------------------------------
         */
 
-        $pendingQuery = DB::table('doctor_payables')
-            ->join('invoices', 'doctor_payables.invoice_id', '=', 'invoices.id')
-            ->joinSub(
-                $this->finalCollectorSubquery(),
-                'fc',
-                'fc.invoice_reference',
-                '=',
-                'invoices.invoice_no'
-            )
-            ->whereIn('doctor_payables.payment_status', ['PENDING', 'APPROVED']);
+        $pendingQuery = $this->pendingBaseQuery($userId, $isAllUsers);
 
-        if (!$isAllUsers) {
-            $pendingQuery->where('invoices.due_amount', 0)
-                ->whereRaw(
-                    'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',
-                    [$userId]
-                );
+        if ($date) {
+            $pendingQuery->whereDate('doctor_payables.created_at', $date);
         }
 
         $pending = $pendingQuery
-            ->where('doctor_payables.payable_amount', '>', 0)
             ->orderByDesc('doctor_payables.created_at')
             ->get([
                 'doctor_payables.id', 'doctor_payables.payable_no', 'doctor_payables.invoice_id',
@@ -183,39 +182,21 @@ class DoctorPayableByUserController extends Controller
 
         /*
         |----------------------------------------------------------------
-        | SETTLED (payment_status PAID, filtered by the last settlement's
-        | own date -- not the invoice date -- within the selected window)
+        | SETTLED (payment_status PAID). $date (the "Show Detail" drill-down)
+        | scopes this to payables CREATED that day -- same created_at basis
+        | as the unsettled query above, so both lists on a "Show Detail"
+        | page describe the same day's business, not two different date
+        | concepts. Without a $date, falls back to the range cutoff against
+        | last_settlement_date (unused by the current UI, kept only for any
+        | other caller of buildDashboard()).
         |----------------------------------------------------------------
         */
 
-        $settledQuery = DB::table('doctor_payables')
-            ->join('invoices', 'doctor_payables.invoice_id', '=', 'invoices.id')
-            ->joinSub(
-                $this->finalCollectorSubquery(),
-                'fc',
-                'fc.invoice_reference',
-                '=',
-                'invoices.invoice_no'
-            )
-            ->where('invoices.due_amount', 0)
-            ->where('doctor_payables.payment_status', 'PAID');
+        $settledQuery = $this->settledBaseQuery($userId, $isAllUsers);
 
-        if (!$isAllUsers) {
-            $settledQuery->whereRaw(
-                'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',
-                [$userId]
-            );
-        }
-
-        $cutoff = match ($range) {
-            '3' => Carbon::now()->subDays(3)->startOfDay(),
-            '7' => Carbon::now()->subDays(7)->startOfDay(),
-            '30' => Carbon::now()->subDays(30)->startOfDay(),
-            '6m' => Carbon::now()->subMonths(6)->startOfDay(),
-            default => null,
-        };
-
-        if ($cutoff) {
+        if ($date) {
+            $settledQuery->whereDate('doctor_payables.created_at', $date);
+        } elseif ($cutoff = $this->rangeCutoff($range)) {
             $settledQuery->where('doctor_payables.last_settlement_date', '>=', $cutoff);
         }
 
@@ -247,6 +228,8 @@ class DoctorPayableByUserController extends Controller
             'is_all_users' => $isAllUsers,
             'range' => $range,
             'range_label' => self::RANGE_LABELS[$range] ?? self::RANGE_LABELS['30'],
+            'date' => $date,
+            'date_fmt' => $date ? Carbon::parse($date)->format('d-m-Y') : null,
             'pending' => $pending->values(),
             'settled' => $settled->values(),
             'summary' => [
@@ -256,6 +239,213 @@ class DoctorPayableByUserController extends Controller
                 'settled_count' => $settled->count(),
                 'settled_amount' => round($settled->sum('paid_amount'), 2),
             ],
+        ];
+    }
+
+    /**
+     * The Settled base query (join + user filter), shared by buildDashboard()
+     * and dailySummary() -- date/range scoping is applied by each caller on
+     * top of this.
+     */
+    private function settledBaseQuery($userId, bool $isAllUsers)
+    {
+        $query = DB::table('doctor_payables')
+            ->join('invoices', 'doctor_payables.invoice_id', '=', 'invoices.id')
+            ->joinSub(
+                $this->finalCollectorSubquery(),
+                'fc',
+                'fc.invoice_reference',
+                '=',
+                'invoices.invoice_no'
+            )
+            ->where('invoices.due_amount', 0)
+            ->where('doctor_payables.payment_status', 'PAID');
+
+        if (!$isAllUsers) {
+            $query->whereRaw(
+                'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',
+                [$userId]
+            );
+        }
+
+        return $query;
+    }
+
+    /**
+     * The Unsettled/Pending base query (join + user filter), shared by
+     * buildDashboard() and buildDailySummaryRows(). Mirrors settledBaseQuery()
+     * but for payment_status PENDING/APPROVED -- see buildDashboard()'s own
+     * comment for why the due_amount=0/COLLECTION DUE split only applies
+     * when scoped to one user.
+     */
+    private function pendingBaseQuery($userId, bool $isAllUsers)
+    {
+        $query = DB::table('doctor_payables')
+            ->join('invoices', 'doctor_payables.invoice_id', '=', 'invoices.id')
+            ->joinSub(
+                $this->finalCollectorSubquery(),
+                'fc',
+                'fc.invoice_reference',
+                '=',
+                'invoices.invoice_no'
+            )
+            ->whereIn('doctor_payables.payment_status', ['PENDING', 'APPROVED'])
+            ->where('doctor_payables.payable_amount', '>', 0);
+
+        if (!$isAllUsers) {
+            $query->where('invoices.due_amount', 0)
+                ->whereRaw(
+                    'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',
+                    [$userId]
+                );
+        }
+
+        return $query;
+    }
+
+    private function rangeCutoff(?string $range): ?Carbon
+    {
+        return match ($range) {
+            '3' => Carbon::now()->subDays(3)->startOfDay(),
+            '7' => Carbon::now()->subDays(7)->startOfDay(),
+            '30' => Carbon::now()->subDays(30)->startOfDay(),
+            '6m' => Carbon::now()->subMonths(6)->startOfDay(),
+            default => null,
+        };
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DAILY SUMMARY -- ONE ROW PER DATE, SETTLED + UNSETTLED SIDE BY SIDE
+    |--------------------------------------------------------------------------
+    */
+
+    public function dailySummary(Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required',
+            'range' => 'nullable|in:3,7,30,6m,all',
+        ]);
+
+        if ($request->user_id !== 'ALL') {
+            $request->validate(['user_id' => 'exists:users,id']);
+        }
+
+        $range = $request->range ?: '30';
+
+        $rows = $this->buildDailySummaryRows($request->user_id, $range);
+
+        return response()->json([
+            'status' => true,
+            'range' => $range,
+            'range_label' => self::RANGE_LABELS[$range] ?? self::RANGE_LABELS['30'],
+            'data' => $rows,
+            'totals' => $this->totalsFromRows($rows),
+        ]);
+    }
+
+    public function printDailySummary(Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required',
+            'range' => 'nullable|in:3,7,30,6m,all',
+        ]);
+
+        if ($request->user_id !== 'ALL') {
+            $request->validate(['user_id' => 'exists:users,id']);
+        }
+
+        $range = $request->range ?: '30';
+
+        $isAllUsers = $request->user_id === 'ALL';
+
+        $userLabel = $isAllUsers
+            ? 'All Users'
+            : optional(User::find($request->user_id))->name;
+
+        $rows = $this->buildDailySummaryRows($request->user_id, $range);
+        $totals = $this->totalsFromRows($rows);
+
+        $pdf = Pdf::loadView(
+            'apps-doctor-payable-by-user-daily-summary-pdf',
+            [
+                'userLabel' => $userLabel,
+                'isAllUsers' => $isAllUsers,
+                'rangeLabel' => self::RANGE_LABELS[$range] ?? self::RANGE_LABELS['30'],
+                'rows' => $rows,
+                'totals' => $totals,
+                'printedBy' => optional(auth()->user())->name,
+            ]
+        );
+
+        $fileName = 'Doctor-Payable-Daily-Summary-' .
+            str_replace(' ', '-', $userLabel ?? 'User') .
+            '-' . now()->format('d-m-Y') . '.pdf';
+
+        return $pdf->stream($fileName);
+    }
+
+    /**
+     * One row per calendar date, settled and unsettled side by side.
+     * Unsettled payables have no settlement date (they haven't been
+     * settled yet), so created_at -- the date the payable itself was
+     * generated, i.e. roughly the invoice/service date -- is the only
+     * date both buckets share; using it for BOTH keeps a single date
+     * column meaningful instead of mixing two different date concepts
+     * under one row.
+     */
+    private function buildDailySummaryRows($userId, string $range): array
+    {
+        $isAllUsers = $userId === 'ALL';
+        $cutoff = $this->rangeCutoff($range);
+
+        $settledByDate = $this->settledBaseQuery($userId, $isAllUsers)
+            ->when($cutoff, fn($q) => $q->where('doctor_payables.created_at', '>=', $cutoff))
+            ->selectRaw('DATE(doctor_payables.created_at) as d')
+            ->selectRaw('COUNT(*) as c')
+            ->selectRaw('SUM(doctor_payables.paid_amount) as amt')
+            ->groupBy(DB::raw('DATE(doctor_payables.created_at)'))
+            ->get()
+            ->keyBy('d');
+
+        $unsettledByDate = $this->pendingBaseQuery($userId, $isAllUsers)
+            ->when($cutoff, fn($q) => $q->where('doctor_payables.created_at', '>=', $cutoff))
+            ->selectRaw('DATE(doctor_payables.created_at) as d')
+            ->selectRaw('COUNT(*) as c')
+            ->selectRaw('SUM(doctor_payables.payable_amount - doctor_payables.paid_amount) as amt')
+            ->groupBy(DB::raw('DATE(doctor_payables.created_at)'))
+            ->get()
+            ->keyBy('d');
+
+        return $settledByDate->keys()
+            ->merge($unsettledByDate->keys())
+            ->unique()
+            ->sortDesc()
+            ->map(function ($date) use ($settledByDate, $unsettledByDate) {
+
+                $s = $settledByDate->get($date);
+                $u = $unsettledByDate->get($date);
+
+                return [
+                    'date' => $date,
+                    'date_fmt' => Carbon::parse($date)->format('d-m-Y'),
+                    'settled_count' => $s ? (int) $s->c : 0,
+                    'settled_amount' => $s ? round((float) $s->amt, 2) : 0,
+                    'unsettled_count' => $u ? (int) $u->c : 0,
+                    'unsettled_amount' => $u ? round((float) $u->amt, 2) : 0,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function totalsFromRows(array $rows): array
+    {
+        return [
+            'settled_count' => array_sum(array_column($rows, 'settled_count')),
+            'settled_amount' => round(array_sum(array_column($rows, 'settled_amount')), 2),
+            'unsettled_count' => array_sum(array_column($rows, 'unsettled_count')),
+            'unsettled_amount' => round(array_sum(array_column($rows, 'unsettled_amount')), 2),
         ];
     }
 
@@ -281,25 +471,22 @@ class DoctorPayableByUserController extends Controller
     }
 
     /**
-     * Diagnostic invoice PDFs stream directly from a GET request, so a plain
-     * URL is enough. Doctor visit invoice PDFs are generated on demand and
-     * the endpoint returns JSON {status, pdf_url} -- the frontend must call
-     * it via AJAX and open the returned pdf_url, not link to it directly.
+     * Both diagnostic and doctor-visit invoice PDFs stream directly from a
+     * GET request (DoctorVisitInvoiceController::printInvoice() -- no disk
+     * save, no JSON wrapper, same as every other print action in this app;
+     * see doctor-payable.init.js's .printDoctorVisitBtn handler for the
+     * same fix already applied on the sibling Doctor Payable dashboard). A
+     * plain URL is enough for either type -- no AJAX round-trip needed.
      */
     private function attachPrintInfo($row): void
     {
         if (empty($row->invoice_id)) {
             $row->print_url = null;
-            $row->print_ajax_url = null;
             return;
         }
 
-        if ($row->invoice_type === 'DIAGNOSTIC') {
-            $row->print_url = route('diagnostic-invoice.print', $row->invoice_id);
-            $row->print_ajax_url = null;
-        } else {
-            $row->print_url = null;
-            $row->print_ajax_url = route('doctor-visit-invoice.print', $row->invoice_id);
-        }
+        $row->print_url = $row->invoice_type === 'DIAGNOSTIC'
+            ? route('diagnostic-invoice.print', $row->invoice_id)
+            : route('doctor-visit-invoice.print', $row->invoice_id);
     }
 }

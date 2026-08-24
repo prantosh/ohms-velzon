@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ImpressionMaster;
 use App\Services\AuditService;
+use App\Services\HtmlSanitizerService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -50,7 +51,7 @@ class ImpressionMasterController extends Controller
     public function store(Request $request, AuditService $auditService)
     {
         $request->validate([
-            'name' => 'required|max:1000|unique:impression_masters,name',
+            'name' => 'required|max:50000|unique:impression_masters,name',
             'status' => 'required|in:ACTIVE,INACTIVE'
         ]);
 
@@ -60,7 +61,7 @@ class ImpressionMasterController extends Controller
 
             $row = ImpressionMaster::create([
 
-                'name' => trim($request->name),
+                'name' => HtmlSanitizerService::sanitizeClinicalText($request->name) ?? '',
 
                 'status' => $request->status,
 
@@ -109,7 +110,7 @@ class ImpressionMasterController extends Controller
     public function update(Request $request, $id, AuditService $auditService)
     {
         $request->validate([
-            'name' => 'required|max:1000|unique:impression_masters,name,' . $id,
+            'name' => 'required|max:50000|unique:impression_masters,name,' . $id,
             'status' => 'required|in:ACTIVE,INACTIVE'
         ]);
 
@@ -123,7 +124,7 @@ class ImpressionMasterController extends Controller
 
             $row->update([
 
-                'name' => trim($request->name),
+                'name' => HtmlSanitizerService::sanitizeClinicalText($request->name) ?? '',
 
                 'status' => $request->status,
 

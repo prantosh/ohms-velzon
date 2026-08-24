@@ -24,6 +24,99 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
+// A <select><option> can only ever show plain text -- master entries
+// created via CKEditor (Note/Impression/Microscopy/Finding) may contain
+// HTML, which would otherwise show up as literal markup in the dropdown.
+// This is display-only: the option's value keeps the full original
+// content (including formatting), only the visible label is stripped
+// and, since a whole rich-text entry can run to paragraphs, truncated.
+function stripHtmlToText(html) {
+    if (!html) return '';
+    let tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return (tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim();
+}
+
+function optionLabel(value, maxLen = 150) {
+    let text = stripHtmlToText(value);
+    return text.length > maxLen ? text.slice(0, maxLen).trim() + '...' : text;
+}
+
+/*
+|--------------------------------------------------------------------------
+| RICH-TEXT EDITORS -- Remarks (static) and TEXTAREA-type parameters
+| (dynamic -- one per parameter card, created/destroyed as cards are added,
+| removed, or repopulated on edit).
+|--------------------------------------------------------------------------
+*/
+
+const {
+    ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
+    Table, TableToolbar, TableProperties, TableCellProperties
+} = CKEDITOR;
+
+const TEMPLATE_EDITOR_CONFIG = {
+    licenseKey: 'GPL',
+    plugins: [
+        Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
+        Table, TableToolbar, TableProperties, TableCellProperties
+    ],
+    toolbar: [
+        'bold', 'italic', 'underline', '|',
+        'alignment', '|',
+        'fontSize', '|',
+        'bulletedList', 'numberedList', '|',
+        'insertTable', '|',
+        'undo', 'redo'
+    ],
+    table: {
+        contentToolbar: [
+            'tableColumn', 'tableRow', 'mergeTableCells',
+            'tableProperties', 'tableCellProperties'
+        ]
+    }
+};
+
+let remarksEditor = null;
+let remarksEditorReady = ClassicEditor.create(document.querySelector('#remarks-field'), TEMPLATE_EDITOR_CONFIG)
+    .then(editor => { remarksEditor = editor; return editor; });
+
+// Records saved before rich-text editing existed are plain text with literal
+// newlines -- each line becomes its own paragraph so it displays the same
+// way it would have as plain text. Already-HTML content (post-feature)
+// passes through untouched.
+function toEditorHtml(text) {
+    if (!text) return '';
+    if (text.includes('<')) return text;
+    return text.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('');
+}
+
+// Parameter cards are created/removed dynamically, so their CKEditor
+// instances (TEXTAREA-type parameters only) are tracked per card element
+// rather than by a fixed id.
+let paramEditors = new Map();
+
+async function attachParamEditorIfNeeded(cardElement) {
+
+    let textarea = cardElement.querySelector('textarea.template-param-input');
+
+    if (!textarea) return;
+
+    let editor = await ClassicEditor.create(textarea, TEMPLATE_EDITOR_CONFIG);
+
+    paramEditors.set(cardElement, editor);
+}
+
+function destroyParamEditor(cardElement) {
+
+    let editor = paramEditors.get(cardElement);
+
+    if (editor) {
+        editor.destroy();
+        paramEditors.delete(cardElement);
+    }
+}
+
 /*
 |--------------------------------------------------------------------------
 | PARAMETER CARDS -- built into a template at creation time. A parameter's
@@ -48,13 +141,17 @@ function renderTemplateParamCard(fieldTypeId, fieldName, inputType, value) {
         inputHtml = `
         <select class="form-select form-select-sm template-param-input">
             <option value="">-- Select --</option>
-            ${options.map(o => `<option value="${escapeHtml(o)}" ${o === value ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}
+            ${options.map(o => `<option value="${escapeHtml(o)}" ${o === value ? 'selected' : ''}>${escapeHtml(optionLabel(o))}</option>`).join('')}
         </select>
         `;
 
     } else if (inputType === 'TEXTAREA') {
 
-        inputHtml = `<textarea class="form-control form-control-sm template-param-input" rows="2">${escapeHtml(value)}</textarea>`;
+        // Populated via CKEditor's setData() right after the editor
+        // attaches (see attachParamEditorIfNeeded callers) -- left empty
+        // here regardless of value to avoid double-rendering plain-text
+        // newlines vs. paragraph HTML.
+        inputHtml = `<textarea class="form-control form-control-sm template-param-input" rows="2"></textarea>`;
 
     } else {
 
@@ -80,7 +177,10 @@ function renderTemplateParamCard(fieldTypeId, fieldName, inputType, value) {
 
 function clearTemplateParamCards() {
 
-    document.querySelectorAll('#templateParamsContainer .template-param-item').forEach(el => el.remove());
+    document.querySelectorAll('#templateParamsContainer .template-param-item').forEach(el => {
+        destroyParamEditor(el);
+        el.remove();
+    });
 }
 
 function collectTemplateParams() {
@@ -89,9 +189,15 @@ function collectTemplateParams() {
 
     document.querySelectorAll('#templateParamsContainer .template-param-item').forEach(card => {
 
+        let editor = paramEditors.get(card);
+
+        let value = editor
+            ? editor.getData()
+            : card.querySelector('.template-param-input').value;
+
         params.push({
             field_type_id: card.dataset.fieldTypeId,
-            value: card.querySelector('.template-param-input').value
+            value: value
         });
     });
 
@@ -238,12 +344,14 @@ document.querySelector('.tablelist-form').addEventListener('submit', async funct
         }
     });
 
+    await remarksEditorReady;
+
     let editId = document.querySelector('#edit-id').value;
 
     let payload = {
         title: document.querySelector('#title-field').value,
         item_code_sub: document.querySelector('#item_code_sub-field').value,
-        remarks: document.querySelector('#remarks-field').value,
+        remarks: remarksEditor.getData(),
         status: document.querySelector('#status-field').value,
         parameters: collectTemplateParams()
     };
@@ -298,6 +406,11 @@ document.querySelector('.tablelist-form').addEventListener('submit', async funct
 document.getElementById('showModal').addEventListener('hidden.bs.modal', function () {
 
     document.querySelector('.tablelist-form').reset();
+
+    // form.reset() only touches the native form fields -- CKEditor's visible
+    // content is separate DOM it manages itself, so it must be cleared here.
+    if (remarksEditor) remarksEditor.setData('');
+
     clearTemplateParamCards();
     closeAllTemplateParamMenus();
 
@@ -333,22 +446,24 @@ document.addEventListener('click', async function (e) {
         const response = await fetch(`/test-report-template/edit/${id}`);
         const result = await response.json();
 
+        await remarksEditorReady;
+
         if (result.status) {
 
             document.querySelector('#title-field').value = result.data.title;
             document.querySelector('#item_code_sub-field').value = result.data.item_code_sub;
-            document.querySelector('#remarks-field').value = result.data.remarks ?? '';
+            remarksEditor.setData(toEditorHtml(result.data.remarks ?? ''));
             document.querySelector('#status-field').value = result.data.status;
 
             clearTemplateParamCards();
 
             let addWrap = document.querySelector('#templateParamsContainer .template-param-add-wrap');
 
-            (result.data.parameters || []).forEach(function (p) {
+            for (const p of (result.data.parameters || [])) {
 
                 let fieldType = extraFieldTypes.find(f => String(f.id) === String(p.field_type_id));
 
-                if (!fieldType) return;
+                if (!fieldType) continue;
 
                 let wrapper = document.createElement('div');
 
@@ -356,8 +471,16 @@ document.addEventListener('click', async function (e) {
                     fieldType.id, fieldType.field_name, fieldType.input_type, p.value
                 );
 
-                addWrap.parentElement.insertBefore(wrapper.firstElementChild, addWrap);
-            });
+                let cardEl = wrapper.firstElementChild;
+
+                addWrap.parentElement.insertBefore(cardEl, addWrap);
+
+                if (fieldType.input_type === 'TEXTAREA') {
+                    await attachParamEditorIfNeeded(cardEl);
+                    let paramEditor = paramEditors.get(cardEl);
+                    if (paramEditor) paramEditor.setData(toEditorHtml(p.value));
+                }
+            }
         }
 
         return;
@@ -402,7 +525,7 @@ document.addEventListener('click', async function (e) {
     }
 });
 
-document.addEventListener('click', function (e) {
+document.addEventListener('click', async function (e) {
 
     let addBtn = e.target.closest('.add-template-param-btn');
 
@@ -474,7 +597,13 @@ document.addEventListener('click', function (e) {
             ''
         );
 
-        container.insertBefore(wrapper.firstElementChild, addWrap);
+        let cardEl = wrapper.firstElementChild;
+
+        container.insertBefore(cardEl, addWrap);
+
+        if (addOption.dataset.inputType === 'TEXTAREA') {
+            await attachParamEditorIfNeeded(cardEl);
+        }
 
         return;
     }
@@ -482,7 +611,9 @@ document.addEventListener('click', function (e) {
     let removeBtn = e.target.closest('.remove-template-param-btn');
 
     if (removeBtn) {
-        removeBtn.closest('.template-param-item').remove();
+        let card = removeBtn.closest('.template-param-item');
+        destroyParamEditor(card);
+        card.remove();
         return;
     }
 
