@@ -56,20 +56,21 @@ async function fetchJson(url, options = {}) {
 
 const {
     ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
-    Table, TableToolbar, TableProperties, TableCellProperties
+    Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
 } = CKEDITOR;
 
 const USG_EDITOR_CONFIG = {
     licenseKey: 'GPL',
     plugins: [
         Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
-        Table, TableToolbar, TableProperties, TableCellProperties
+        Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
     ],
     toolbar: [
         'bold', 'italic', 'underline', '|',
         'alignment', '|',
         'fontSize', '|',
         'bulletedList', 'numberedList', '|',
+        'outdent', 'indent', '|',
         'insertTable', '|',
         'undo', 'redo'
     ],
@@ -95,6 +96,30 @@ function usgToEditorHtml(text) {
     return text.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('');
 }
 
+// CKEditor5 only auto-binds Tab to indent inside a list -- for plain
+// paragraphs/headings Tab just moves focus out of the editor by default.
+// This makes Tab/Shift+Tab indent/outdent the current block everywhere,
+// falling through to normal focus navigation when indent isn't applicable
+// (e.g. already at the base level).
+function bindTabIndent(editor) {
+
+    editor.keystrokes.set('Tab', (data, cancel) => {
+        if (editor.commands.get('indent').isEnabled) {
+            editor.execute('indent');
+            cancel();
+        }
+    }, { priority: 'high' });
+
+    editor.keystrokes.set('Shift+Tab', (data, cancel) => {
+        if (editor.commands.get('outdent').isEnabled) {
+            editor.execute('outdent');
+            cancel();
+        }
+    }, { priority: 'high' });
+
+    return editor;
+}
+
 async function createCardEditors(root) {
 
     const fields = {
@@ -106,7 +131,7 @@ async function createCardEditors(root) {
     root.usgEditors = {};
 
     for (const [key, selector] of Object.entries(fields)) {
-        root.usgEditors[key] = await ClassicEditor.create(root.querySelector(selector), USG_EDITOR_CONFIG);
+        root.usgEditors[key] = bindTabIndent(await ClassicEditor.create(root.querySelector(selector), USG_EDITOR_CONFIG));
     }
 }
 

@@ -52,20 +52,21 @@ function optionLabel(value, maxLen = 150) {
 
 const {
     ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
-    Table, TableToolbar, TableProperties, TableCellProperties
+    Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
 } = CKEDITOR;
 
 const TEMPLATE_EDITOR_CONFIG = {
     licenseKey: 'GPL',
     plugins: [
         Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
-        Table, TableToolbar, TableProperties, TableCellProperties
+        Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
     ],
     toolbar: [
         'bold', 'italic', 'underline', '|',
         'alignment', '|',
         'fontSize', '|',
         'bulletedList', 'numberedList', '|',
+        'outdent', 'indent', '|',
         'insertTable', '|',
         'undo', 'redo'
     ],
@@ -77,9 +78,33 @@ const TEMPLATE_EDITOR_CONFIG = {
     }
 };
 
+// CKEditor5 only auto-binds Tab to indent inside a list -- for plain
+// paragraphs/headings Tab just moves focus out of the editor by default.
+// This makes Tab/Shift+Tab indent/outdent the current block everywhere,
+// falling through to normal focus navigation when indent isn't applicable
+// (e.g. already at the base level).
+function bindTabIndent(editor) {
+
+    editor.keystrokes.set('Tab', (data, cancel) => {
+        if (editor.commands.get('indent').isEnabled) {
+            editor.execute('indent');
+            cancel();
+        }
+    }, { priority: 'high' });
+
+    editor.keystrokes.set('Shift+Tab', (data, cancel) => {
+        if (editor.commands.get('outdent').isEnabled) {
+            editor.execute('outdent');
+            cancel();
+        }
+    }, { priority: 'high' });
+
+    return editor;
+}
+
 let remarksEditor = null;
 let remarksEditorReady = ClassicEditor.create(document.querySelector('#remarks-field'), TEMPLATE_EDITOR_CONFIG)
-    .then(editor => { remarksEditor = editor; return editor; });
+    .then(editor => { remarksEditor = editor; return bindTabIndent(editor); });
 
 // Records saved before rich-text editing existed are plain text with literal
 // newlines -- each line becomes its own paragraph so it displays the same
@@ -102,7 +127,7 @@ async function attachParamEditorIfNeeded(cardElement) {
 
     if (!textarea) return;
 
-    let editor = await ClassicEditor.create(textarea, TEMPLATE_EDITOR_CONFIG);
+    let editor = bindTabIndent(await ClassicEditor.create(textarea, TEMPLATE_EDITOR_CONFIG));
 
     paramEditors.set(cardElement, editor);
 }

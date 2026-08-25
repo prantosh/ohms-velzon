@@ -39,14 +39,14 @@ function testGroupName(testGroupCode) {
 
 const {
     ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, FontColor, Heading, List, Undo,
-    Table, TableToolbar, TableProperties, TableCellProperties
+    Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
 } = CKEDITOR;
 
 const RICH_EDITOR_CONFIG = {
     licenseKey: 'GPL',
     plugins: [
         Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, FontColor, Heading, List, Undo,
-        Table, TableToolbar, TableProperties, TableCellProperties
+        Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
     ],
     toolbar: [
         'heading', '|',
@@ -54,6 +54,7 @@ const RICH_EDITOR_CONFIG = {
         'alignment', '|',
         'fontSize', 'fontColor', '|',
         'bulletedList', 'numberedList', '|',
+        'outdent', 'indent', '|',
         'insertTable', '|',
         'undo', 'redo'
     ],
@@ -65,9 +66,33 @@ const RICH_EDITOR_CONFIG = {
     }
 };
 
+// CKEditor5 only auto-binds Tab to indent inside a list -- for plain
+// paragraphs/headings Tab just moves focus out of the editor by default.
+// This makes Tab/Shift+Tab indent/outdent the current block everywhere,
+// falling through to normal focus navigation when indent isn't applicable
+// (e.g. already at the base level).
+function bindTabIndent(editor) {
+
+    editor.keystrokes.set('Tab', (data, cancel) => {
+        if (editor.commands.get('indent').isEnabled) {
+            editor.execute('indent');
+            cancel();
+        }
+    }, { priority: 'high' });
+
+    editor.keystrokes.set('Shift+Tab', (data, cancel) => {
+        if (editor.commands.get('outdent').isEnabled) {
+            editor.execute('outdent');
+            cancel();
+        }
+    }, { priority: 'high' });
+
+    return editor;
+}
+
 let contentEditor = null;
 let contentEditorReady = ClassicEditor.create(document.querySelector('#content-field'), RICH_EDITOR_CONFIG)
-    .then(editor => { contentEditor = editor; return editor; });
+    .then(editor => { contentEditor = editor; return bindTabIndent(editor); });
 
 function toEditorHtml(text) {
     if (!text) return '';

@@ -43,20 +43,21 @@ async function fetchJson(url, options = {}) {
 
 const {
     ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
-    Table, TableToolbar, TableProperties, TableCellProperties
+    Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
 } = CKEDITOR;
 
 const USG_EDITOR_CONFIG = {
     licenseKey: 'GPL',
     plugins: [
         Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, List, Undo,
-        Table, TableToolbar, TableProperties, TableCellProperties
+        Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
     ],
     toolbar: [
         'bold', 'italic', 'underline', '|',
         'alignment', '|',
         'fontSize', '|',
         'bulletedList', 'numberedList', '|',
+        'outdent', 'indent', '|',
         'insertTable', '|',
         'undo', 'redo'
     ],
@@ -68,6 +69,30 @@ const USG_EDITOR_CONFIG = {
     }
 };
 
+// CKEditor5 only auto-binds Tab to indent inside a list -- for plain
+// paragraphs/headings Tab just moves focus out of the editor by default.
+// This makes Tab/Shift+Tab indent/outdent the current block everywhere,
+// falling through to normal focus navigation when indent isn't applicable
+// (e.g. already at the base level).
+function bindTabIndent(editor) {
+
+    editor.keystrokes.set('Tab', (data, cancel) => {
+        if (editor.commands.get('indent').isEnabled) {
+            editor.execute('indent');
+            cancel();
+        }
+    }, { priority: 'high' });
+
+    editor.keystrokes.set('Shift+Tab', (data, cancel) => {
+        if (editor.commands.get('outdent').isEnabled) {
+            editor.execute('outdent');
+            cancel();
+        }
+    }, { priority: 'high' });
+
+    return editor;
+}
+
 let usgEditors = {};
 
 async function initUsgTemplateEditors() {
@@ -75,10 +100,10 @@ async function initUsgTemplateEditors() {
     const fields = ['clinical_history', 'findings', 'impression'];
 
     for (const field of fields) {
-        usgEditors[field] = await ClassicEditor.create(
+        usgEditors[field] = bindTabIndent(await ClassicEditor.create(
             document.querySelector(`#${field}-field`),
             USG_EDITOR_CONFIG
-        );
+        ));
     }
 }
 

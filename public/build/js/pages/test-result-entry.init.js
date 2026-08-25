@@ -50,14 +50,14 @@ async function fetchJson(url, options = {}) {
 
 const {
     ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, FontColor, Heading, List, Undo,
-    Table, TableToolbar, TableProperties, TableCellProperties
+    Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
 } = CKEDITOR;
 
 const RICH_EDITOR_CONFIG = {
     licenseKey: 'GPL',
     plugins: [
         Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, FontColor, Heading, List, Undo,
-        Table, TableToolbar, TableProperties, TableCellProperties
+        Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
     ],
     toolbar: [
         'heading', '|',
@@ -65,6 +65,7 @@ const RICH_EDITOR_CONFIG = {
         'alignment', '|',
         'fontSize', 'fontColor', '|',
         'bulletedList', 'numberedList', '|',
+        'outdent', 'indent', '|',
         'insertTable', '|',
         'undo', 'redo'
     ],
@@ -75,6 +76,30 @@ const RICH_EDITOR_CONFIG = {
         ]
     }
 };
+
+// CKEditor5 only auto-binds Tab to indent inside a list -- for plain
+// paragraphs/headings Tab just moves focus out of the editor by default.
+// This makes Tab/Shift+Tab indent/outdent the current block everywhere,
+// falling through to normal focus navigation when indent isn't applicable
+// (e.g. already at the base level).
+function bindTabIndent(editor) {
+
+    editor.keystrokes.set('Tab', (data, cancel) => {
+        if (editor.commands.get('indent').isEnabled) {
+            editor.execute('indent');
+            cancel();
+        }
+    }, { priority: 'high' });
+
+    editor.keystrokes.set('Shift+Tab', (data, cancel) => {
+        if (editor.commands.get('outdent').isEnabled) {
+            editor.execute('outdent');
+            cancel();
+        }
+    }, { priority: 'high' });
+
+    return editor;
+}
 
 // Records saved before rich-text editing existed are plain text with literal
 // newlines -- each line becomes its own paragraph so it displays the same
@@ -321,6 +346,7 @@ function renderPathologyFindingCard(container, finding, invoiceNo) {
 
     ClassicEditor.create(textarea, RICH_EDITOR_CONFIG).then(function (editor) {
 
+        bindTabIndent(editor);
         pathologyEditors.set(cardEl, editor);
         editor.setData(toEditorHtml(finding.content || ''));
 
@@ -644,9 +670,9 @@ async function loadNonPathologyReports(invoiceNo) {
 
         wrap.appendChild(frag);
 
-        let clinicalHistoryEditor = await ClassicEditor.create(root.querySelector('.nonpath-clinical-history'), RICH_EDITOR_CONFIG);
-        let findingsEditor = await ClassicEditor.create(root.querySelector('.nonpath-findings'), RICH_EDITOR_CONFIG);
-        let impressionEditor = await ClassicEditor.create(root.querySelector('.nonpath-impression'), RICH_EDITOR_CONFIG);
+        let clinicalHistoryEditor = bindTabIndent(await ClassicEditor.create(root.querySelector('.nonpath-clinical-history'), RICH_EDITOR_CONFIG));
+        let findingsEditor = bindTabIndent(await ClassicEditor.create(root.querySelector('.nonpath-findings'), RICH_EDITOR_CONFIG));
+        let impressionEditor = bindTabIndent(await ClassicEditor.create(root.querySelector('.nonpath-impression'), RICH_EDITOR_CONFIG));
 
         nonPathEditors.set(root, {
             clinical_history: clinicalHistoryEditor,
