@@ -1054,10 +1054,27 @@ class DoctorVisitInvoiceController extends Controller
     | PRINT PRESCRIPTION
     |--------------------------------------------------------------------------
     | Blank prescription pad, printable only after the visit invoice has
-    | been created -- header/patient/doctor info pre-filled, with blank
-    | space for BP/Weight and the prescription itself to be filled in by
-    | hand during consultation.
+    | been created -- patient/doctor info pre-filled, with blank space for
+    | BP/Weight/SPO2 and the prescription itself to be filled in by hand
+    | during consultation.
+    |
+    | Cardiology doctors print onto plain paper, so they get the full
+    | letterhead (clinic header/footer rendered by the system). Eye and
+    | Optometry doctors have their own letterhead, laid out like the
+    | generic one below but without a Sex field. Every other specialisation
+    | prints onto the generic pre-printed clinic letterhead paper, so that
+    | layout omits the header entirely and starts its content a fixed
+    | 60mm from the top to land in the blank space the letterhead leaves
+    | below its own printed header.
     */
+
+    private const PRESCRIPTION_WITH_HEADER_SPECIALISATIONS = ['CARDIOLOGY'];
+
+    // "OPTIMETRY" is how this specialisation is actually spelled in the
+    // doctors table (a pre-existing data-entry typo for "Optometry") --
+    // both spellings are matched here so this keeps working if that typo
+    // is ever corrected in the data.
+    private const PRESCRIPTION_EYE_SPECIALISATIONS = ['EYE', 'OPTOMETRY', 'OPTIMETRY'];
 
     public function printPrescription($id)
     {
@@ -1069,10 +1086,17 @@ class DoctorVisitInvoiceController extends Controller
 
         $doctor = Doctor::find($invoice->doctor_id);
 
-        $pdf = Pdf::loadView(
-            'apps-doctor-visit-prescription-pdf',
-            compact('invoice', 'doctor')
-        );
+        $specialisation = strtoupper(trim(optional($doctor)->specialisation ?? ''));
+
+        if (in_array($specialisation, self::PRESCRIPTION_WITH_HEADER_SPECIALISATIONS)) {
+            $view = 'apps-doctor-visit-prescription-pdf-with-header';
+        } elseif (in_array($specialisation, self::PRESCRIPTION_EYE_SPECIALISATIONS)) {
+            $view = 'apps-doctor-visit-prescription-pdf-eye';
+        } else {
+            $view = 'apps-doctor-visit-prescription-pdf';
+        }
+
+        $pdf = Pdf::loadView($view, compact('invoice', 'doctor'));
 
         $pdf->setPaper('A4', 'portrait');
 

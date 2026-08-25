@@ -16,7 +16,10 @@
      (position:relative, exactly A4-sized) -- so every top/left is a
      direct, unambiguous measurement from the true physical page corner,
      matching how an alignment offset would be measured with a ruler
-     against the printed letterhead. --}}
+     against the printed letterhead. Same layout as
+     apps-doctor-visit-prescription-pdf.blade.php, for EYE/Optometry
+     doctors' own letterhead, minus the Sex field (not on that
+     letterhead) and with no vertical line. --}}
 @page {
     margin: 0;
 }
@@ -90,13 +93,13 @@ body {
         {{ optional($doctor)->registration_no }}
     </div>
 
-    {{-- Name/Age/Sex/Date labels are already pre-printed on the letterhead
+    {{-- Name/Age/Date labels are already pre-printed on the letterhead
          paper on this line -- only the values are rendered here, each at
          the exact left margin measured from the physical page edge, so it
-         lands in the blank space after its printed label. --}}
+         lands in the blank space after its printed label. No Sex field on
+         this letterhead. --}}
     <div class="patient-line-value" style="top:67mm; left:30mm;">{{ $invoice->patient_name }}</div>
     <div class="patient-line-value" style="top:67mm; left:125mm;">{{ $invoice->patient_age ?? '' }}</div>
-    <div class="patient-line-value" style="top:67mm; left:148mm;">{{ $invoice->patient_gender ?? '' }}</div>
     <div class="patient-line-value" style="top:67mm; left:175mm;">{{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</div>
 
     <div class="ids-line" style="top:84mm;"><span class="label-blue">Invoice No.</span></div>
