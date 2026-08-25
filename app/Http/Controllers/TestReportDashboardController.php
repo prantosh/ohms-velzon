@@ -277,6 +277,15 @@ class TestReportDashboardController extends Controller
     */
 
     /**
+     * Pathology's report entry moved from a structured analyte grid
+     * (test_result_entries, one legacy per-invoice TestReportConfirmation)
+     * to per-line-bundle narrative reports (pathology_report_findings /
+     * pathology_report_finding_items, one confirmation per report -- see
+     * PathologyReportController). An invoice confirmed under the OLD system
+     * before this rollout still reads as fully Complete/confirmed here (no
+     * data migration) since its TestReportConfirmation row still exists;
+     * everything else is computed from the new tables.
+     *
      * @return array{0: string, 1: int, 2: int} [result_status, total_tests, results_entered]
      */
     private function resultStatusFor(Invoice $invoice, array $qualifyingItemCodes): array
@@ -286,19 +295,26 @@ class TestReportDashboardController extends Controller
             ->whereIn('item_code', $qualifyingItemCodes)
             ->count();
 
-        $resultsEntered = DB::table('test_result_entries')
-            ->where('invoice_no', $invoice->invoice_no)
-            ->where(function ($q) {
-                $q->whereNotNull('result_value')->where('result_value', '!=', '');
-            })
-            ->distinct()
-            ->count('invoice_detail_id');
+        if ($totalTests === 0) {
+            return ['N/A', 0, 0];
+        }
 
-        $resultStatus = $totalTests === 0
-            ? 'N/A'
-            : ($resultsEntered <= 0
-                ? 'Pending'
-                : ($resultsEntered >= $totalTests ? 'Complete' : 'Partial'));
+        if (TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+            return ['Complete', $totalTests, $totalTests];
+        }
+
+        $qualifyingLineIds = DB::table('invoice_details')
+            ->where('invoice_no', $invoice->invoice_no)
+            ->whereIn('item_code', $qualifyingItemCodes)
+            ->pluck('id');
+
+        $resultsEntered = DB::table('pathology_report_finding_items')
+            ->whereIn('invoice_detail_id', $qualifyingLineIds)
+            ->count();
+
+        $resultStatus = $resultsEntered <= 0
+            ? 'Pending'
+            : ($resultsEntered >= $totalTests ? 'Complete' : 'Partial');
 
         return [$resultStatus, $totalTests, $resultsEntered];
     }
@@ -307,7 +323,26 @@ class TestReportDashboardController extends Controller
     {
         [$resultStatus, $totalTests, $resultsEntered] = $this->resultStatusFor($invoice, $qualifyingItemCodes);
 
+        // Fully confirmed only when every qualifying line's claim is on a
+        // CONFIRMED finding (or the invoice carries the legacy per-invoice
+        // confirmation from before this rollout).
         $confirmed = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists();
+
+        if (!$confirmed && $totalTests > 0 && $resultStatus === 'Complete') {
+
+            $qualifyingLineIds = DB::table('invoice_details')
+                ->where('invoice_no', $invoice->invoice_no)
+                ->whereIn('item_code', $qualifyingItemCodes)
+                ->pluck('id');
+
+            $confirmedCount = DB::table('pathology_report_finding_items as pfi')
+                ->join('pathology_report_findings as pf', 'pf.id', '=', 'pfi.pathology_report_finding_id')
+                ->whereIn('pfi.invoice_detail_id', $qualifyingLineIds)
+                ->whereNotNull('pf.confirmed_at')
+                ->count();
+
+            $confirmed = $confirmedCount >= $totalTests;
+        }
 
         $paymentStatus = $invoice->due_amount <= 0
             ? 'Paid'

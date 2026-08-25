@@ -91,9 +91,32 @@ table td {
     float: right;
 }
 
+/* Matches CKEditor's own editing-view sizing exactly (ckeditor5-content.css
+   --ck-content-font-size-*), so the printed report matches what was typed. */
+.text-tiny { font-size: 0.7em; }
+.text-small { font-size: 0.85em; }
+.text-big { font-size: 1.4em; }
+.text-huge { font-size: 1.8em; }
+
 </style>
 
 </head>
+
+@php
+    // Rich HTML (from the CKEditor-based report entry, sanitized at save
+    // time) is trusted as-is; records saved before that feature existed are
+    // plain text and keep the old escape+preserve-newlines treatment.
+    // Presence of a tag is enough to tell them apart -- plain clinical text
+    // never legitimately contains a literal "<...>" sequence.
+    if (!function_exists('nonPathRenderClinicalField')) {
+        function nonPathRenderClinicalField($text) {
+            if ($text === null || $text === '') {
+                return '';
+            }
+            return ($text !== strip_tags($text)) ? $text : e($text);
+        }
+    }
+@endphp
 
 <body>
 
@@ -136,18 +159,18 @@ table td {
 @if(!empty($finding->clinical_history))
 <div class="report-section">
     <div class="report-section-heading">Clinical History</div>
-    <div class="report-section-body">{{ $finding->clinical_history }}</div>
+    <div class="report-section-body">{!! nonPathRenderClinicalField($finding->clinical_history) !!}</div>
 </div>
 @endif
 
 <div class="report-section">
     <div class="report-section-heading">Findings</div>
-    <div class="report-section-body">{{ $finding->findings }}</div>
+    <div class="report-section-body">{!! nonPathRenderClinicalField($finding->findings) !!}</div>
 </div>
 
 <div class="report-section">
     <div class="report-section-heading">Impression</div>
-    <div class="report-section-body">{{ $finding->impression }}</div>
+    <div class="report-section-body">{!! nonPathRenderClinicalField($finding->impression) !!}</div>
 </div>
 
 <div class="signature-section">

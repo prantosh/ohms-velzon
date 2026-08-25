@@ -10,6 +10,10 @@
       rel="stylesheet"
       type="text/css" />
 
+<link href="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.css') }}"
+      rel="stylesheet"
+      type="text/css" />
+
 <style>
 
 .extra-param-item {
@@ -25,18 +29,6 @@
 .result-status-Partial { background:#299cdb33; color:#0f5f8c; }
 .result-status-Complete { background:#0ab39c33; color:#03816f; }
 .result-status-NA { background:#74788d33; color:#4a4d5a; }
-
-/* The confirm-review offcanvas opens on top of the result-entry modal,
-   but Bootstrap's default z-index puts .offcanvas (1045) BELOW .modal
-   (1055) -- so without this it renders partially hidden behind the
-   already-open modal. */
-#confirmOffcanvas {
-    z-index: 1075;
-}
-
-.offcanvas-backdrop.show {
-    z-index: 1065;
-}
 
 </style>
 
@@ -241,159 +233,9 @@
 
                 <div id="nonPathologyReportsWrap"></div>
 
-                <div id="resultTableWrap" style="display:none;">
-
-                    <div class="table-responsive">
-
-                        <table class="table table-bordered align-middle">
-
-                            <thead class="table-light">
-
-                                <tr>
-                                    <th>Item Code</th>
-                                    <th>Sub Code</th>
-                                    <th>Description</th>
-                                    <th>UOM</th>
-                                    <th>Range (Male)</th>
-                                    <th>Range (Female)</th>
-                                    <th>Range (Common)</th>
-                                    <th>Method</th>
-                                    <th width="15%">Result Value</th>
-                                    <th width="15%">Remarks</th>
-                                    <th width="8%">Action</th>
-                                </tr>
-
-                            </thead>
-
-                            <tbody id="resultTableBody">
-
-                            </tbody>
-
-                        </table>
-
-                    </div>
-
-                    <div class="d-flex justify-content-end align-items-center gap-2 mt-3">
-
-                        <span id="confirmedBadge" class="badge bg-success" style="display:none;">
-                            <i class="ri-check-double-line"></i>
-                            Confirmed
-                        </span>
-
-                        <button class="btn btn-warning" id="btnConfirmReport">
-                            <i class="ri-shield-check-line"></i>
-                            Confirm
-                        </button>
-
-                        <button class="btn btn-info" id="btnPrintReport" disabled>
-                            <i class="ri-printer-line"></i>
-                            Print Report
-                        </button>
-
-                        <button class="btn btn-success" id="btnWhatsappReport" disabled>
-                            <i class="ri-whatsapp-line"></i>
-                            Send via WhatsApp
-                        </button>
-
-                    </div>
-
-                </div>
+                <div id="pathologyReportsWrap" style="display:none;"></div>
 
             </div>
-
-        </div>
-
-    </div>
-
-</div>
-
-<!-- CONFIRM REVIEW OFFCANVAS -->
-
-<div class="offcanvas offcanvas-end"
-     tabindex="-1"
-     id="confirmOffcanvas"
-     style="width: 50%;">
-
-    <div class="offcanvas-header border-bottom">
-
-        <h5 class="offcanvas-title">Review Entered Test Results</h5>
-
-        <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
-
-    </div>
-
-    <div class="offcanvas-body">
-
-        <div class="border rounded p-3 bg-light-subtle mb-3">
-
-            <div class="row">
-
-                <div class="col-6">
-                    <strong>Invoice No:</strong>
-                    <span id="review-invoice_no"></span>
-                </div>
-
-                <div class="col-6">
-                    <strong>Patient:</strong>
-                    <span id="review-patient_name"></span>
-                </div>
-
-            </div>
-
-        </div>
-
-        <div class="table-responsive">
-
-            <table class="table table-bordered align-middle">
-
-                <thead class="table-light">
-                    <tr>
-                        <th>Description</th>
-                        <th>Result Value</th>
-                        <th>UOM</th>
-                        <th>Remarks</th>
-                    </tr>
-                </thead>
-
-                <tbody id="reviewTableBody">
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-        <div id="reviewExtraParamsWrap" style="display:none;">
-
-            <h6 class="fw-semibold mt-3">Extra Parameters</h6>
-
-            <div class="table-responsive">
-
-                <table class="table table-bordered align-middle">
-
-                    <thead class="table-light">
-                        <tr>
-                            <th>Field</th>
-                            <th>Value</th>
-                        </tr>
-                    </thead>
-
-                    <tbody id="reviewExtraParamsBody">
-
-                    </tbody>
-
-                </table>
-
-            </div>
-
-        </div>
-
-        <div class="text-end mt-3">
-
-            <button class="btn btn-warning" id="btnConfirmLock">
-                <i class="ri-shield-check-line"></i>
-                Confirm &amp; Lock
-            </button>
 
         </div>
 
@@ -426,6 +268,12 @@
         </div>
 
         <div class="card-body">
+
+            <div class="mb-3 nonpath-template-picker-wrap">
+                <select class="form-select form-select-sm nonpath-template-picker" style="max-width:260px">
+                    <option value="">-- Load Template --</option>
+                </select>
+            </div>
 
             <div class="mb-3">
                 <label class="form-label fw-semibold">Clinical History</label>
@@ -472,11 +320,127 @@
 
 </template>
 
+<!-- PATHOLOGY GROUP TAB PANE (cloned once per test group by JS -- header,
+     existing report cards, and a picker to start a new report over
+     whichever billed lines in this group aren't claimed by a report yet.) -->
+
+<template id="pathologyGroupPaneTemplate">
+
+    <div class="pathology-group-pane">
+
+        <h6 class="fw-semibold mt-2 mb-3 pathology-group-title"></h6>
+
+        <div class="pathology-group-findings"></div>
+
+        <div class="border rounded p-3 bg-light-subtle pathology-start-wrap">
+
+            <label class="form-label fw-semibold mb-2">Start a New Report</label>
+
+            <select class="form-select form-select-sm pathology-start-picker">
+                <option value="">-- Select a Template / Item --</option>
+            </select>
+
+        </div>
+
+    </div>
+
+</template>
+
+<!-- PATHOLOGY REPORT CARD (cloned per report -- a report can cover one
+     billed line or several bundled together by the chosen template.) -->
+
+<template id="pathologyFindingCardTemplate">
+
+    <div class="card pathology-finding-card mb-3">
+
+        <div class="card-header d-flex justify-content-between align-items-center">
+
+            <div>
+                <strong class="pathology-item-description"></strong>
+                <span class="text-muted small pathology-template-title"></span>
+            </div>
+
+            <span class="badge bg-success pathology-confirmed-badge" style="display:none;">
+                <i class="ri-check-double-line"></i>
+                Confirmed
+            </span>
+
+        </div>
+
+        <div class="card-body">
+
+            <textarea class="form-control pathology-content"></textarea>
+
+            <div class="d-flex justify-content-end gap-2 mt-3">
+
+                <button type="button" class="btn btn-primary pathology-save-btn">
+                    <i class="ri-save-line"></i>
+                    Save
+                </button>
+
+                <button type="button" class="btn btn-warning pathology-confirm-btn">
+                    <i class="ri-shield-check-line"></i>
+                    Confirm
+                </button>
+
+                <a href="javascript:void(0)" class="btn btn-info pathology-print-btn" style="display:none;" target="_blank">
+                    <i class="ri-printer-line"></i>
+                    Print Report
+                </a>
+
+                <button type="button" class="btn btn-success pathology-whatsapp-btn" style="display:none;">
+                    <i class="ri-whatsapp-line"></i>
+                    Send via WhatsApp
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</template>
+
+<!-- PATHOLOGY LEGACY FALLBACK CARD -- shown instead of the above when an
+     invoice was already confirmed under the old analyte-grid system before
+     this feature existed. Print/WhatsApp hit TestResultEntryController's
+     untouched routes, exactly as they did before. -->
+
+<template id="pathologyLegacyCardTemplate">
+
+    <div class="card">
+
+        <div class="card-body">
+
+            <p class="mb-3">
+                <i class="ri-information-line"></i>
+                This invoice's Pathology report was confirmed under the previous report format. It can still be
+                printed and sent from here; new-format reports are used for invoices going forward.
+            </p>
+
+            <a href="javascript:void(0)" class="btn btn-info pathology-legacy-print-btn" target="_blank">
+                <i class="ri-printer-line"></i>
+                Print Report
+            </a>
+
+            <button type="button" class="btn btn-success pathology-legacy-whatsapp-btn">
+                <i class="ri-whatsapp-line"></i>
+                Send via WhatsApp
+            </button>
+
+        </div>
+
+    </div>
+
+</template>
+
 @endsection
 
 @section('script')
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
+
+<script src="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.umd.js') }}"></script>
 
 <script src="{{ URL::asset('build/js/pages/test-result-entry.init.js') }}"></script>
 

@@ -23,7 +23,9 @@ class HtmlSanitizerService
         // p[style] carries CKEditor's Alignment feature (text-align only,
         // restricted below); span[class] carries its FontSize feature,
         // which uses named classes (text-tiny/small/big/huge) rather than
-        // arbitrary inline sizes. table/thead/tbody/tr/th/td carry its
+        // arbitrary inline sizes; span[style] carries its FontColor feature
+        // (color only, restricted below); h2/h3/h4 carry its Heading
+        // feature (section titles). table/thead/tbody/tr/th/td carry its
         // Table feature -- TableProperties/TableCellProperties style
         // borders, background and cell alignment via inline style on
         // table/th/td, restricted to the table-relevant CSS properties
@@ -33,14 +35,14 @@ class HtmlSanitizerService
         // it's left out of the allowlist to avoid the warning noise.
         $config->set(
             'HTML.Allowed',
-            'p[style],span[class],strong,em,u,ul,ol,li,br,'
+            'p[style],span[class],span[style],h2,h3,h4,strong,em,u,ul,ol,li,br,'
                 . 'table[style],thead,tbody,'
                 . 'tr,th[style|scope|colspan|rowspan],td[style|colspan|rowspan]'
         );
         $config->set(
             'CSS.AllowedProperties',
             'text-align,vertical-align,border,border-color,border-style,border-width,'
-                . 'background-color,width,height,padding,border-collapse,float'
+                . 'background-color,width,height,padding,border-collapse,float,color'
         );
         // No cache directory needed for an allowlist this small, and
         // production has no way to create/chmod one (FTP-only deploy).

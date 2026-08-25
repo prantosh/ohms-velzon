@@ -102,6 +102,8 @@ async function loadReports(page = 1) {
         let actions = `
             <button class="btn btn-sm btn-soft-info print-report-btn me-1"
                     data-id="${row.id}"
+                    data-invoice-no="${escapeHtml(row.invoice_no)}"
+                    data-category="${row.invoice_category ?? ''}"
                     title="${canPrintOrSend ? 'Print Test Report' : 'Confirm the report before printing'}"
                     ${canPrintOrSend ? '' : 'disabled'}>
                 <i class="ri-printer-line"></i>
@@ -109,6 +111,8 @@ async function loadReports(page = 1) {
 
             <button class="btn btn-sm btn-soft-success whatsapp-report-btn me-1"
                     data-id="${row.id}"
+                    data-invoice-no="${escapeHtml(row.invoice_no)}"
+                    data-category="${row.invoice_category ?? ''}"
                     title="${canPrintOrSend ? 'Send Report via WhatsApp' : 'Confirm the report before sending'}"
                     ${canPrintOrSend ? '' : 'disabled'}>
                 <i class="ri-whatsapp-line"></i>
@@ -206,12 +210,27 @@ document.getElementById('reportTableBody').addEventListener('click', async funct
 
     let printBtn = e.target.closest('.print-report-btn');
     if (printBtn && !printBtn.disabled) {
+
+        // A Pathology invoice can now have several independent narrative
+        // reports (see PathologyReportController) -- rather than guess
+        // which one to print, send staff to Test Result Entry's Pathology
+        // tab, where each report has its own Print/WhatsApp button.
+        if (printBtn.dataset.category === 'PATHOLOGY') {
+            window.open(`/test-result-entry?open=${encodeURIComponent(printBtn.dataset.invoiceNo)}`, '_blank');
+            return;
+        }
+
         window.open(`/test-result-entry/print/${printBtn.dataset.id}`, '_blank');
         return;
     }
 
     let whatsappBtn = e.target.closest('.whatsapp-report-btn');
     if (whatsappBtn && !whatsappBtn.disabled) {
+
+        if (whatsappBtn.dataset.category === 'PATHOLOGY') {
+            window.open(`/test-result-entry?open=${encodeURIComponent(whatsappBtn.dataset.invoiceNo)}`, '_blank');
+            return;
+        }
 
         let id = whatsappBtn.dataset.id;
 

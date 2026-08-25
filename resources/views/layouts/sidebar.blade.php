@@ -96,6 +96,11 @@
                                         <a href="{{ route('cloud-backup.index') }}" class="nav-link">@lang('translation.cloudbackup')</a>
                                         </li>
                             @endif
+                            @if(is_null($allowedPages) || in_array('system-log', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('system-log.index') }}" class="nav-link">@lang('translation.systemlog')</a>
+                                        </li>
+                            @endif
                             @if(is_null($allowedPages) || in_array('maintenance-mode', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('maintenance-mode.index') }}" class="nav-link">@lang('translation.maintenancemode')</a>
@@ -183,9 +188,15 @@
                                         <a href="{{ route('cardiology-report-template.index') }}" class="nav-link">@lang('translation.cardiologyreporttemplate')</a>
                                         </li>
                                         @endif
-                                        @if(is_null($allowedPages) || in_array('test-report-template', $allowedPages))
+                                        @if(is_null($allowedPages) || in_array('pathology-report-template', $allowedPages))
                                         <li class="nav-item">
-                                        <a href="{{ route('test-report-template.index') }}" class="nav-link">@lang('translation.testreporttemplate')</a>
+                                        <a href="{{ route('pathology-report-template.index') }}" class="nav-link">@lang('translation.pathologyreporttemplate')</a>
+                                        </li>
+                                        @endif
+
+                                        @if(is_null($allowedPages) || in_array('non-pathology-report-template', $allowedPages))
+                                        <li class="nav-item">
+                                        <a href="{{ route('non-pathology-report-template.index') }}" class="nav-link">@lang('translation.nonpathologyreporttemplate')</a>
                                         </li>
                                         @endif
 
@@ -379,11 +390,6 @@
                             @if(is_null($allowedPages) || in_array('cardiology-report', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('cardiology-report.index') }}" class="nav-link">@lang('translation.cardiologyreport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('diagnostic-test-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('diagnostic-test-report.index') }}" class="nav-link">@lang('translation.diagnostictestreport')</a>
                                         </li>
                             @endif
                             @if(is_null($allowedPages) || in_array('test-report-dashboard', $allowedPages))

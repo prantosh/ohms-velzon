@@ -181,9 +181,19 @@ class TestResultEntryController extends Controller
      * invoice shows the same status on both dashboards. It stays scoped to
      * $qualifyingItemCodes (today: only Pathology's PAT001, the only
      * item_code with test_parameter_required=YES) since that's the only
-     * category with a structured parameter-entry grid to track completion
-     * against -- Non-Pathology invoices (X-Ray, USG, Dental, etc.) have no
-     * such grid and correctly stay 'N/A'.
+     * category with tracked report completion -- Non-Pathology invoices
+     * (X-Ray, USG, Dental, etc.) have no such tracking here and correctly
+     * stay 'N/A' (see NonPathologyReportController for their own per-line
+     * completion, shown inside the modal instead).
+     *
+     * Pathology moved from a structured analyte grid (test_result_entries,
+     * one legacy per-invoice TestReportConfirmation) to per-line-bundle
+     * narrative reports (pathology_report_findings / pathology_report_finding_items,
+     * one confirmation per report -- see PathologyReportController). An
+     * invoice confirmed under the OLD system before this rollout still
+     * reads as fully Complete here (no data migration) since its
+     * TestReportConfirmation row still exists; everything else is computed
+     * from the new tables.
      *
      * The displayed test count/description, however, is NOT scoped to
      * $qualifyingItemCodes -- it lists every billed line on the invoice
@@ -220,19 +230,28 @@ class TestResultEntryController extends Controller
             ->whereIn('item_code', $qualifyingItemCodes)
             ->count();
 
-        $resultsEntered = DB::table('test_result_entries')
-            ->where('invoice_no', $invoice->invoice_no)
-            ->where(function ($q) {
-                $q->whereNotNull('result_value')->where('result_value', '!=', '');
-            })
-            ->distinct()
-            ->count('invoice_detail_id');
+        if ($qualifyingTotal === 0) {
 
-        $resultStatus = $qualifyingTotal === 0
-            ? 'N/A'
-            : ($resultsEntered <= 0
-                ? 'Pending'
-                : ($resultsEntered >= $qualifyingTotal ? 'Complete' : 'Partial'));
+            return ['N/A', $lineDetails->count(), 0, $lineDetails->pluck('item_description')->implode(', '), $testCategory];
+        }
+
+        if (TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+
+            return ['Complete', $lineDetails->count(), $qualifyingTotal, $lineDetails->pluck('item_description')->implode(', '), $testCategory];
+        }
+
+        $qualifyingLineIds = DB::table('invoice_details')
+            ->where('invoice_no', $invoice->invoice_no)
+            ->whereIn('item_code', $qualifyingItemCodes)
+            ->pluck('id');
+
+        $resultsEntered = DB::table('pathology_report_finding_items')
+            ->whereIn('invoice_detail_id', $qualifyingLineIds)
+            ->count();
+
+        $resultStatus = $resultsEntered <= 0
+            ? 'Pending'
+            : ($resultsEntered >= $qualifyingTotal ? 'Complete' : 'Partial');
 
         return [
             $resultStatus,
@@ -249,6 +268,22 @@ class TestResultEntryController extends Controller
             $this->resultStatusFor($invoice, $qualifyingItemCodes);
 
         $confirmed = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists();
+
+        if (!$confirmed && $resultStatus === 'Complete') {
+
+            $qualifyingLineIds = DB::table('invoice_details')
+                ->where('invoice_no', $invoice->invoice_no)
+                ->whereIn('item_code', $qualifyingItemCodes)
+                ->pluck('id');
+
+            $confirmedCount = DB::table('pathology_report_finding_items as pfi')
+                ->join('pathology_report_findings as pf', 'pf.id', '=', 'pfi.pathology_report_finding_id')
+                ->whereIn('pfi.invoice_detail_id', $qualifyingLineIds)
+                ->whereNotNull('pf.confirmed_at')
+                ->count();
+
+            $confirmed = $qualifyingLineIds->count() > 0 && $confirmedCount >= $qualifyingLineIds->count();
+        }
 
         return [
             'id' => $invoice->id,

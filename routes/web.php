@@ -45,6 +45,9 @@ use App\Http\Controllers\UsgReportController;
 use App\Http\Controllers\CardiologyReportTemplateController;
 use App\Http\Controllers\CardiologyReportController;
 use App\Http\Controllers\NonPathologyReportController;
+use App\Http\Controllers\NonPathologyReportTemplateController;
+use App\Http\Controllers\PathologyReportTemplateController;
+use App\Http\Controllers\PathologyReportController;
 use App\Http\Controllers\TestReportDashboardController;
 use App\Http\Controllers\DiagnosticTestReportController;
 use App\Http\Controllers\AmbulanceDestinationController;
@@ -65,6 +68,7 @@ use App\Http\Controllers\GoodsReceiptReportController;
 use App\Http\Controllers\GoodsIssueReportController;
 use App\Http\Controllers\StockAsOnDateController;
 use App\Http\Controllers\CloudBackupController;
+use App\Http\Controllers\SystemLogController;
 use App\Http\Controllers\MaintenanceController;
 use App\Http\Controllers\WhatsappAutoSendSettingController;
 use App\Http\Controllers\PatientCardController;
@@ -1586,6 +1590,19 @@ Route::prefix('cloud-backup')->group(function () {
 
 });
 
+Route::prefix('system-log')->group(function () {
+
+    Route::get('/', [SystemLogController::class, 'index'])
+        ->name('system-log.index');
+
+    Route::get('/tail', [SystemLogController::class, 'tail'])
+        ->name('system-log.tail');
+
+    Route::post('/clear', [SystemLogController::class, 'clear'])
+        ->name('system-log.clear');
+
+});
+
 Route::prefix('maintenance-mode')->group(function () {
 
     Route::get('/', [MaintenanceController::class, 'index'])
@@ -2713,6 +2730,125 @@ Route::middleware(['auth'])->prefix('non-pathology-report')->group(function () {
         '/send-whatsapp/{id}',
         [NonPathologyReportController::class, 'sendWhatsapp']
     )->name('non-pathology-report.send-whatsapp');
+
+});
+
+Route::middleware(['auth'])->prefix('non-pathology-report-template')->group(function () {
+
+    Route::get(
+        '/',
+        [NonPathologyReportTemplateController::class, 'index']
+    )->name('non-pathology-report-template.index');
+
+    Route::get(
+        '/list',
+        [NonPathologyReportTemplateController::class, 'list']
+    );
+
+    Route::post(
+        '/store',
+        [NonPathologyReportTemplateController::class, 'store']
+    );
+
+    Route::get(
+        '/edit/{id}',
+        [NonPathologyReportTemplateController::class, 'edit']
+    );
+
+    Route::post(
+        '/update/{id}',
+        [NonPathologyReportTemplateController::class, 'update']
+    );
+
+    Route::delete(
+        '/delete/{id}',
+        [NonPathologyReportTemplateController::class, 'destroy']
+    );
+
+    // Lightweight lookup used by the Non-Pathology report card's template
+    // picker -- deliberately separate from the paginated admin /list above.
+    Route::get(
+        '/for-test/{itemCodeSub}',
+        [NonPathologyReportTemplateController::class, 'forTest']
+    );
+
+});
+
+// Admin CRUD for the narrative Pathology report templates -- see
+// PathologyReportTemplateController's class doc-comment.
+Route::middleware(['auth'])->prefix('pathology-report-template')->group(function () {
+
+    Route::get(
+        '/',
+        [PathologyReportTemplateController::class, 'index']
+    )->name('pathology-report-template.index');
+
+    Route::get(
+        '/list',
+        [PathologyReportTemplateController::class, 'list']
+    );
+
+    Route::get(
+        '/items',
+        [PathologyReportTemplateController::class, 'itemsForGroup']
+    );
+
+    Route::post(
+        '/store',
+        [PathologyReportTemplateController::class, 'store']
+    );
+
+    Route::get(
+        '/edit/{id}',
+        [PathologyReportTemplateController::class, 'edit']
+    );
+
+    Route::post(
+        '/update/{id}',
+        [PathologyReportTemplateController::class, 'update']
+    );
+
+    Route::delete(
+        '/delete/{id}',
+        [PathologyReportTemplateController::class, 'destroy']
+    );
+
+});
+
+// Narrative, template-driven Pathology report entry -- reached only through
+// Test Result Entry's existing Pathology tab; see PathologyReportController's
+// class doc-comment. No index/list routes, same as non-pathology-report above.
+Route::middleware(['auth'])->prefix('pathology-report')->group(function () {
+
+    Route::post(
+        '/search',
+        [PathologyReportController::class, 'search']
+    )->name('pathology-report.search');
+
+    Route::post(
+        '/save',
+        [PathologyReportController::class, 'store']
+    )->name('pathology-report.save');
+
+    Route::post(
+        '/preview',
+        [PathologyReportController::class, 'preview']
+    )->name('pathology-report.preview');
+
+    Route::post(
+        '/confirm',
+        [PathologyReportController::class, 'confirm']
+    )->name('pathology-report.confirm');
+
+    Route::get(
+        '/print/{id}',
+        [PathologyReportController::class, 'printReport']
+    )->name('pathology-report.print');
+
+    Route::post(
+        '/send-whatsapp/{id}',
+        [PathologyReportController::class, 'sendWhatsapp']
+    )->name('pathology-report.send-whatsapp');
 
 });
 

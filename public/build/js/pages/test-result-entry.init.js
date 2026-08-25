@@ -1,31 +1,13 @@
 "use strict";
 
-let isConfirmed = false;
 // Complete-but-not-yet-confirmed reports open read-only ("Show Result")
-// -- editing is locked the same as a confirmed report, but the Confirm
-// button still shows (unlike a truly confirmed report) since that's the
-// remaining step before Print/WhatsApp unlock.
+// -- editing is locked the same as a confirmed report. Only meaningful for
+// Non-Pathology today (Pathology's per-report Complete/Confirm state is
+// tracked per card, not for the whole invoice).
 let isReadOnlyView = false;
-let currentRows = [];
-let extraFieldTypes = [];
-let remarksTemplates = [];
-
-fetch('/remarks-master/active-list')
-    .then(r => r.json())
-    .then(result => {
-        if (result.status) remarksTemplates = result.data;
-    })
-    .catch(() => {});
 
 function inputsLocked() {
-    return isConfirmed || isReadOnlyView;
-}
-
-try {
-    let dataEl = document.getElementById('extraFieldTypesData');
-    extraFieldTypes = dataEl ? JSON.parse(dataEl.textContent || '[]') : [];
-} catch (e) {
-    extraFieldTypes = [];
+    return isReadOnlyView;
 }
 
 function csrfToken() {
@@ -41,321 +23,688 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
-// A <select><option> can only ever show plain text -- master entries
-// created via CKEditor (Note/Impression/Microscopy/Finding) may contain
-// HTML, which would otherwise show up as literal markup in the dropdown.
-// This is display-only: the option's value keeps the full original
-// content (including formatting), only the visible label is stripped
-// and, since a whole rich-text entry can run to paragraphs, truncated.
-function stripHtmlToText(html) {
-    if (!html) return '';
-    let tmp = document.createElement('div');
-    tmp.innerHTML = html;
-    return (tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim();
-}
+// Without an explicit Accept header, fetch() doesn't tell Laravel this is an
+// AJAX call -- a validation failure then 302-redirects to a normal HTML page
+// instead of returning JSON, response.json() throws, and (uncaught) whatever
+// loading indicator is showing stays stuck forever. This forces the Accept
+// header and turns a non-JSON response into a clear, catchable error instead.
+async function fetchJson(url, options = {}) {
+    const headers = Object.assign({ 'Accept': 'application/json' }, options.headers || {});
+    const response = await fetch(url, Object.assign({}, options, { headers }));
 
-function optionLabel(value, maxLen = 150) {
-    let text = stripHtmlToText(value);
-    return text.length > maxLen ? text.slice(0, maxLen).trim() + '...' : text;
+    let result;
+    try {
+        result = await response.json();
+    } catch (e) {
+        throw new Error(`Unexpected server response (HTTP ${response.status}). Please try again.`);
+    }
+
+    return { response, result };
 }
 
 /*
 |--------------------------------------------------------------------------
-| RESULT ROWS (atomic tests, and analyte sub-rows within a panel test)
+| RICH-TEXT EDITOR (Non-Pathology cards' 3 fields, Pathology report content)
 |--------------------------------------------------------------------------
 */
 
-function renderResultRow(options) {
+const {
+    ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, FontColor, Heading, List, Undo,
+    Table, TableToolbar, TableProperties, TableCellProperties
+} = CKEDITOR;
 
-    let {
-        invoiceDetailId, analyteId, resultId,
-        itemCode, itemCodeSub, description, descriptionSuffix,
-        uom, rangeMale, rangeFemale, rangeCommon, method,
-        resultValue, remarks, extraClass
-    } = options;
+const RICH_EDITOR_CONFIG = {
+    licenseKey: 'GPL',
+    plugins: [
+        Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, FontColor, Heading, List, Undo,
+        Table, TableToolbar, TableProperties, TableCellProperties
+    ],
+    toolbar: [
+        'heading', '|',
+        'bold', 'italic', 'underline', '|',
+        'alignment', '|',
+        'fontSize', 'fontColor', '|',
+        'bulletedList', 'numberedList', '|',
+        'insertTable', '|',
+        'undo', 'redo'
+    ],
+    table: {
+        contentToolbar: [
+            'tableColumn', 'tableRow', 'mergeTableCells',
+            'tableProperties', 'tableCellProperties'
+        ]
+    }
+};
 
-    return `
-    <tr class="${extraClass || ''}"
-        data-invoice-detail-id="${invoiceDetailId}"
-        data-analyte-id="${analyteId}"
-        data-result-id="${resultId ?? ''}"
-        data-description="${escapeHtml(description)}"
-        data-uom="${escapeHtml(uom)}">
-
-        <td>${escapeHtml(itemCode)}</td>
-
-        <td>${escapeHtml(itemCodeSub)}</td>
-
-        <td>${escapeHtml(description)}${descriptionSuffix || ''}</td>
-
-        <td>${escapeHtml(uom)}</td>
-
-        <td>${escapeHtml(rangeMale)}</td>
-
-        <td>${escapeHtml(rangeFemale)}</td>
-
-        <td>${escapeHtml(rangeCommon)}</td>
-
-        <td>${escapeHtml(method)}</td>
-
-        <td>
-            <input type="text" class="form-control form-control-sm result-value-input"
-                   value="${escapeHtml(resultValue)}" ${inputsLocked() ? 'disabled' : ''}>
-        </td>
-
-        <td>
-            <select class="form-select form-select-sm mb-1 remarks-template-picker"
-                    style="max-width:130px" ${inputsLocked() ? 'disabled' : ''}>
-                <option value="">-- Quick pick --</option>
-                ${remarksTemplates.map(r => `<option value="${escapeHtml(r)}">${escapeHtml(r.length > 40 ? r.slice(0, 40) + '…' : r)}</option>`).join('')}
-            </select>
-            <input type="text" class="form-control form-control-sm remarks-input"
-                   value="${escapeHtml(remarks)}" ${inputsLocked() ? 'disabled' : ''}>
-        </td>
-
-        <td class="text-nowrap">
-
-            <button class="btn btn-sm btn-success save-result-btn ${inputsLocked() ? 'd-none' : ''}" title="Save">
-                <i class="ri-save-line"></i>
-            </button>
-
-            <button class="btn btn-sm btn-danger clear-result-btn ${(resultId && !inputsLocked()) ? '' : 'd-none'}" title="Clear">
-                <i class="ri-close-line"></i>
-            </button>
-
-        </td>
-
-    </tr>
-    `;
+// Records saved before rich-text editing existed are plain text with literal
+// newlines -- each line becomes its own paragraph so it displays the same
+// way it would have as plain text. Already-HTML content passes through
+// untouched.
+function toEditorHtml(text) {
+    if (!text) return '';
+    if (text.includes('<')) return text;
+    return text.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('');
 }
 
-function renderAnalyteGroupHeaderRow(groupName) {
+function renderInvoiceInfo(invoice) {
 
-    return `
-    <tr class="analyte-group-row">
-        <td colspan="11" style="font-weight:bold; background-color:#f8f9fa; padding-left:16px;">
-            ${escapeHtml(groupName)}
-        </td>
-    </tr>
-    `;
+    document.querySelector('#info-invoice_no').innerText = invoice.invoice_no ?? '';
+    document.querySelector('#info-invoice_date').innerText = invoice.invoice_date ?? '';
+    document.querySelector('#info-patient_name').innerText = invoice.patient_name ?? '';
+    document.querySelector('#info-patient_age_gender').innerText =
+        `${invoice.patient_age ?? ''} / ${invoice.patient_gender ?? ''}`;
+    document.querySelector('#info-referred_doctor').innerText = invoice.referred_doctor ?? '';
+    document.querySelector('#info-status').innerText = invoice.status ?? '';
+
+    document.querySelector('#invoiceInfoWrap').dataset.invoiceId = invoice.id;
+    document.querySelector('#invoiceInfoWrap').dataset.invoiceNo = invoice.invoice_no;
+
+    document.querySelector('#invoiceInfoWrap').style.display = 'block';
 }
 
-function renderAnalyteSubGroupHeaderRow(subGroupName) {
+async function searchInvoice() {
 
-    return `
-    <tr class="analyte-subgroup-row">
-        <td colspan="11" style="font-weight:bold; background-color:#e9ecef; padding-left:8px;">
-            ${escapeHtml(subGroupName)}
-        </td>
-    </tr>
-    `;
-}
+    let invoiceNo = document.querySelector('#invoiceNoInput').value.trim();
 
-function getExtraParamInputType(inputEl) {
+    document.querySelector('#invoiceInfoWrap').style.display = 'none';
+    document.querySelector('#invoiceNotFoundMsg').style.display = 'none';
+    document.querySelector('#noQualifyingMsg').style.display = 'none';
 
-    if (inputEl.tagName === 'SELECT') return 'SELECT';
-    if (inputEl.tagName === 'TEXTAREA') return 'TEXTAREA';
+    destroyAllNonPathEditors();
+    document.querySelector('#nonPathologyReportsWrap').innerHTML = '';
+    document.querySelector('#nonPathologyReportsWrap').style.display = 'none';
 
-    return 'TEXT';
-}
+    destroyAllPathologyEditors();
+    document.querySelector('#pathologyReportsWrap').innerHTML = '';
+    document.querySelector('#pathologyReportsWrap').style.display = 'none';
 
-function renderExtraParamCard(invoiceDetailId, fieldTypeId, fieldName, inputType, value, valueId) {
-
-    let inputHtml;
-
-    if (inputType === 'SELECT') {
-
-        let fieldType = extraFieldTypes.find(f => String(f.id) === String(fieldTypeId));
-        let options = (fieldType && fieldType.options) ? fieldType.options.slice() : [];
-
-        // Keep a previously-saved value selectable even if the master
-        // record behind it was later deactivated or renamed.
-        if (value && !options.includes(value)) {
-            options = [value, ...options];
-        }
-
-        inputHtml = `
-        <select class="form-select form-select-sm extra-param-input" ${inputsLocked() ? 'disabled' : ''}>
-            <option value="">-- Select --</option>
-            ${options.map(o => `<option value="${escapeHtml(o)}" ${o === value ? 'selected' : ''}>${escapeHtml(optionLabel(o))}</option>`).join('')}
-        </select>
-        `;
-
-    } else if (inputType === 'TEXTAREA') {
-
-        inputHtml = `<textarea class="form-control form-control-sm extra-param-input" rows="2" ${inputsLocked() ? 'disabled' : ''}>${escapeHtml(value)}</textarea>`;
-
-    } else {
-
-        inputHtml = `<input type="text" class="form-control form-control-sm extra-param-input" value="${escapeHtml(value)}" ${inputsLocked() ? 'disabled' : ''}>`;
+    if (!invoiceNo) {
+        return;
     }
 
-    return `
-    <div class="extra-param-item border rounded p-2"
-         data-value-id="${valueId ?? ''}"
-         data-field-type-id="${fieldTypeId}"
-         data-invoice-detail-id="${invoiceDetailId}">
-
-        <label class="form-label mb-1 fw-semibold small">${escapeHtml(fieldName)}</label>
-
-        ${inputHtml}
-
-        <div class="mt-1 text-end">
-
-            <button class="btn btn-sm btn-success save-extra-param-btn ${inputsLocked() ? 'd-none' : ''}" title="Save">
-                <i class="ri-save-line"></i>
-            </button>
-
-            <button class="btn btn-sm btn-danger remove-extra-param-btn ${inputsLocked() ? 'd-none' : ''}" title="Remove">
-                <i class="ri-close-line"></i>
-            </button>
-
-        </div>
-
-    </div>
-    `;
+    if (typeof dashCategory !== 'undefined' && dashCategory === 'NON_PATHOLOGY') {
+        await loadNonPathologyReports(invoiceNo);
+    } else {
+        await loadPathologyReports(invoiceNo);
+    }
 }
 
-function renderExtraParamsRow(row) {
+/*
+|--------------------------------------------------------------------------
+| PATHOLOGY -- narrative, template-driven reports. Replaces the old
+| structured analyte grid entirely (see PathologyReportController's class
+| doc-comment). A report can cover one billed line or several bundled
+| together by the chosen template; organized into tabs by test group so
+| staff can find the right template quickly.
+|--------------------------------------------------------------------------
+*/
 
-    let cards = (row.extra_values || []).map(v =>
-        renderExtraParamCard(row.invoice_detail_id, v.field_type_id, v.field_name, v.input_type, v.value, v.id)
-    ).join('');
+let pathologyEditors = new Map();
 
-    // Bundled templates (Remarks + Microscopy + Impression together) only
-    // make sense once per billed test line, so this picker lives here
-    // alongside the other test-line-level "extra parameter" controls,
-    // not on every per-analyte result row.
-    let templatePickerHtml = row.item_code_sub ? `
-    <select class="form-select form-select-sm test-template-picker ${inputsLocked() ? 'd-none' : ''}"
-            style="max-width:220px" data-invoice-detail-id="${row.invoice_detail_id}">
-        <option value="">-- Load Template --</option>
-    </select>
-    ` : '';
-
-    return `
-    <tr class="extra-params-row">
-        <td colspan="11">
-            <div class="d-flex flex-wrap gap-2 align-items-start extra-params-container" data-invoice-detail-id="${row.invoice_detail_id}">
-
-                ${templatePickerHtml}
-
-                ${cards}
-
-            </div>
-        </td>
-    </tr>
-    `;
+function destroyAllPathologyEditors() {
+    pathologyEditors.forEach(editor => editor.destroy());
+    pathologyEditors.clear();
 }
 
-function renderRows(rows) {
+async function loadPathologyReports(invoiceNo) {
 
-    let tbody = document.querySelector('#resultTableBody');
+    const { result } = await fetchJson('/pathology-report/search', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken()
+        },
+        body: JSON.stringify({ invoice_no: invoiceNo })
+    });
 
-    let html = '';
-    let pickersToLoad = [];
+    if (!result.status) {
+        document.querySelector('#invoiceNotFoundMsg').style.display = 'block';
+        return;
+    }
 
-    rows.forEach(row => {
+    renderInvoiceInfo(result.invoice);
 
-        // The main billed test always gets its own editable result row,
-        // whether or not it also has an analyte breakdown below it —
-        // some tests need both (e.g. an overall result plus components).
-        html += renderResultRow({
-            invoiceDetailId: row.invoice_detail_id,
-            analyteId: 0,
-            resultId: row.result_id,
-            itemCode: row.item_code,
-            itemCodeSub: row.item_code_sub,
-            description: row.item_description,
-            descriptionSuffix: row.has_analytes
-                ? ` <span class="badge bg-secondary ms-1">${row.analytes.length} sub-parameter${row.analytes.length > 1 ? 's' : ''}</span>`
-                : '',
-            uom: row.uom,
-            rangeMale: row.range_male,
-            rangeFemale: row.range_female,
-            rangeCommon: row.range_common,
-            method: row.method,
-            resultValue: row.result_value,
-            remarks: row.remarks
+    let wrap = document.querySelector('#pathologyReportsWrap');
+    wrap.style.display = 'block';
+
+    if (result.legacy_confirmed) {
+        renderPathologyLegacyCard(wrap, result.invoice.id);
+        return;
+    }
+
+    if (!result.groups.length) {
+        document.querySelector('#noQualifyingMsg').style.display = 'block';
+        return;
+    }
+
+    let tabsHtml = '<ul class="nav nav-pills mb-3" id="pathologyGroupTabs">';
+
+    result.groups.forEach((g, idx) => {
+        tabsHtml += `
+        <li class="nav-item">
+            <button type="button" class="nav-link ${idx === 0 ? 'active' : ''}" data-idx="${idx}">
+                ${escapeHtml(g.test_group_name)}
+            </button>
+        </li>
+        `;
+    });
+
+    tabsHtml += '</ul><div id="pathologyGroupPanes"></div>';
+
+    wrap.innerHTML = tabsHtml;
+
+    let panesContainer = wrap.querySelector('#pathologyGroupPanes');
+    let paneTemplate = document.getElementById('pathologyGroupPaneTemplate');
+
+    result.groups.forEach((g, idx) => {
+
+        let frag = paneTemplate.content.cloneNode(true);
+        let root = frag.querySelector('.pathology-group-pane');
+
+        root.style.display = idx === 0 ? '' : 'none';
+        root.dataset.idx = idx;
+        root.querySelector('.pathology-group-title').innerText = g.test_group_name;
+
+        panesContainer.appendChild(frag);
+
+        let findingsWrap = root.querySelector('.pathology-group-findings');
+
+        g.findings.forEach(f => renderPathologyFindingCard(findingsWrap, f, invoiceNo));
+
+        root.querySelector('.pathology-start-picker').groupData = g;
+        refreshPathologyStartPicker(root, g);
+    });
+}
+
+function renderPathologyLegacyCard(wrap, invoiceId) {
+
+    let template = document.getElementById('pathologyLegacyCardTemplate');
+    let frag = template.content.cloneNode(true);
+
+    let printBtn = frag.querySelector('.pathology-legacy-print-btn');
+    let whatsappBtn = frag.querySelector('.pathology-legacy-whatsapp-btn');
+
+    printBtn.addEventListener('click', function () {
+        window.open(`/test-result-entry/print/${invoiceId}`, '_blank');
+    });
+
+    whatsappBtn.addEventListener('click', async function () {
+
+        whatsappBtn.disabled = true;
+
+        Swal.fire({
+            title: 'Please wait...',
+            text: 'We are sending WhatsApp message',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            didOpen: function () {
+                Swal.showLoading();
+            }
         });
 
-        if (row.has_analytes) {
+        const { result } = await fetchJson(`/test-result-entry/send-whatsapp/${invoiceId}`, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken() }
+        });
 
-            let previousGroup = undefined;
-            let previousSubGroup = undefined;
+        whatsappBtn.disabled = false;
 
-            row.analytes.forEach(a => {
+        Swal.fire({
+            icon: result.status ? 'success' : 'error',
+            title: result.status ? 'Sent' : 'Error',
+            text: result.message
+        });
+    });
 
-                let group = a.group_name || '';
-                let subGroup = a.sub_group_name || '';
+    wrap.appendChild(frag);
+}
 
-                if (subGroup && subGroup !== previousSubGroup) {
-                    html += renderAnalyteSubGroupHeaderRow(subGroup);
-                    previousGroup = undefined;
-                }
+function refreshPathologyStartPicker(pane, g) {
 
-                if (group && group !== previousGroup) {
-                    html += renderAnalyteGroupHeaderRow(group);
-                }
+    let picker = pane.querySelector('.pathology-start-picker');
+    let startWrap = pane.querySelector('.pathology-start-wrap');
 
-                previousGroup = group;
-                previousSubGroup = subGroup;
+    if (!g.unclaimed_items.length) {
+        startWrap.style.display = 'none';
+        return;
+    }
 
-                html += renderResultRow({
-                    invoiceDetailId: row.invoice_detail_id,
-                    analyteId: a.analyte_id,
-                    resultId: a.result_id,
-                    itemCode: '',
-                    itemCodeSub: '',
-                    description: a.analyte_name,
-                    uom: a.uom,
-                    rangeMale: a.range_male,
-                    rangeFemale: a.range_female,
-                    rangeCommon: a.range_common,
-                    method: a.method,
-                    resultValue: a.result_value,
-                    remarks: a.remarks,
-                    extraClass: 'analyte-row'
-                });
+    startWrap.style.display = '';
+    picker.innerHTML = '<option value="">-- Select a Template / Item --</option>';
+
+    g.available_templates.forEach(t => {
+
+        let itemNames = t.item_code_subs.map(code => {
+            let item = g.unclaimed_items.find(i => i.item_code_sub === code);
+            return item ? item.item_description : code;
+        }).join(', ');
+
+        let option = document.createElement('option');
+        option.value = 'template:' + t.id;
+        option.textContent = `Template: ${t.title} (${itemNames})`;
+        picker.appendChild(option);
+    });
+
+    g.unclaimed_items.forEach(item => {
+
+        let option = document.createElement('option');
+        option.value = 'blank:' + item.invoice_detail_id;
+        option.textContent = `Blank Report: ${item.item_description}`;
+        picker.appendChild(option);
+    });
+}
+
+function renderPathologyFindingCard(container, finding, invoiceNo) {
+
+    let template = document.getElementById('pathologyFindingCardTemplate');
+    let frag = template.content.cloneNode(true);
+    let cardEl = frag.querySelector('.pathology-finding-card');
+
+    cardEl.dataset.findingId = finding.id ?? '';
+    cardEl.dataset.invoiceNo = invoiceNo;
+    cardEl.dataset.invoiceDetailIds = (finding.items || []).map(i => i.invoice_detail_id).join(',');
+
+    if (finding.template_id) {
+        cardEl.dataset.templateId = finding.template_id;
+    }
+
+    let itemDesc = (finding.items || []).map(i => i.item_description).join(', ');
+
+    cardEl.querySelector('.pathology-item-description').innerText = itemDesc;
+    cardEl.querySelector('.pathology-template-title').innerText =
+        finding.template_title ? `(Template: ${finding.template_title})` : '';
+
+    container.appendChild(frag);
+
+    let textarea = cardEl.querySelector('.pathology-content');
+
+    ClassicEditor.create(textarea, RICH_EDITOR_CONFIG).then(function (editor) {
+
+        pathologyEditors.set(cardEl, editor);
+        editor.setData(toEditorHtml(finding.content || ''));
+
+        if (finding.confirmed_at) {
+            lockPathologyCard(cardEl, finding.id);
+        }
+    });
+}
+
+function lockPathologyCard(cardEl, findingId) {
+
+    let editor = pathologyEditors.get(cardEl);
+
+    if (editor) editor.enableReadOnlyMode('pathology-locked');
+
+    cardEl.querySelector('.pathology-confirmed-badge').style.display = 'inline-block';
+    cardEl.querySelector('.pathology-save-btn').style.display = 'none';
+    cardEl.querySelector('.pathology-confirm-btn').style.display = 'none';
+
+    let printBtn = cardEl.querySelector('.pathology-print-btn');
+    printBtn.href = `/pathology-report/print/${findingId}`;
+    printBtn.style.display = 'inline-block';
+
+    cardEl.querySelector('.pathology-whatsapp-btn').style.display = 'inline-block';
+}
+
+document.addEventListener('click', function (e) {
+
+    let tabBtn = e.target.closest('#pathologyGroupTabs .nav-link');
+
+    if (tabBtn) {
+
+        document.querySelectorAll('#pathologyGroupTabs .nav-link').forEach(t => t.classList.remove('active'));
+        tabBtn.classList.add('active');
+
+        document.querySelectorAll('.pathology-group-pane').forEach(pane => {
+            pane.style.display = pane.dataset.idx === tabBtn.dataset.idx ? '' : 'none';
+        });
+    }
+});
+
+document.addEventListener('change', function (e) {
+
+    let picker = e.target.closest('.pathology-start-picker');
+
+    if (!picker || !picker.value) return;
+
+    let g = picker.groupData;
+    let pane = picker.closest('.pathology-group-pane');
+    let findingsWrap = pane.querySelector('.pathology-group-findings');
+    let invoiceNo = document.querySelector('#invoiceInfoWrap').dataset.invoiceNo;
+
+    let [kind, idValue] = picker.value.split(':');
+
+    if (kind === 'template') {
+
+        let tpl = g.available_templates.find(t => String(t.id) === idValue);
+
+        if (!tpl) {
+            picker.value = '';
+            return;
+        }
+
+        let items = tpl.item_code_subs
+            .map(code => g.unclaimed_items.find(i => i.item_code_sub === code))
+            .filter(Boolean);
+
+        renderPathologyFindingCard(findingsWrap, {
+            id: null,
+            content: tpl.content,
+            template_id: tpl.id,
+            template_title: tpl.title,
+            confirmed_at: null,
+            items: items
+        }, invoiceNo);
+
+        g.unclaimed_items = g.unclaimed_items.filter(i => !tpl.item_code_subs.includes(i.item_code_sub));
+
+    } else if (kind === 'blank') {
+
+        let item = g.unclaimed_items.find(i => String(i.invoice_detail_id) === idValue);
+
+        if (!item) {
+            picker.value = '';
+            return;
+        }
+
+        renderPathologyFindingCard(findingsWrap, {
+            id: null,
+            content: '',
+            template_id: null,
+            template_title: null,
+            confirmed_at: null,
+            items: [item]
+        }, invoiceNo);
+
+        g.unclaimed_items = g.unclaimed_items.filter(i => i !== item);
+    }
+
+    g.available_templates = g.available_templates.filter(t =>
+        t.item_code_subs.every(code => g.unclaimed_items.some(i => i.item_code_sub === code))
+    );
+
+    refreshPathologyStartPicker(pane, g);
+});
+
+document.addEventListener('click', async function (e) {
+
+    let saveBtn = e.target.closest('.pathology-save-btn');
+
+    if (saveBtn) {
+
+        let card = saveBtn.closest('.pathology-finding-card');
+        let editor = pathologyEditors.get(card);
+        let content = editor ? editor.getData() : '';
+
+        saveBtn.disabled = true;
+
+        let payload = { content: content };
+
+        if (card.dataset.findingId) {
+
+            payload.finding_id = card.dataset.findingId;
+
+        } else {
+
+            payload.invoice_no = card.dataset.invoiceNo;
+            payload.invoice_detail_ids = card.dataset.invoiceDetailIds.split(',').filter(Boolean);
+
+            if (card.dataset.templateId) {
+                payload.template_id = card.dataset.templateId;
+            }
+        }
+
+        const { result } = await fetchJson('/pathology-report/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken()
+            },
+            body: JSON.stringify(payload)
+        });
+
+        saveBtn.disabled = false;
+
+        if (result.status && result.data && result.data.id) {
+            card.dataset.findingId = result.data.id;
+        }
+
+        Swal.fire({
+            icon: result.status ? 'success' : 'error',
+            title: result.status ? 'Saved' : 'Error',
+            text: result.message ?? (result.errors ? Object.values(result.errors).flat().join(', ') : ''),
+            timer: result.status ? 1200 : undefined,
+            showConfirmButton: !result.status
+        });
+
+        return;
+    }
+
+    let confirmBtn = e.target.closest('.pathology-confirm-btn');
+
+    if (confirmBtn) {
+
+        let card = confirmBtn.closest('.pathology-finding-card');
+
+        if (!card.dataset.findingId) {
+
+            Swal.fire({
+                icon: 'warning',
+                title: 'Save First',
+                text: 'Please save the report before confirming it.'
+            });
+
+            return;
+        }
+
+        let confirmResult = await Swal.fire({
+            icon: 'warning',
+            title: 'Confirm this report?',
+            text: 'Once confirmed, it can no longer be edited.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Confirm & Lock'
+        });
+
+        if (!confirmResult.isConfirmed) {
+            return;
+        }
+
+        confirmBtn.disabled = true;
+
+        const { result } = await fetchJson('/pathology-report/confirm', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken()
+            },
+            body: JSON.stringify({ finding_id: card.dataset.findingId })
+        });
+
+        confirmBtn.disabled = false;
+
+        if (result.status) {
+
+            lockPathologyCard(card, card.dataset.findingId);
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Confirmed',
+                text: result.message
+            });
+
+        } else {
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: result.message
             });
         }
 
-        html += renderExtraParamsRow(row);
+        return;
+    }
 
-        if (row.item_code_sub && !inputsLocked()) {
-            pickersToLoad.push({ invoiceDetailId: row.invoice_detail_id, itemCodeSub: row.item_code_sub });
-        }
+    let whatsappBtn = e.target.closest('.pathology-whatsapp-btn');
+
+    if (whatsappBtn) {
+
+        let card = whatsappBtn.closest('.pathology-finding-card');
+        let findingId = card.dataset.findingId;
+
+        whatsappBtn.disabled = true;
+
+        Swal.fire({
+            title: 'Please wait...',
+            text: 'We are sending WhatsApp message',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            didOpen: function () {
+                Swal.showLoading();
+            }
+        });
+
+        const { result } = await fetchJson(`/pathology-report/send-whatsapp/${findingId}`, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken() }
+        });
+
+        whatsappBtn.disabled = false;
+
+        Swal.fire({
+            icon: result.status ? 'success' : 'error',
+            title: result.status ? 'Sent' : 'Error',
+            text: result.message
+        });
+    }
+});
+
+/*
+|--------------------------------------------------------------------------
+| NON-PATHOLOGY NARRATIVE REPORTS -- one independently completable/
+| confirmable/printable Clinical History/Findings/Impression card per
+| billed line, for every Non-Pathology category with no parameter grid.
+| Mirrors usg-report.init.js's card handling (USG solved this same problem
+| for itself already and keeps its own separate module).
+|--------------------------------------------------------------------------
+*/
+
+let nonPathEditors = new Map();
+
+function destroyAllNonPathEditors() {
+    nonPathEditors.forEach(fields => {
+        fields.clinical_history.destroy();
+        fields.findings.destroy();
+        fields.impression.destroy();
     });
-
-    // Build the whole tbody in one shot before wiring up any async picker
-    // loads -- assigning innerHTML incrementally inside the loop above would
-    // tear down and recreate every earlier row's nodes on each iteration,
-    // detaching any picker element a later-resolving fetch tries to populate.
-    tbody.innerHTML = html;
-
-    pickersToLoad.forEach(({ invoiceDetailId, itemCodeSub }) => {
-
-        let picker = tbody.querySelector(
-            `.test-template-picker[data-invoice-detail-id="${invoiceDetailId}"]`
-        );
-
-        if (picker) loadTestTemplatesForPicker(picker, itemCodeSub);
-    });
+    nonPathEditors.clear();
 }
 
-function loadTestTemplatesForPicker(picker, itemCodeSub) {
+async function loadNonPathologyReports(invoiceNo) {
 
-    fetch(`/test-report-template/for-test/${itemCodeSub}`)
+    const { result } = await fetchJson('/non-pathology-report/search', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken()
+        },
+        body: JSON.stringify({ invoice_no: invoiceNo })
+    });
+
+    if (!result.status) {
+        document.querySelector('#invoiceNotFoundMsg').style.display = 'block';
+        return;
+    }
+
+    renderInvoiceInfo(result.invoice);
+
+    let wrap = document.querySelector('#nonPathologyReportsWrap');
+    wrap.style.display = 'block';
+
+    if (!result.lines.length) {
+
+        document.querySelector('#noQualifyingMsg').style.display = 'block';
+        return;
+    }
+
+    let template = document.getElementById('nonPathReportCardTemplate');
+
+    for (const line of result.lines) {
+
+        let frag = template.content.cloneNode(true);
+        let root = frag.querySelector('.nonpath-report-card');
+
+        root.dataset.invoiceDetailId = line.invoice_detail_id;
+        root.dataset.findingId = line.finding_id ?? '';
+
+        root.querySelector('.nonpath-item-description').innerText = line.item_description ?? '';
+        root.querySelector('.nonpath-item-code-sub').innerText = line.item_code_sub ? `(${line.item_code_sub})` : '';
+        root.querySelector('.nonpath-doctor-name').innerText = line.doctor_name ?? '-';
+
+        wrap.appendChild(frag);
+
+        let clinicalHistoryEditor = await ClassicEditor.create(root.querySelector('.nonpath-clinical-history'), RICH_EDITOR_CONFIG);
+        let findingsEditor = await ClassicEditor.create(root.querySelector('.nonpath-findings'), RICH_EDITOR_CONFIG);
+        let impressionEditor = await ClassicEditor.create(root.querySelector('.nonpath-impression'), RICH_EDITOR_CONFIG);
+
+        nonPathEditors.set(root, {
+            clinical_history: clinicalHistoryEditor,
+            findings: findingsEditor,
+            impression: impressionEditor
+        });
+
+        clinicalHistoryEditor.setData(toEditorHtml(line.clinical_history ?? ''));
+        findingsEditor.setData(toEditorHtml(line.findings ?? ''));
+        impressionEditor.setData(toEditorHtml(line.impression ?? ''));
+
+        if (line.confirmed_at || isReadOnlyView) {
+            lockNonPathCard(root, line.finding_id);
+        }
+
+        if (line.item_code_sub) {
+            loadNonPathTemplatesForPicker(root.querySelector('.nonpath-template-picker'), line.item_code_sub);
+        }
+    }
+}
+
+function lockNonPathCard(root, findingId) {
+
+    let editors = nonPathEditors.get(root);
+
+    if (editors) {
+        editors.clinical_history.enableReadOnlyMode('nonpath-locked');
+        editors.findings.enableReadOnlyMode('nonpath-locked');
+        editors.impression.enableReadOnlyMode('nonpath-locked');
+    }
+
+    root.querySelector('.nonpath-template-picker-wrap').style.display = 'none';
+    root.querySelector('.nonpath-confirmed-badge').style.display = 'inline-block';
+    root.querySelector('.nonpath-save-btn').style.display = 'none';
+    root.querySelector('.nonpath-confirm-btn').style.display = 'none';
+
+    if (!findingId) return;
+
+    let printBtn = root.querySelector('.nonpath-print-btn');
+    printBtn.href = `/non-pathology-report/print/${findingId}`;
+    printBtn.style.display = 'inline-block';
+
+    root.querySelector('.nonpath-whatsapp-btn').style.display = 'inline-block';
+}
+
+function loadNonPathTemplatesForPicker(picker, itemCodeSub) {
+
+    fetch(`/non-pathology-report-template/for-test/${itemCodeSub}`)
         .then(r => r.json())
         .then(result => {
 
             if (!result.status || !result.data.length) return;
 
-            picker.testTemplates = {};
+            picker.nonPathTemplates = {};
 
             result.data.forEach(tpl => {
 
-                picker.testTemplates[tpl.id] = tpl;
+                picker.nonPathTemplates[tpl.id] = tpl;
 
                 let option = document.createElement('option');
                 option.value = tpl.id;
@@ -366,298 +715,53 @@ function loadTestTemplatesForPicker(picker, itemCodeSub) {
         .catch(() => {});
 }
 
-function applyTestTemplateToLine(extraParamsRow, template) {
+document.addEventListener('change', async function (e) {
 
-    let container = extraParamsRow.querySelector('.extra-params-container');
-    let invoiceDetailId = container.dataset.invoiceDetailId;
+    let picker = e.target.closest('.nonpath-template-picker');
 
-    (template.parameters || []).forEach(function (param) {
+    if (!picker || !picker.value) return;
 
-        if (!param.value) return;
+    let template = (picker.nonPathTemplates || {})[picker.value];
 
-        let existingCard = container.querySelector(`.extra-param-item[data-field-type-id="${param.field_type_id}"]`);
-        let valueId = existingCard ? existingCard.dataset.valueId : '';
-
-        if (existingCard) existingCard.remove();
-
-        let wrapper = document.createElement('div');
-
-        wrapper.innerHTML = renderExtraParamCard(
-            invoiceDetailId, param.field_type_id, param.field_name, param.input_type, param.value, valueId
-        );
-
-        container.appendChild(wrapper.firstElementChild);
-    });
-}
-
-function updateCurrentRowsCache(invoiceDetailId, analyteId, resultId, resultValue, remarks) {
-
-    let row = currentRows.find(r => String(r.invoice_detail_id) === String(invoiceDetailId));
-
-    if (!row) return;
-
-    if (String(analyteId) !== '0' && row.has_analytes) {
-
-        let analyte = row.analytes.find(a => String(a.analyte_id) === String(analyteId));
-
-        if (analyte) {
-            analyte.result_id = resultId;
-            analyte.result_value = resultValue;
-            analyte.remarks = remarks;
-        }
-
-    } else {
-
-        row.result_id = resultId;
-        row.result_value = resultValue;
-        row.remarks = remarks;
-    }
-}
-
-function updateCurrentRowsExtraValue(invoiceDetailId, fieldTypeId, fieldName, inputType, valueId, value) {
-
-    let row = currentRows.find(r => String(r.invoice_detail_id) === String(invoiceDetailId));
-
-    if (!row) return;
-
-    if (!row.extra_values) {
-        row.extra_values = [];
-    }
-
-    let existing = row.extra_values.find(v => String(v.field_type_id) === String(fieldTypeId));
-
-    if (existing) {
-
-        existing.id = valueId;
-        existing.value = value;
-
-    } else {
-
-        row.extra_values.push({
-            id: valueId,
-            field_type_id: fieldTypeId,
-            field_name: fieldName,
-            input_type: inputType,
-            value: value
-        });
-    }
-}
-
-function collectRowsFromDom() {
-
-    let rows = [];
-
-    document.querySelectorAll('#resultTableBody tr').forEach(tr => {
-
-        let resultInput = tr.querySelector('.result-value-input');
-
-        if (!resultInput) return;
-
-        rows.push({
-            invoice_detail_id: tr.dataset.invoiceDetailId,
-            analyte_id: tr.dataset.analyteId ?? '0',
-            item_description: tr.dataset.description || '',
-            uom: tr.dataset.uom || '',
-            result_value: resultInput.value,
-            remarks: tr.querySelector('.remarks-input').value,
-        });
-    });
-
-    return rows;
-}
-
-async function saveRow(invoiceDetailId, analyteId, resultValue, remarks) {
-
-    const response = await fetch('/test-result-entry/save', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-            invoice_detail_id: invoiceDetailId,
-            analyte_id: analyteId,
-            result_value: resultValue,
-            remarks: remarks
-        })
-    });
-
-    return response.json();
-}
-
-async function saveExtraParam(invoiceDetailId, fieldTypeId, value) {
-
-    const response = await fetch('/test-result-entry/save-extra', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-            invoice_detail_id: invoiceDetailId,
-            test_extra_field_type_id: fieldTypeId,
-            value: value
-        })
-    });
-
-    return response.json();
-}
-
-function applyLockState() {
-
-    document.querySelector('#btnPrintReport').disabled = !isConfirmed;
-    document.querySelector('#btnWhatsappReport').disabled = !isConfirmed;
-
-    document.querySelector('#btnConfirmReport').style.display = isConfirmed ? 'none' : 'inline-block';
-    document.querySelector('#confirmedBadge').style.display = isConfirmed ? 'inline-block' : 'none';
-}
-
-async function searchInvoice() {
-
-    let invoiceNo = document.querySelector('#invoiceNoInput').value.trim();
-
-    document.querySelector('#invoiceInfoWrap').style.display = 'none';
-    document.querySelector('#invoiceNotFoundMsg').style.display = 'none';
-    document.querySelector('#resultTableWrap').style.display = 'none';
-    document.querySelector('#noQualifyingMsg').style.display = 'none';
-    document.querySelector('#nonPathologyReportsWrap').innerHTML = '';
-
-    if (!invoiceNo) {
+    if (!template) {
+        picker.value = '';
         return;
     }
 
-    const response = await fetch('/test-result-entry/search', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify({ invoice_no: invoiceNo })
-    });
+    let root = picker.closest('.nonpath-report-card');
+    let editors = nonPathEditors.get(root);
 
-    const result = await response.json();
-
-    if (!result.status) {
-
-        document.querySelector('#invoiceNotFoundMsg').style.display = 'block';
+    if (!editors) {
+        picker.value = '';
         return;
     }
 
-    document.querySelector('#info-invoice_no').innerText = result.invoice.invoice_no ?? '';
-    document.querySelector('#info-invoice_date').innerText = result.invoice.invoice_date ?? '';
-    document.querySelector('#info-patient_name').innerText = result.invoice.patient_name ?? '';
-    document.querySelector('#info-patient_age_gender').innerText =
-        `${result.invoice.patient_age ?? ''} / ${result.invoice.patient_gender ?? ''}`;
-    document.querySelector('#info-referred_doctor').innerText = result.invoice.referred_doctor ?? '';
-    document.querySelector('#info-status').innerText = result.invoice.status ?? '';
+    let hasExisting = editors.clinical_history.getData().trim()
+        || editors.findings.getData().trim()
+        || editors.impression.getData().trim();
 
-    document.querySelector('#invoiceInfoWrap').dataset.invoiceId = result.invoice.id;
-    document.querySelector('#invoiceInfoWrap').dataset.invoiceNo = result.invoice.invoice_no;
+    if (hasExisting) {
 
-    document.querySelector('#invoiceInfoWrap').style.display = 'block';
+        let confirmResult = await Swal.fire({
+            icon: 'warning',
+            title: 'Replace current content?',
+            text: 'This will replace the current Clinical History, Findings, and Impression with the selected template.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Replace'
+        });
 
-    isConfirmed = !!result.invoice.confirmed;
-    currentRows = result.data;
-
-    if (!result.data.length) {
-
-        // Non-Pathology categories (X-Ray, Cardiology, EMG-NCV, Endoscopy,
-        // Dental, EYE, Miscellaneous, etc. -- everything except Pathology
-        // and USG, which has its own separate module) have no parameter
-        // grid at all, so buildRows() always returns empty for them. Offer
-        // the narrative-report cards instead of the dead-end message.
-        if (result.invoice.invoice_category === 'NON_PATHOLOGY') {
-            await loadNonPathologyReports(result.invoice.invoice_no);
+        if (!confirmResult.isConfirmed) {
+            picker.value = '';
             return;
         }
-
-        document.querySelector('#noQualifyingMsg').style.display = 'block';
-        return;
     }
 
-    renderRows(result.data);
-    applyLockState();
+    editors.clinical_history.setData(toEditorHtml(template.clinical_history ?? ''));
+    editors.findings.setData(toEditorHtml(template.findings ?? ''));
+    editors.impression.setData(toEditorHtml(template.impression ?? ''));
 
-    document.querySelector('#resultTableWrap').style.display = 'block';
-}
-
-/*
-|--------------------------------------------------------------------------
-| NON-PATHOLOGY NARRATIVE REPORTS -- one independently completable/
-| confirmable/printable Clinical History/Findings/Impression card per
-| billed line, for every Non-Pathology category with no parameter grid.
-| Mirrors usg-report.init.js's card handling exactly (USG solved this same
-| problem for itself already and keeps its own separate module).
-|--------------------------------------------------------------------------
-*/
-
-async function loadNonPathologyReports(invoiceNo) {
-
-    const response = await fetch('/non-pathology-report/search', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify({ invoice_no: invoiceNo })
-    });
-
-    const result = await response.json();
-
-    let wrap = document.querySelector('#nonPathologyReportsWrap');
-    wrap.innerHTML = '';
-
-    if (!result.status || !result.lines.length) {
-
-        document.querySelector('#noQualifyingMsg').style.display = 'block';
-        return;
-    }
-
-    let template = document.getElementById('nonPathReportCardTemplate');
-
-    result.lines.forEach(function (line) {
-
-        let card = template.content.cloneNode(true);
-        let root = card.querySelector('.nonpath-report-card');
-
-        root.dataset.invoiceDetailId = line.invoice_detail_id;
-        root.dataset.findingId = line.finding_id ?? '';
-
-        root.querySelector('.nonpath-item-description').innerText = line.item_description ?? '';
-        root.querySelector('.nonpath-item-code-sub').innerText = line.item_code_sub ? `(${line.item_code_sub})` : '';
-        root.querySelector('.nonpath-doctor-name').innerText = line.doctor_name ?? '-';
-
-        root.querySelector('.nonpath-clinical-history').value = line.clinical_history ?? '';
-        root.querySelector('.nonpath-findings').value = line.findings ?? '';
-        root.querySelector('.nonpath-impression').value = line.impression ?? '';
-
-        if (line.confirmed_at) {
-            lockNonPathCard(root, line.finding_id);
-        }
-
-        wrap.appendChild(card);
-    });
-
-    document.querySelector('#resultTableWrap').style.display = 'none';
-}
-
-function lockNonPathCard(root, findingId) {
-
-    root.querySelectorAll('textarea').forEach(t => t.disabled = true);
-    root.querySelector('.nonpath-confirmed-badge').style.display = 'inline-block';
-    root.querySelector('.nonpath-save-btn').style.display = 'none';
-    root.querySelector('.nonpath-confirm-btn').style.display = 'none';
-
-    let printBtn = root.querySelector('.nonpath-print-btn');
-    printBtn.href = `/non-pathology-report/print/${findingId}`;
-    printBtn.style.display = 'inline-block';
-
-    root.querySelector('.nonpath-whatsapp-btn').style.display = 'inline-block';
-}
+    picker.value = '';
+});
 
 document.addEventListener('click', async function (e) {
 
@@ -665,10 +769,11 @@ document.addEventListener('click', async function (e) {
     if (saveBtn) {
 
         let root = saveBtn.closest('.nonpath-report-card');
+        let editors = nonPathEditors.get(root);
 
         saveBtn.disabled = true;
 
-        const response = await fetch('/non-pathology-report/save', {
+        const { result } = await fetchJson('/non-pathology-report/save', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -676,13 +781,11 @@ document.addEventListener('click', async function (e) {
             },
             body: JSON.stringify({
                 invoice_detail_id: root.dataset.invoiceDetailId,
-                clinical_history: root.querySelector('.nonpath-clinical-history').value,
-                findings: root.querySelector('.nonpath-findings').value,
-                impression: root.querySelector('.nonpath-impression').value
+                clinical_history: editors.clinical_history.getData(),
+                findings: editors.findings.getData(),
+                impression: editors.impression.getData()
             })
         });
-
-        const result = await response.json();
 
         saveBtn.disabled = false;
 
@@ -731,7 +834,7 @@ document.addEventListener('click', async function (e) {
 
         confirmBtn.disabled = true;
 
-        const response = await fetch('/non-pathology-report/confirm', {
+        const { result } = await fetchJson('/non-pathology-report/confirm', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -739,8 +842,6 @@ document.addEventListener('click', async function (e) {
             },
             body: JSON.stringify({ invoice_detail_id: root.dataset.invoiceDetailId })
         });
-
-        const result = await response.json();
 
         confirmBtn.disabled = false;
 
@@ -785,12 +886,10 @@ document.addEventListener('click', async function (e) {
             }
         });
 
-        const response = await fetch(`/non-pathology-report/send-whatsapp/${findingId}`, {
+        const { result } = await fetchJson(`/non-pathology-report/send-whatsapp/${findingId}`, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': csrfToken() }
         });
-
-        const result = await response.json();
 
         whatsappBtn.disabled = false;
 
@@ -800,547 +899,4 @@ document.addEventListener('click', async function (e) {
             text: result.message
         });
     }
-});
-
-document.addEventListener('change', async function (e) {
-
-    let picker = e.target.closest('.remarks-template-picker');
-
-    if (!picker || !picker.value) return;
-
-    let selectedText = picker.value;
-    let remarksInput = picker.closest('td').querySelector('.remarks-input');
-
-    if (remarksInput.value.trim()) {
-
-        let confirmResult = await Swal.fire({
-            icon: 'warning',
-            title: 'Replace current remarks?',
-            text: 'This will replace your current remarks with the selected quick pick.',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, Replace'
-        });
-
-        if (!confirmResult.isConfirmed) {
-            picker.value = '';
-            return;
-        }
-    }
-
-    remarksInput.value = selectedText;
-    picker.value = '';
-});
-
-document.addEventListener('change', async function (e) {
-
-    let picker = e.target.closest('.test-template-picker');
-
-    if (!picker || !picker.value) return;
-
-    let template = (picker.testTemplates || {})[picker.value];
-
-    if (!template) {
-        picker.value = '';
-        return;
-    }
-
-    let invoiceDetailId = picker.dataset.invoiceDetailId;
-
-    let mainRow = document.querySelector(
-        `#resultTableBody tr[data-invoice-detail-id="${invoiceDetailId}"][data-analyte-id="0"]`
-    );
-
-    let remarksInput = mainRow ? mainRow.querySelector('.remarks-input') : null;
-
-    let extraParamsRow = picker.closest('tr.extra-params-row');
-    let container = extraParamsRow.querySelector('.extra-params-container');
-
-    let hasExistingParam = (template.parameters || []).some(function (param) {
-        let existingInput = container.querySelector(
-            `.extra-param-item[data-field-type-id="${param.field_type_id}"] .extra-param-input`
-        );
-        return existingInput && existingInput.value.trim();
-    });
-
-    let hasExisting = (remarksInput && remarksInput.value.trim()) || hasExistingParam;
-
-    if (hasExisting) {
-
-        let confirmResult = await Swal.fire({
-            icon: 'warning',
-            title: 'Replace current values?',
-            text: 'This will replace the current Remarks and any overlapping parameters for this test with the selected template.',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, Replace'
-        });
-
-        if (!confirmResult.isConfirmed) {
-            picker.value = '';
-            return;
-        }
-    }
-
-    if (remarksInput && template.remarks) remarksInput.value = template.remarks;
-
-    applyTestTemplateToLine(extraParamsRow, template);
-
-    picker.value = '';
-});
-
-document.addEventListener('click', async function (e) {
-
-    let saveBtn = e.target.closest('.save-result-btn');
-
-    if (saveBtn) {
-
-        let row = saveBtn.closest('tr');
-
-        let invoiceDetailId = row.dataset.invoiceDetailId;
-        let analyteId = row.dataset.analyteId ?? '0';
-
-        let resultValue = row.querySelector('.result-value-input').value;
-        let remarks = row.querySelector('.remarks-input').value;
-
-        Swal.fire({
-            title: 'Saving....',
-            text: 'Please wait',
-            allowOutsideClick: false,
-            allowEscapeKey: false,
-            showConfirmButton: false,
-            didOpen: function () {
-                Swal.showLoading();
-            }
-        });
-
-        const result = await saveRow(invoiceDetailId, analyteId, resultValue, remarks);
-
-        if (!result.status) {
-
-            let errorText = result.errors
-                ? Object.values(result.errors).flat().join(', ')
-                : (result.message ?? 'Unable to save result.');
-
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: errorText
-            });
-
-            return;
-        }
-
-        row.dataset.resultId = result.data.result_id;
-        row.querySelector('.clear-result-btn').classList.remove('d-none');
-
-        updateCurrentRowsCache(invoiceDetailId, analyteId, result.data.result_id, result.data.result_value, result.data.remarks);
-
-        Swal.fire({
-            icon: 'success',
-            title: 'Saved',
-            text: result.message,
-            timer: 1200,
-            showConfirmButton: false
-        });
-
-        return;
-    }
-
-    let clearBtn = e.target.closest('.clear-result-btn');
-
-    if (clearBtn) {
-
-        let row = clearBtn.closest('tr');
-
-        let resultId = row.dataset.resultId;
-        let invoiceDetailId = row.dataset.invoiceDetailId;
-        let analyteId = row.dataset.analyteId ?? '0';
-
-        if (!resultId) {
-            return;
-        }
-
-        Swal.fire({
-
-            title: 'Clear Result?',
-            text: 'This will remove the entered result for this test.',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Clear'
-
-        }).then(async function (confirmResult) {
-
-            if (!confirmResult.isConfirmed) {
-                return;
-            }
-
-            const response = await fetch(`/test-result-entry/delete/${resultId}`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRF-TOKEN': csrfToken(),
-                    'Accept': 'application/json'
-                }
-            });
-
-            const result = await response.json();
-
-            if (!result.status) {
-
-                Swal.fire('Error', result.message ?? 'Unable to clear result.', 'error');
-                return;
-            }
-
-            row.dataset.resultId = '';
-            row.querySelector('.result-value-input').value = '';
-            row.querySelector('.remarks-input').value = '';
-            clearBtn.classList.add('d-none');
-
-            updateCurrentRowsCache(invoiceDetailId, analyteId, null, null, null);
-
-            Swal.fire({
-                icon: 'success',
-                title: 'Cleared',
-                timer: 1000,
-                showConfirmButton: false
-            });
-        });
-
-        return;
-    }
-});
-
-/*
-|--------------------------------------------------------------------------
-| EXTRA PARAMETERS (once-per-test metadata fields) -- cards can only
-| arrive here via a Load Template pick now; there is no ad hoc "Add
-| Parameter" control at entry time any more (that now lives on the Test
-| Report Template admin screen, where parameters are configured once per
-| template instead of chosen per patient). Save/Remove on an existing
-| card still work normally.
-|--------------------------------------------------------------------------
-*/
-
-document.addEventListener('click', async function (e) {
-
-    let saveExtraBtn = e.target.closest('.save-extra-param-btn');
-
-    if (saveExtraBtn) {
-
-        let card = saveExtraBtn.closest('.extra-param-item');
-        let value = card.querySelector('.extra-param-input').value;
-
-        Swal.fire({
-            title: 'Saving....',
-            text: 'Please wait',
-            allowOutsideClick: false,
-            allowEscapeKey: false,
-            showConfirmButton: false,
-            didOpen: function () {
-                Swal.showLoading();
-            }
-        });
-
-        const result = await saveExtraParam(
-            card.dataset.invoiceDetailId,
-            card.dataset.fieldTypeId,
-            value
-        );
-
-        if (!result.status) {
-
-            let errorText = result.errors
-                ? Object.values(result.errors).flat().join(', ')
-                : (result.message ?? 'Unable to save parameter.');
-
-            Swal.fire({ icon: 'error', title: 'Error', text: errorText });
-            return;
-        }
-
-        card.dataset.valueId = result.data.id;
-
-        updateCurrentRowsExtraValue(
-            card.dataset.invoiceDetailId,
-            card.dataset.fieldTypeId,
-            card.querySelector('.form-label').innerText,
-            getExtraParamInputType(card.querySelector('.extra-param-input')),
-            result.data.id,
-            result.data.value
-        );
-
-        Swal.fire({
-            icon: 'success',
-            title: 'Saved',
-            timer: 900,
-            showConfirmButton: false
-        });
-
-        return;
-    }
-
-    let removeExtraBtn = e.target.closest('.remove-extra-param-btn');
-
-    if (removeExtraBtn) {
-
-        let card = removeExtraBtn.closest('.extra-param-item');
-        let valueId = card.dataset.valueId;
-
-        if (!valueId) {
-            card.remove();
-            return;
-        }
-
-        let confirmResult = await Swal.fire({
-            title: 'Remove this parameter?',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Remove'
-        });
-
-        if (!confirmResult.isConfirmed) return;
-
-        const response = await fetch(`/test-result-entry/delete-extra/${valueId}`, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRF-TOKEN': csrfToken(),
-                'Accept': 'application/json'
-            }
-        });
-
-        const result = await response.json();
-
-        if (!result.status) {
-
-            Swal.fire('Error', result.message ?? 'Unable to remove parameter.', 'error');
-            return;
-        }
-
-        card.remove();
-    }
-});
-
-document.getElementById('btnPrintReport').addEventListener('click', function () {
-
-    let invoiceId = document.querySelector('#invoiceInfoWrap').dataset.invoiceId;
-
-    if (!invoiceId) {
-        return;
-    }
-
-    window.open(`/test-result-entry/print/${invoiceId}`, '_blank');
-});
-
-document.getElementById('btnWhatsappReport').addEventListener('click', async function () {
-
-    let invoiceId = document.querySelector('#invoiceInfoWrap').dataset.invoiceId;
-
-    if (!invoiceId) {
-        return;
-    }
-
-    Swal.fire({
-        title: 'Please wait',
-        text: 'Whatsapp message is under process.',
-        allowOutsideClick: false,
-        allowEscapeKey: false,
-        showConfirmButton: false,
-        didOpen: function () {
-            Swal.showLoading();
-        }
-    });
-
-    const response = await fetch(`/test-result-entry/send-whatsapp/${invoiceId}`, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': csrfToken(),
-            'Accept': 'application/json'
-        }
-    });
-
-    const result = await response.json();
-
-    if (!result.status) {
-
-        Swal.fire('Error', result.message ?? 'Unable to send report via WhatsApp.', 'error');
-        return;
-    }
-
-    Swal.fire({
-        icon: 'success',
-        title: 'Sent',
-        text: result.message,
-        timer: 1500,
-        showConfirmButton: false
-    });
-});
-
-document.getElementById('btnConfirmReport').addEventListener('click', function () {
-
-    document.querySelector('#review-invoice_no').innerText =
-        document.querySelector('#info-invoice_no').innerText;
-
-    document.querySelector('#review-patient_name').innerText =
-        document.querySelector('#info-patient_name').innerText;
-
-    let rows = collectRowsFromDom();
-
-    let tbody = document.querySelector('#reviewTableBody');
-
-    tbody.innerHTML = '';
-
-    rows.forEach(row => {
-
-        tbody.innerHTML += `
-        <tr>
-            <td>${escapeHtml(row.item_description)}</td>
-            <td>${escapeHtml(row.result_value)}</td>
-            <td>${escapeHtml(row.uom)}</td>
-            <td>${escapeHtml(row.remarks)}</td>
-        </tr>
-        `;
-    });
-
-    let extraTbody = document.querySelector('#reviewExtraParamsBody');
-
-    extraTbody.innerHTML = '';
-
-    let extraRowsFound = false;
-
-    document.querySelectorAll('.extra-param-item').forEach(card => {
-
-        let value = card.querySelector('.extra-param-input').value;
-
-        if (!value) return;
-
-        extraRowsFound = true;
-
-        let fieldName = card.querySelector('.form-label').innerText;
-
-        extraTbody.innerHTML += `
-        <tr>
-            <td>${escapeHtml(fieldName)}</td>
-            <td>${escapeHtml(value)}</td>
-        </tr>
-        `;
-    });
-
-    document.querySelector('#reviewExtraParamsWrap').style.display = extraRowsFound ? 'block' : 'none';
-
-    new bootstrap.Offcanvas(
-        document.getElementById('confirmOffcanvas')
-    ).show();
-});
-
-document.getElementById('btnConfirmLock').addEventListener('click', async function () {
-
-    let invoiceNo = document.querySelector('#invoiceInfoWrap').dataset.invoiceNo;
-
-    if (!invoiceNo) {
-        return;
-    }
-
-    let rows = collectRowsFromDom();
-
-    for (const row of rows) {
-
-        const saveResult = await saveRow(
-            row.invoice_detail_id,
-            row.analyte_id,
-            row.result_value,
-            row.remarks
-        );
-
-        if (!saveResult.status) {
-
-            let errorText = saveResult.errors
-                ? Object.values(saveResult.errors).flat().join(', ')
-                : (saveResult.message ?? 'Unable to save one or more test results.');
-
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: errorText
-            });
-
-            return;
-        }
-
-        updateCurrentRowsCache(row.invoice_detail_id, row.analyte_id, saveResult.data.result_id, saveResult.data.result_value, saveResult.data.remarks);
-    }
-
-    let extraCards = document.querySelectorAll('.extra-param-item');
-
-    for (const card of extraCards) {
-
-        let value = card.querySelector('.extra-param-input').value;
-
-        if (!value) continue;
-
-        const saveResult = await saveExtraParam(
-            card.dataset.invoiceDetailId,
-            card.dataset.fieldTypeId,
-            value
-        );
-
-        if (!saveResult.status) {
-
-            let errorText = saveResult.errors
-                ? Object.values(saveResult.errors).flat().join(', ')
-                : (saveResult.message ?? 'Unable to save one or more parameters.');
-
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: errorText
-            });
-
-            return;
-        }
-
-        updateCurrentRowsExtraValue(
-            card.dataset.invoiceDetailId,
-            card.dataset.fieldTypeId,
-            card.querySelector('.form-label').innerText,
-            getExtraParamInputType(card.querySelector('.extra-param-input')),
-            saveResult.data.id,
-            saveResult.data.value
-        );
-    }
-
-    const response = await fetch('/test-result-entry/confirm', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify({ invoice_no: invoiceNo })
-    });
-
-    const result = await response.json();
-
-    if (!result.status) {
-
-        Swal.fire('Error', result.message ?? 'Unable to confirm test report.', 'error');
-        return;
-    }
-
-    isConfirmed = true;
-
-    renderRows(currentRows);
-    applyLockState();
-
-    bootstrap.Offcanvas.getInstance(
-        document.getElementById('confirmOffcanvas')
-    ).hide();
-
-    Swal.fire({
-        icon: 'success',
-        title: 'Confirmed',
-        text: result.message,
-        timer: 1500,
-        showConfirmButton: false
-    });
 });

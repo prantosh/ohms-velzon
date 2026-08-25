@@ -36,13 +36,18 @@ function confirmedCellHtml(row) {
 
 function actionCellHtml(row) {
 
+    // Confirmed -- a Pathology invoice can have several independent
+    // narrative reports now (see PathologyReportController), each with its
+    // own Print/WhatsApp button inside the modal, so this opens the same
+    // modal read-only rather than trying to pick one report for a single
+    // dashboard-wide action.
     if (row.confirmed) {
         return `
-        <button type="button" class="btn btn-sm btn-soft-info print-result-btn me-1" data-id="${row.id}" title="Print Report">
-            <i class="ri-printer-line"></i>
-        </button>
-        <button type="button" class="btn btn-sm btn-soft-success whatsapp-result-btn" data-id="${row.id}" title="Send via WhatsApp">
-            <i class="ri-whatsapp-line"></i>
+        <button type="button" class="btn btn-sm btn-outline-success enter-result-btn"
+                data-invoice-no="${escapeHtml(row.invoice_no)}"
+                data-readonly="1">
+            <i class="ri-check-double-line"></i>
+            View / Print
         </button>
         `;
     }
@@ -200,48 +205,6 @@ document.addEventListener('click', async function (e) {
 
         document.getElementById('invoiceNoInput').value = invoiceNo;
         searchInvoice();
-
-        return;
-    }
-
-    let printBtn = e.target.closest('.print-result-btn');
-    if (printBtn) {
-        window.open(`/test-result-entry/print/${printBtn.dataset.id}`, '_blank');
-        return;
-    }
-
-    let whatsappBtn = e.target.closest('.whatsapp-result-btn');
-    if (whatsappBtn) {
-
-        let id = whatsappBtn.dataset.id;
-
-        whatsappBtn.disabled = true;
-
-        Swal.fire({
-            title: 'Please wait...',
-            text: 'We are sending WhatsApp message',
-            allowOutsideClick: false,
-            allowEscapeKey: false,
-            showConfirmButton: false,
-            didOpen: function () {
-                Swal.showLoading();
-            }
-        });
-
-        const response = await fetch(`/test-result-entry/send-whatsapp/${id}`, {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': csrfToken() }
-        });
-
-        const result = await response.json();
-
-        whatsappBtn.disabled = false;
-
-        Swal.fire({
-            icon: result.status ? 'success' : 'error',
-            title: result.status ? 'Sent' : 'Error',
-            text: result.message
-        });
     }
 });
 
@@ -251,5 +214,22 @@ document.addEventListener('click', async function (e) {
 document.getElementById('resultEntryModal').addEventListener('hidden.bs.modal', function () {
     loadDashboard(dashPage);
 });
+
+// Deep link from the Test Report Dashboard's Print/WhatsApp actions on a
+// Pathology row (test-report-dashboard.init.js) -- a Pathology invoice can
+// now have several independently printable reports, so that screen sends
+// staff here to pick/print/send the right one from the modal instead of
+// trying to do it in one dashboard-wide action.
+let deepLinkInvoiceNo = new URLSearchParams(location.search).get('open');
+
+if (deepLinkInvoiceNo) {
+
+    let modalEl = document.getElementById('resultEntryModal');
+    let modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+
+    document.getElementById('invoiceNoInput').value = deepLinkInvoiceNo;
+    searchInvoice();
+}
 
 loadDashboard(1);
