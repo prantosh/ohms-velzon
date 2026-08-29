@@ -226,6 +226,8 @@
                                 <th width="90">Time</th>
                                 <th width="120">Amount (&#8377;)</th>
                                 <th width="100">Type</th>
+                                <th width="100">Payment Mode</th>
+                                <th width="90">Reference</th>
                             </tr>
                         </thead>
 
@@ -266,7 +268,8 @@
                                 <th width="130">Collection (Non-Cash)</th>
                                 <th width="130">Collection (Total)</th>
                                 <th width="110">Refund</th>
-                                <th width="140">Payment To Doctor</th>
+                                <th width="150">Doctor Payment (Collected via Cash)</th>
+                                <th width="150">Doctor Payment (Collected via Non-Cash)</th>
                                 <th width="140">Amount To Deposit</th>
                             </tr>
                         </thead>
@@ -280,7 +283,8 @@
                                 <td class="text-end" id="catsummary-total-non_cash_collected">0.00</td>
                                 <td class="text-end" id="catsummary-total-total_collected">0.00</td>
                                 <td class="text-end" id="catsummary-total-refund">0.00</td>
-                                <td class="text-end" id="catsummary-total-doctor_payment">0.00</td>
+                                <td class="text-end" id="catsummary-total-doctor_payment_cash_source">0.00</td>
+                                <td class="text-end" id="catsummary-total-doctor_payment_non_cash_source">0.00</td>
                                 <td class="text-end" id="catsummary-total-amount_to_deposit">0.00</td>
                             </tr>
                         </tfoot>
@@ -288,6 +292,11 @@
                     </table>
 
                 </div>
+
+                <small class="text-muted d-block mt-2">
+                    Doctor payment is always disbursed in cash by this user -- the two columns above only split that
+                    same cash outflow by how the underlying patient payment was originally collected.
+                </small>
 
             </div>
 

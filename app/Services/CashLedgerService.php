@@ -232,17 +232,31 @@ class CashLedgerService
         | 3) CASH DOCTOR PAYMENTS made by this user -- doctor_settlement_items
         |    already carries its own item_code for every type except
         |    DOCTOR_VISIT (empty item_code there, no line-item exists for a
-        |    consultation), so no weight split needed here.
+        |    consultation), so no weight split needed here. The settlement
+        |    itself is always physically disbursed in cash by this user
+        |    (only ds.payment_mode='CASH' rows draw from their cash drawer
+        |    at all -- a BANK/CHEQUE/UPI settlement never touches it and is
+        |    correctly excluded here). The split requested is a different
+        |    axis: of that cash outflow, how much traces back to an invoice
+        |    the PATIENT originally paid in cash vs non-cash
+        |    (invoices.payment_mode) -- informational only, both halves
+        |    still count as one cash outflow for amount_to_deposit below.
         |------------------------------------------------------------------
         */
 
         $doctorPayments = DB::table('doctor_settlement_items as dsi')
             ->join('doctor_settlements as ds', 'ds.id', '=', 'dsi.settlement_id')
+            ->leftJoin('invoices as inv', 'inv.invoice_no', '=', 'dsi.invoice_no')
             ->where('ds.payment_mode', 'CASH')
             ->where('ds.status', '!=', 'CANCELLED')
             ->where('ds.created_by', $userId)
             ->whereBetween('ds.settlement_date', [$fromDate, $toDate])
-            ->select('dsi.item_code', 'dsi.invoice_type', 'dsi.settlement_amount')
+            ->select(
+                'dsi.item_code',
+                'dsi.invoice_type',
+                'dsi.settlement_amount',
+                DB::raw("COALESCE(inv.payment_mode, 'Cash') as source_payment_mode")
+            )
             ->get();
 
         foreach ($doctorPayments as $payment) {
@@ -251,16 +265,22 @@ class CashLedgerService
                 ? self::DOCTOR_VISIT_ITEM_CODE
                 : ($payment->item_code ?: self::UNCATEGORIZED_ITEM);
 
-            $this->addCategoryAmount($totals, $itemCode, 'doctor_payment', (float) $payment->settlement_amount);
+            $column = $payment->source_payment_mode === 'Cash' ? 'doctor_payment_cash_source' : 'doctor_payment_non_cash_source';
+
+            $this->addCategoryAmount($totals, $itemCode, $column, (float) $payment->settlement_amount);
         }
 
         /*
         |------------------------------------------------------------------
         | ASSEMBLE ROWS -- amount_to_deposit is deliberately cash-only
-        |    (cash_collected - refund - doctor_payment), same formula as
-        |    buildSummary()'s net_cash_to_deposit -- non-cash collection is
-        |    shown for visibility but never enters the deposit figure since
-        |    it never physically passes through this user's hands as cash.
+        |    (cash_collected - refund - doctor_payment, where doctor_payment
+        |    is the FULL cash-mode settlement total -- both the cash-source
+        |    and non-cash-source halves, since the settlement itself always
+        |    leaves this user's cash drawer regardless of how the patient
+        |    originally paid), same formula as buildSummary()'s
+        |    net_cash_to_deposit -- non-cash collection is shown for
+        |    visibility but never enters the deposit figure since it never
+        |    physically passes through this user's hands as cash.
         |------------------------------------------------------------------
         */
 
@@ -270,7 +290,9 @@ class CashLedgerService
                 $cashCollected = round($cols['cash_collected'], 2);
                 $nonCashCollected = round($cols['non_cash_collected'], 2);
                 $refund = round($cols['refund'], 2);
-                $doctorPayment = round($cols['doctor_payment'], 2);
+                $doctorPaymentCashSource = round($cols['doctor_payment_cash_source'], 2);
+                $doctorPaymentNonCashSource = round($cols['doctor_payment_non_cash_source'], 2);
+                $doctorPaymentTotal = round($doctorPaymentCashSource + $doctorPaymentNonCashSource, 2);
 
                 return [
                     'item_code' => $itemCode,
@@ -279,8 +301,9 @@ class CashLedgerService
                     'non_cash_collected' => $nonCashCollected,
                     'total_collected' => round($cashCollected + $nonCashCollected, 2),
                     'refund' => $refund,
-                    'doctor_payment' => $doctorPayment,
-                    'amount_to_deposit' => round($cashCollected - $refund - $doctorPayment, 2),
+                    'doctor_payment_cash_source' => $doctorPaymentCashSource,
+                    'doctor_payment_non_cash_source' => $doctorPaymentNonCashSource,
+                    'amount_to_deposit' => round($cashCollected - $refund - $doctorPaymentTotal, 2),
                 ];
             })
             ->sortBy('item_name')
@@ -291,7 +314,8 @@ class CashLedgerService
             'non_cash_collected' => round($rows->sum('non_cash_collected'), 2),
             'total_collected' => round($rows->sum('total_collected'), 2),
             'refund' => round($rows->sum('refund'), 2),
-            'doctor_payment' => round($rows->sum('doctor_payment'), 2),
+            'doctor_payment_cash_source' => round($rows->sum('doctor_payment_cash_source'), 2),
+            'doctor_payment_non_cash_source' => round($rows->sum('doctor_payment_non_cash_source'), 2),
             'amount_to_deposit' => round($rows->sum('amount_to_deposit'), 2),
         ];
 
@@ -349,7 +373,8 @@ class CashLedgerService
                 'cash_collected' => 0.0,
                 'non_cash_collected' => 0.0,
                 'refund' => 0.0,
-                'doctor_payment' => 0.0,
+                'doctor_payment_cash_source' => 0.0,
+                'doctor_payment_non_cash_source' => 0.0,
             ];
         }
 
@@ -394,7 +419,7 @@ class CashLedgerService
             ->where('transaction_type', 'RECEIVED')
             ->where('status', 'ACTIVE')
             ->whereIn('invoice_reference', $invoiceByNo->keys())
-            ->get(['invoice_reference', 'received_amount', 'payment_mode', 'created_at']);
+            ->get(['invoice_reference', 'received_amount', 'payment_mode', 'payment_reference', 'created_at']);
 
         $nonCashCollected = 0;
 
@@ -432,6 +457,7 @@ class CashLedgerService
                 'refund_time' => null,
                 'amount' => $amount,
                 'payment_mode' => $txn->payment_mode,
+                'payment_reference' => $txn->payment_reference,
             ];
         }
 
@@ -468,6 +494,7 @@ class CashLedgerService
                 'refund_time' => $refund->created_at,
                 'amount' => -$amount,
                 'payment_mode' => $refund->payment_mode,
+                'payment_reference' => null,
             ];
         }
 
@@ -529,6 +556,7 @@ class CashLedgerService
                 'refund_time' => null,
                 'amount' => -$amount,
                 'payment_mode' => $payment->payment_mode,
+                'payment_reference' => null,
             ];
 
             $doctorPaymentDetail[] = [

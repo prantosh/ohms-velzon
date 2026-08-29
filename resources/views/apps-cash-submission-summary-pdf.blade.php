@@ -126,10 +126,11 @@ $netCashInWords = ucwords($netCashFormatter->format((float) ($grandTotal['amount
     <th style="text-align:left;">Category</th>
     <th width="12%">Collection (Cash)</th>
     <th width="12%">Collection (Non-Cash)</th>
-    <th width="12%">Collection (Total)</th>
-    <th width="10%">Refund</th>
-    <th width="14%">Payment To Doctor</th>
-    <th width="14%">Amount To Deposit</th>
+    <th width="11%">Collection (Total)</th>
+    <th width="9%">Refund</th>
+    <th width="12%">Doctor Payment (via Cash)</th>
+    <th width="12%">Doctor Payment (via Non-Cash)</th>
+    <th width="12%">Amount To Deposit</th>
 </tr>
 </thead>
 
@@ -142,12 +143,13 @@ $netCashInWords = ucwords($netCashFormatter->format((float) ($grandTotal['amount
     <td class="text-end">{{ fmtMoney4($row['non_cash_collected']) }}</td>
     <td class="text-end">{{ fmtMoney4($row['total_collected']) }}</td>
     <td class="text-end">{{ fmtMoney4($row['refund']) }}</td>
-    <td class="text-end">{{ fmtMoney4($row['doctor_payment']) }}</td>
+    <td class="text-end">{{ fmtMoney4($row['doctor_payment_cash_source']) }}</td>
+    <td class="text-end">{{ fmtMoney4($row['doctor_payment_non_cash_source']) }}</td>
     <td class="text-end">{{ fmtMoney4($row['amount_to_deposit']) }}</td>
 </tr>
 @empty
 <tr>
-    <td colspan="7" class="text-center">No cash transactions found for this date.</td>
+    <td colspan="8" class="text-center">No cash transactions found for this date.</td>
 </tr>
 @endforelse
 
@@ -157,13 +159,19 @@ $netCashInWords = ucwords($netCashFormatter->format((float) ($grandTotal['amount
     <td class="text-end">{{ fmtMoney4($grandTotal['non_cash_collected']) }}</td>
     <td class="text-end">{{ fmtMoney4($grandTotal['total_collected']) }}</td>
     <td class="text-end">{{ fmtMoney4($grandTotal['refund']) }}</td>
-    <td class="text-end">{{ fmtMoney4($grandTotal['doctor_payment']) }}</td>
+    <td class="text-end">{{ fmtMoney4($grandTotal['doctor_payment_cash_source']) }}</td>
+    <td class="text-end">{{ fmtMoney4($grandTotal['doctor_payment_non_cash_source']) }}</td>
     <td class="text-end">{{ fmtMoney4($grandTotal['amount_to_deposit']) }}</td>
 </tr>
 
 </tbody>
 
 </table>
+
+<p style="font-size:8px; color:#555; margin-top:4px;">
+    Doctor payment is always disbursed in cash by this user -- the two Doctor Payment columns above only split that
+    same cash outflow by how the underlying patient payment was originally collected.
+</p>
 
 <table class="header-table">
 <tr>

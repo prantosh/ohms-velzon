@@ -110,6 +110,8 @@ async function loadDetail() {
             <td>${escapeHtml(row.time_fmt)}</td>
             <td class="text-end ${amountClass}">${fmtMoney(row.amount)}</td>
             <td><span class="badge ${typeBadgeClass[row.type] ?? 'bg-secondary'}">${escapeHtml(row.type)}</span></td>
+            <td>${row.type === 'Collection' ? escapeHtml(row.payment_mode) : ''}</td>
+            <td>${row.type === 'Collection' ? escapeHtml(row.payment_reference ?? '') : ''}</td>
         </tr>
         `;
     });
@@ -155,7 +157,8 @@ async function loadCategorySummary() {
             <td class="text-end">${fmtMoney(row.non_cash_collected)}</td>
             <td class="text-end fw-semibold">${fmtMoney(row.total_collected)}</td>
             <td class="text-end text-danger">${fmtMoney(row.refund)}</td>
-            <td class="text-end text-danger">${fmtMoney(row.doctor_payment)}</td>
+            <td class="text-end text-danger">${fmtMoney(row.doctor_payment_cash_source)}</td>
+            <td class="text-end text-danger">${fmtMoney(row.doctor_payment_non_cash_source)}</td>
             <td class="text-end fw-semibold">${fmtMoney(row.amount_to_deposit)}</td>
         </tr>
         `;
@@ -167,7 +170,8 @@ async function loadCategorySummary() {
     document.getElementById('catsummary-total-non_cash_collected').innerText = fmtMoney(g.non_cash_collected);
     document.getElementById('catsummary-total-total_collected').innerText = fmtMoney(g.total_collected);
     document.getElementById('catsummary-total-refund').innerText = fmtMoney(g.refund);
-    document.getElementById('catsummary-total-doctor_payment').innerText = fmtMoney(g.doctor_payment);
+    document.getElementById('catsummary-total-doctor_payment_cash_source').innerText = fmtMoney(g.doctor_payment_cash_source);
+    document.getElementById('catsummary-total-doctor_payment_non_cash_source').innerText = fmtMoney(g.doctor_payment_non_cash_source);
     document.getElementById('catsummary-total-amount_to_deposit').innerText = fmtMoney(g.amount_to_deposit);
 
     document.getElementById('categorySummaryCard').style.display = 'block';

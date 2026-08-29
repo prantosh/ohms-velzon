@@ -102,7 +102,7 @@ class CashSubmissionReportController extends Controller
             ]
         );
 
-        $pdf->setPaper('A4', 'landscape');
+        $pdf->setPaper('A4', 'portrait');
 
         $fileName = 'Cash-Submission-Category-Summary-' .
             str_replace(' ', '-', $user->name) .
