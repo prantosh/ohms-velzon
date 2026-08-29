@@ -160,8 +160,19 @@ class AppointmentBookingService
             ]);
         }
 
+        // Matched by patient_id OR mobile number, not patient_id alone -- a
+        // patient whose name was typed slightly differently between visits
+        // (no patient_id passed in, so the mobile+name lookup above missed
+        // them) gets a distinct patients.patient_id despite being the same
+        // real person. Keying only on patient_id let that same person book
+        // the same doctor/date/slot twice; patient_mobile_no (stored
+        // directly on doctor_appointments) is the more reliable identity
+        // signal here.
         $existingAppointment = DoctorAppointment::where('doctor_id', $data['doctor_id'])
-            ->where('patient_id', $patient->patient_id)
+            ->where(function ($query) use ($patient, $data) {
+                $query->where('patient_id', $patient->patient_id)
+                    ->orWhere('patient_mobile_no', $data['patient_mobile_no']);
+            })
             ->where('appointment_date', $data['appointment_date'])
             ->where('doctor_schedule_session_id', $data['doctor_schedule_session_id'])
             ->first();
@@ -169,7 +180,7 @@ class AppointmentBookingService
         if ($existingAppointment && $existingAppointment->appointment_time == $data['appointment_time']) {
             return [
                 'status' => false,
-                'message' => 'Appointment already booked for same patient, doctor, date and slot.',
+                'message' => 'Appointment already booked for same patient, mobile number, doctor, date and slot.',
                 'appointment' => null,
             ];
         }
