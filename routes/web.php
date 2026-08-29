@@ -2793,6 +2793,11 @@ Route::middleware(['auth'])->prefix('pathology-report-template')->group(function
         [PathologyReportTemplateController::class, 'itemsForGroup']
     );
 
+    Route::get(
+        '/packages',
+        [PathologyReportTemplateController::class, 'packages']
+    );
+
     Route::post(
         '/store',
         [PathologyReportTemplateController::class, 'store']

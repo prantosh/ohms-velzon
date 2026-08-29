@@ -106,16 +106,21 @@ function toEditorHtml(text) {
 |--------------------------------------------------------------------------
 */
 
-async function loadItemsCheckboxList(testGroupCode, checkedItemCodeSubs = []) {
+async function loadItemsCheckboxList(testGroupCode, checkedItemCodeSubs = [], packageId = '') {
 
     let wrap = document.getElementById('itemsCheckboxList');
     wrap.innerHTML = '<span class="text-muted small">Loading...</span>';
 
-    const response = await fetch(`/pathology-report-template/items?test_group_code=${encodeURIComponent(testGroupCode || '')}`);
+    let params = new URLSearchParams({ test_group_code: testGroupCode || '' });
+    if (packageId) params.set('package_id', packageId);
+
+    const response = await fetch(`/pathology-report-template/items?${params.toString()}`);
     const result = await response.json();
 
     if (!result.status || !result.data.length) {
-        wrap.innerHTML = '<span class="text-muted small">No items found for this test group.</span>';
+        wrap.innerHTML = packageId
+            ? '<span class="text-muted small">This package has no components in this test group.</span>'
+            : '<span class="text-muted small">No items found for this test group.</span>';
         return;
     }
 
@@ -132,9 +137,44 @@ async function loadItemsCheckboxList(testGroupCode, checkedItemCodeSubs = []) {
     `).join('');
 }
 
-document.getElementById('test_group_code-field').addEventListener('change', function () {
-    loadItemsCheckboxList(this.value);
-});
+function reloadItemsCheckboxList() {
+    loadItemsCheckboxList(
+        document.getElementById('test_group_code-field').value,
+        [],
+        document.getElementById('package_id-field').value
+    );
+}
+
+document.getElementById('test_group_code-field').addEventListener('change', reloadItemsCheckboxList);
+document.getElementById('package_id-field').addEventListener('change', reloadItemsCheckboxList);
+
+/*
+|--------------------------------------------------------------------------
+| PACKAGES DROPDOWN -- populated once; a package's components can span
+| several test groups (e.g. Lipid Profile has both Biochemistry and
+| Hematology components), so picking one here narrows the item list above
+| to just its components in whichever group is currently selected.
+|--------------------------------------------------------------------------
+*/
+
+async function loadPackagesDropdown() {
+
+    const response = await fetch('/pathology-report-template/packages');
+    const result = await response.json();
+
+    let select = document.getElementById('package_id-field');
+
+    if (!result.status) return;
+
+    result.data.forEach(pkg => {
+        let option = document.createElement('option');
+        option.value = pkg.id;
+        option.textContent = pkg.item_description_sub;
+        select.appendChild(option);
+    });
+}
+
+loadPackagesDropdown();
 
 /*
 |--------------------------------------------------------------------------
@@ -312,6 +352,8 @@ document.getElementById('showModal').addEventListener('hidden.bs.modal', functio
 
     if (contentEditor) contentEditor.setData('');
 
+    document.getElementById('package_id-field').value = '';
+
     document.getElementById('itemsCheckboxList').innerHTML =
         '<span class="text-muted small">Select a Test Group above to list its items.</span>';
 
@@ -353,6 +395,7 @@ document.addEventListener('click', async function (e) {
 
             document.querySelector('#title-field').value = result.data.title;
             document.querySelector('#test_group_code-field').value = result.data.test_group_code ?? '';
+            document.querySelector('#package_id-field').value = '';
             contentEditor.setData(toEditorHtml(result.data.content ?? ''));
             document.querySelector('#status-field').value = result.data.status;
 

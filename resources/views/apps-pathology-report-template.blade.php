@@ -251,6 +251,24 @@
 
                         </div>
 
+                        <div class="col-md-6 mb-3">
+
+                            <label class="form-label">
+                                Filter by Package <span class="text-muted fw-normal">(optional)</span>
+                            </label>
+
+                            <select id="package_id-field" class="form-select">
+                                <option value="">-- All items in this group --</option>
+                            </select>
+
+                            <small class="text-muted">
+                                A package (e.g. Lipid Profile) can have components in more than one Test Group --
+                                pick it here to narrow the list below to just its components in the group selected
+                                above, then repeat for its other group(s) to cover the whole package.
+                            </small>
+
+                        </div>
+
                         <div class="col-md-12 mb-3">
 
                             <label class="form-label">

@@ -99,6 +99,16 @@ class PathologyReportController extends Controller
             ->where('d.invoice_no', $invoice->invoice_no)
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
+            // A package's own billed line (e.g. "LIPID PROFILE") is a
+            // pricing label, not a measurable test -- it has no result of
+            // its own (mirrors TestReportRowBuilder's identical exclusion
+            // for the old tabular system). Its real, reportable components
+            // are separate billed lines already, each carrying its own
+            // test_group_code, so they fall into their own group's tab
+            // exactly like any other item -- no special handling needed
+            // for them beyond excluding the package's own non-reportable
+            // row here.
+            ->where('iid.is_package', 0)
             ->orderBy('d.line_no')
             ->get([
                 'd.id as invoice_detail_id',

@@ -51,20 +51,38 @@ class PathologyReportTemplateController extends Controller
     | ITEMS FOR GROUP -- populates the item multi-select when the admin
     | picks a test-group tab / dropdown on the Add Template form. Pass
     | test_group_code=0 (or omit it) for the "Ungrouped/General" bucket.
+    | An optional package_id further narrows the list to just that
+    | package's components within the chosen group (see packages() below)
+    | -- a package's own billed line is never itself selectable here, since
+    | it's a pricing label with no result of its own and can never actually
+    | be claimed on the report screen (PathologyReportController excludes
+    | it the same way TestReportRowBuilder always has for the old system).
     |--------------------------------------------------------------------------
     */
 
     public function itemsForGroup(Request $request)
     {
         $testGroupCode = $request->get('test_group_code');
+        $packageId = $request->get('package_id');
 
         $query = InvoiceItemDetail::where('item_code', self::ITEM_CODE)
-            ->where('status', 'Y');
+            ->where('status', 'Y')
+            ->where('is_package', 0);
 
         if ($testGroupCode) {
             $query->where('test_group_code', $testGroupCode);
         } else {
             $query->whereNull('test_group_code');
+        }
+
+        if ($packageId) {
+
+            $componentIds = DB::table('test_package_components')
+                ->where('package_invoice_item_detail_id', $packageId)
+                ->where('status', 'ACTIVE')
+                ->pluck('component_invoice_item_detail_id');
+
+            $query->whereIn('id', $componentIds);
         }
 
         $items = $query->orderBy('item_description_sub')
@@ -73,6 +91,32 @@ class PathologyReportTemplateController extends Controller
         return response()->json([
             'status' => true,
             'data' => $items,
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PACKAGES -- lightweight lookup for the "Filter by Package" dropdown.
+    | A package's components can span several test groups (e.g. LIPID
+    | PROFILE has 5 Biochemistry components and 1 Hematology component), so
+    | building "the template(s) for this package" still means one template
+    | per group underneath -- this just narrows itemsForGroup() above to
+    | that package's own components so the admin doesn't have to hunt for
+    | them in the full group list, group by group.
+    |--------------------------------------------------------------------------
+    */
+
+    public function packages()
+    {
+        $packages = InvoiceItemDetail::where('item_code', self::ITEM_CODE)
+            ->where('is_package', 1)
+            ->where('status', 'Y')
+            ->orderBy('item_description_sub')
+            ->get(['id', 'item_code_sub', 'item_description_sub']);
+
+        return response()->json([
+            'status' => true,
+            'data' => $packages,
         ]);
     }
 
