@@ -8,6 +8,23 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]').content;
 }
 
+// The Reference field (last 4 digits of a card, or a UPI ref) only makes
+// sense for a non-cash payment -- shown for Card/UPI, hidden and cleared
+// for Cash/Bank/Cheque so a stale value never gets submitted alongside a
+// different mode.
+document.addEventListener('change', function (e) {
+
+    if (e.target.id !== 'payment_mode-field') return;
+
+    let show = e.target.value === 'Card' || e.target.value === 'UPI';
+
+    document.querySelector('#payment_reference-wrap').style.display = show ? '' : 'none';
+
+    if (!show) {
+        document.querySelector('#payment_reference-field').value = '';
+    }
+});
+
 function resetPatientSection() {
 
     document.querySelector('#patientResultsWrap').style.display = 'none';
@@ -445,6 +462,7 @@ document.getElementById('bookingForm').addEventListener('submit', async function
 
     formData.append('received_amount', document.querySelector('#received_amount-field').value);
     formData.append('payment_mode', document.querySelector('#payment_mode-field').value);
+    formData.append('payment_reference', document.querySelector('#payment_reference-field').value);
     formData.append('received_by', document.querySelector('#received_by-field').value);
 
     formData.append('remarks', document.querySelector('#remarks-field').value);

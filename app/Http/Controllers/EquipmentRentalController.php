@@ -140,6 +140,7 @@ class EquipmentRentalController extends Controller
             'patient_name' => 'required',
             'advance_amount' => 'required|numeric|min:0',
             'payment_mode' => 'required',
+            'payment_reference' => 'nullable|required_if:payment_mode,Card,UPI|digits:4',
             'discount_amount' => 'nullable|numeric|min:0',
             'discount_approved_by' => 'nullable|exists:users,id,authorised,YES',
             'discount_remarks' => 'nullable|string',
@@ -302,7 +303,8 @@ class EquipmentRentalController extends Controller
                 $request->patient_id,
                 $request->patient_name,
                 $request->payment_mode,
-                ucwords(strtolower(str_replace('_', ' ', $request->rental_type))) . ' - Advance'
+                ucwords(strtolower(str_replace('_', ' ', $request->rental_type))) . ' - Advance',
+                $request->payment_reference
             );
 
             DB::commit();
@@ -447,6 +449,7 @@ class EquipmentRentalController extends Controller
         $request->validate([
             'return_date' => 'required|date',
             'payment_mode' => 'required',
+            'payment_reference' => 'nullable|required_if:payment_mode,Card,UPI|digits:4',
             'units' => 'nullable|integer|min:0',
             'discount_amount' => 'nullable|numeric|min:0',
             'discount_approved_by' => 'nullable|exists:users,id,authorised,YES',
@@ -597,7 +600,8 @@ class EquipmentRentalController extends Controller
                     $invoice->patient_id,
                     $invoice->patient_name,
                     $request->payment_mode,
-                    'Rental Settlement - Additional Due Collected'
+                    'Rental Settlement - Additional Due Collected',
+                    $request->payment_reference
                 );
 
             } elseif ($settlement < 0) {
@@ -1018,7 +1022,8 @@ class EquipmentRentalController extends Controller
         ?string $patientId,
         ?string $patientName,
         string $paymentMode,
-        string $remarks
+        string $remarks,
+        ?string $paymentReference = null
     ): void {
 
         $transactionNo = \App\Support\OfflineMode::prefix('TRN/') .
@@ -1044,6 +1049,7 @@ class EquipmentRentalController extends Controller
             'operator_name' => Auth::user()->name,
 
             'payment_mode' => $paymentMode,
+            'payment_reference' => $paymentReference,
 
             'remarks' => $remarks,
             'status' => 'ACTIVE',

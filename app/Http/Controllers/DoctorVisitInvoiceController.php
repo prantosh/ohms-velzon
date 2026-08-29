@@ -556,6 +556,8 @@ class DoctorVisitInvoiceController extends Controller
 
             'payment_mode' => $request->payment_mode,
 
+            'payment_reference' => $request->payment_reference,
+
             'remarks' => 'Diagnostic Invoice Collection',
 
             'status' => 'ACTIVE',

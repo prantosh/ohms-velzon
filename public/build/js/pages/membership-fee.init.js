@@ -5,6 +5,23 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]').content;
 }
 
+// The Reference field (last 4 digits of a card, or a UPI ref) only makes
+// sense for a non-cash payment -- shown for Card/UPI, hidden and cleared
+// for Cash/Bank/Cheque so a stale value never gets submitted alongside a
+// different mode.
+document.addEventListener('change', function (e) {
+
+    if (e.target.id !== 'payment_mode-field') return;
+
+    let show = e.target.value === 'Card' || e.target.value === 'UPI';
+
+    document.querySelector('#payment_reference-wrap').style.display = show ? '' : 'none';
+
+    if (!show) {
+        document.querySelector('#payment_reference-field').value = '';
+    }
+});
+
 document.getElementById('mobileInput').addEventListener('input', function () {
 
     this.value = this.value.replace(/\D/g, '').substring(0, 10);
@@ -161,6 +178,7 @@ document.getElementById('btnCollectFee').addEventListener('click', async functio
     let fromMonth = document.querySelector('#from_month-field').value;
     let toMonth = document.querySelector('#to_month-field').value;
     let paymentMode = document.querySelector('#payment_mode-field').value;
+    let paymentReference = document.querySelector('#payment_reference-field').value;
     let remarks = document.querySelector('#remarks-field').value;
 
     Swal.fire({
@@ -186,6 +204,7 @@ document.getElementById('btnCollectFee').addEventListener('click', async functio
             from_month: fromMonth,
             to_month: toMonth,
             payment_mode: paymentMode,
+            payment_reference: paymentReference,
             remarks: remarks
         })
     });

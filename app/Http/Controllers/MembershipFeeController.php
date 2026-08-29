@@ -159,6 +159,7 @@ class MembershipFeeController extends Controller
             'from_month' => 'required',
             'to_month' => 'required',
             'payment_mode' => 'required',
+            'payment_reference' => 'nullable|required_if:payment_mode,Card,UPI|digits:4',
             'remarks' => 'nullable|string',
         ]);
 
@@ -291,7 +292,8 @@ class MembershipFeeController extends Controller
                 (string) $member->id,
                 $member->name,
                 $request->payment_mode,
-                'Membership Fee (' . count($payableMonths) . ' month(s))'
+                'Membership Fee (' . count($payableMonths) . ' month(s))',
+                $request->payment_reference
             );
 
             DB::commit();
@@ -655,7 +657,8 @@ class MembershipFeeController extends Controller
         ?string $patientId,
         ?string $patientName,
         string $paymentMode,
-        string $remarks
+        string $remarks,
+        ?string $paymentReference = null
     ): void {
 
         $transactionNo = \App\Support\OfflineMode::prefix('TRN/') .
@@ -681,6 +684,7 @@ class MembershipFeeController extends Controller
             'operator_name' => Auth::user()->name,
 
             'payment_mode' => $paymentMode,
+            'payment_reference' => $paymentReference,
 
             'remarks' => $remarks,
             'status' => 'ACTIVE',

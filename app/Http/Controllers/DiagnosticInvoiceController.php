@@ -1056,7 +1056,9 @@ class DiagnosticInvoiceController extends Controller
 
                         'payment_mode' =>
                             $request->payment_mode,
-                        
+
+                        'payment_reference' =>
+                            $request->payment_reference,
 
                         'remarks' =>
                             'Diagnostic Invoice',
@@ -2024,6 +2026,9 @@ class DiagnosticInvoiceController extends Controller
 
                 'payment_mode' =>
                     $invoice->payment_mode,
+
+                'payment_reference' =>
+                    $request->payment_reference,
 
                 'remarks' =>
                     ($invoice->payment_edit_count == 1

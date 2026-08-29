@@ -8,6 +8,23 @@ let invoiceDataTable = null;
 let cardValidated = false;
 let transitioningToConfirm = false;
 
+// The Reference field (last 4 digits of a card, or a UPI ref) only makes
+// sense for a non-cash payment -- shown for Card/UPI, hidden and cleared
+// for Cash so a stale value never gets submitted alongside a Cash payment.
+function togglePaymentReferenceField() {
+    let mode = $('#payment_mode').val();
+    let show = mode === 'Card' || mode === 'UPI';
+
+    $('#payment_reference-wrap').toggle(show);
+
+    if (!show) {
+        $('#payment_reference').val('');
+    }
+}
+
+$(document).on('change', '#payment_mode', togglePaymentReferenceField);
+$(function () { togglePaymentReferenceField(); });
+
 /*
 |--------------------------------------------------------------------------
 | DISPLAY-ONLY DATE FORMAT (dd-mm-yyyy)
@@ -589,6 +606,7 @@ $(document).on(
 
         $("#payment_mode")
             .val($(this).data("payment_mode"));
+        togglePaymentReferenceField();
 
         $("#visit_date")
             .val($(this).data("visit_date"));
@@ -886,6 +904,8 @@ $("#btnConfirmSaveInvoice").on("click", function () {
             payment_mode:
                 $("#payment_mode").val(),
 
+            payment_reference:
+                $("#payment_reference").val(),
 
             is_card_holder:
                 $("#is_card_holder").is(":checked") ? 1 : 0,

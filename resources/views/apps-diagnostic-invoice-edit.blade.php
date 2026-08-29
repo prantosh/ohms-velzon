@@ -557,6 +557,23 @@ Pay Rest Payment
 
             </div>
 
+            <div class="col-md-3 mb-3" id="payment_reference-wrap" style="display:none;">
+
+                <label>
+                    Reference
+                </label>
+
+                <input type="text"
+                       id="payment_reference"
+                       name="payment_reference"
+                       class="form-control"
+                       maxlength="4"
+                       inputmode="numeric"
+                       pattern="\d{4}"
+                       placeholder="4-digit code">
+
+            </div>
+
             <div class="col-md-3 mb-3">
 
                 <label>

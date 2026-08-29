@@ -186,7 +186,14 @@ class IncomeController extends Controller
                 null,
                 $request->received_from,
                 $request->payment_mode,
-                'Income from Other Source - ' . $category->description
+                'Income from Other Source - ' . $category->description,
+                // This module already collects its own free-text reference
+                // (up to 50 chars, any payment mode) into
+                // invoice_details.reference_number -- reused here (truncated
+                // to fit) just so the Cash Submission Report's shared
+                // Reference column isn't blank for Income rows, without
+                // changing this module's own form/validation.
+                $request->filled('reference_number') ? substr($request->reference_number, 0, 10) : null
             );
 
             DB::commit();
@@ -373,7 +380,8 @@ class IncomeController extends Controller
         ?string $patientId,
         ?string $patientName,
         string $paymentMode,
-        string $remarks
+        string $remarks,
+        ?string $paymentReference = null
     ): void {
 
         $transactionNo = \App\Support\OfflineMode::prefix('TRN/') .
@@ -399,6 +407,7 @@ class IncomeController extends Controller
             'operator_name' => Auth::user()->name,
 
             'payment_mode' => $paymentMode,
+            'payment_reference' => $paymentReference,
 
             'remarks' => $remarks,
             'status' => 'ACTIVE',

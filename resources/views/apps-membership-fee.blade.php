@@ -174,6 +174,17 @@
                                         </select>
                                     </div>
 
+                                    <div class="col-md-3" id="payment_reference-wrap" style="display:none;">
+                                        <label class="form-label">Reference</label>
+                                        <input type="text"
+                                               id="payment_reference-field"
+                                               class="form-control"
+                                               maxlength="4"
+                                               inputmode="numeric"
+                                               pattern="\d{4}"
+                                               placeholder="4-digit code">
+                                    </div>
+
                                     <div class="col-md-6">
                                         <label class="form-label">Remarks</label>
                                         <input type="text" id="remarks-field" class="form-control">

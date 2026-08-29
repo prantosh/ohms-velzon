@@ -353,10 +353,23 @@ Doctor Visit Invoice
                             </select>
 
                         </div>
-                        
 
-                       
-                        
+                        <div class="col-md-4 mb-3" id="payment_reference-wrap" style="display:none;">
+
+                            <label class="form-label">
+                                Reference
+                            </label>
+
+                            <input type="text"
+                                   class="form-control"
+                                   id="payment_reference"
+                                   maxlength="4"
+                                   inputmode="numeric"
+                                   pattern="\d{4}"
+                                   placeholder="4-digit code">
+
+                        </div>
+
                         <div class="col-md-12 mb-3">
 
                             <label class="form-label">

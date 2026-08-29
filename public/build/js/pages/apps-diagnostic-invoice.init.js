@@ -18,6 +18,23 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+// The Reference field (last 4 digits of a card, or a UPI ref) only makes
+// sense for a non-cash payment -- shown for Card/UPI, hidden and cleared
+// for Cash so a stale value never gets submitted alongside a Cash payment.
+function togglePaymentReferenceField() {
+    let mode = $('#payment_mode').val();
+    let show = mode === 'Card' || mode === 'UPI';
+
+    $('#payment_reference-wrap').toggle(show);
+
+    if (!show) {
+        $('#payment_reference').val('');
+    }
+}
+
+$(document).on('change', '#payment_mode', togglePaymentReferenceField);
+$(function () { togglePaymentReferenceField(); });
+
 // Populated per-category by the .category change handler; reused for
 // client-side test-package expansion without extra AJAX round-trips.
 let testsByCategory = {};
@@ -2112,7 +2129,7 @@ function resetInvoiceDetails() {
     $("#due_amount").val(0);
 
     $("#payment_mode").val('Cash');
-    
+    togglePaymentReferenceField();
 
     $("#remarks").val('');
 }

@@ -146,6 +146,7 @@ class AmbulanceRentalController extends Controller
 
             'received_amount' => 'required|numeric|min:0',
             'payment_mode' => 'required',
+            'payment_reference' => 'nullable|required_if:payment_mode,Card,UPI|digits:4',
             'received_by' => 'nullable|exists:users,id',
 
             'remarks' => 'nullable|string',
@@ -277,7 +278,8 @@ class AmbulanceRentalController extends Controller
                     $request->patient_id,
                     $request->patient_name,
                     $request->payment_mode,
-                    'Ambulance Rental'
+                    'Ambulance Rental',
+                    $request->payment_reference
                 );
             }
 
@@ -602,7 +604,8 @@ class AmbulanceRentalController extends Controller
         ?string $patientId,
         ?string $patientName,
         string $paymentMode,
-        string $remarks
+        string $remarks,
+        ?string $paymentReference = null
     ): void {
 
         $transactionNo = \App\Support\OfflineMode::prefix('TRN/') .
@@ -628,6 +631,7 @@ class AmbulanceRentalController extends Controller
             'operator_name' => Auth::user()->name,
 
             'payment_mode' => $paymentMode,
+            'payment_reference' => $paymentReference,
 
             'remarks' => $remarks,
             'status' => 'ACTIVE',

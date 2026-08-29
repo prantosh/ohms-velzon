@@ -9,6 +9,33 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]').content;
 }
 
+// The Reference field (last 4 digits of a card, or a UPI ref) only makes
+// sense for a non-cash payment -- shown for Card/UPI, hidden and cleared
+// for Cash/Bank/Cheque so a stale value never gets submitted alongside a
+// different mode.
+function togglePaymentReferenceField(modeFieldId, wrapId, referenceFieldId) {
+
+    let mode = document.querySelector(modeFieldId).value;
+    let show = mode === 'Card' || mode === 'UPI';
+
+    document.querySelector(wrapId).style.display = show ? '' : 'none';
+
+    if (!show) {
+        document.querySelector(referenceFieldId).value = '';
+    }
+}
+
+document.addEventListener('change', function (e) {
+
+    if (e.target.id === 'payment_mode-field') {
+        togglePaymentReferenceField('#payment_mode-field', '#payment_reference-wrap', '#payment_reference-field');
+    }
+
+    if (e.target.id === 'return_payment_mode-field') {
+        togglePaymentReferenceField('#return_payment_mode-field', '#return_payment_reference-wrap', '#return_payment_reference-field');
+    }
+});
+
 function resetPatientSection() {
 
     document.querySelector('#patientResultsWrap').style.display = 'none';
@@ -498,6 +525,7 @@ document.getElementById('issueForm').addEventListener('submit', async function (
     formData.append('advance_amount', document.querySelector('#advance_amount-field').value);
     formData.append('low_advance_reason', lowAdvanceReasonField.value);
     formData.append('payment_mode', document.querySelector('#payment_mode-field').value);
+    formData.append('payment_reference', document.querySelector('#payment_reference-field').value);
     formData.append('patient_id', document.querySelector('#patient_id-field').value);
     formData.append('patient_name', document.querySelector('#patient_name-field').value);
     formData.append('patient_mobile_no', document.querySelector('#search_mobile_no').value);
@@ -689,6 +717,7 @@ async function submitReturn() {
             return_date: document.querySelector('#return_date-field').value,
             units: document.querySelector('#return_units-field').value,
             payment_mode: document.querySelector('#return_payment_mode-field').value,
+            payment_reference: document.querySelector('#return_payment_reference-field').value,
             discount_amount: document.querySelector('#return_discount_amount-field').value || 0,
             discount_approved_by: document.querySelector('#return_discount_approved_by-field').value,
             discount_remarks: document.querySelector('#return_discount_remarks-field').value
