@@ -67,7 +67,12 @@ table {
 .report-body table th,
 .report-body table td {
     border: 1px solid #000;
-    padding: 6px;
+    /* !important: CKEditor's TableCellProperties can bake a per-cell inline
+       padding onto individual td/th (HtmlSanitizerService deliberately
+       allows it, so doctors can customize cells while composing) -- an
+       inline style always wins over this rule otherwise, so the printed
+       report needs to force its own compact spacing regardless. */
+    padding: 3px !important;
     vertical-align: top;
 }
 
