@@ -9,15 +9,18 @@
 
 <style>
 
+/*
+    No system-rendered header/footer -- this prints straight onto the
+    clinic's pre-printed pathology letterhead paper, which already
+    carries its own header/footer art. Margins reuse the exact blank
+    content zone already calibrated for this same physical stationery by
+    the old grid-based report (apps-diagnostic-test-report-pdf.blade.php).
+*/
 @page {
-    margin-top: 1in;
+    margin-top: 50mm;
     margin-right: 40px;
-    margin-bottom: 40px;
+    margin-bottom: 60mm;
     margin-left: 40px;
-}
-
-@page :first {
-    margin-top: 0.4in;
 }
 
 body {
@@ -99,8 +102,6 @@ table {
 </head>
 
 <body>
-
-@include('partials.pdf-header', ['reportTitle' => 'PATHOLOGY REPORT', 'headerColor' => '#003399'])
 
 <table class="patient-detail-table">
     <tr>

@@ -577,8 +577,11 @@ class PathologyReportController extends Controller
 
             [$invoice, $itemDescriptions] = $this->loadReportContext($finding);
 
+            // WhatsApp gets the branded (header/footer image) layout --
+            // printReport()/preview() stay on the plain layout meant for
+            // the clinic's pre-printed pathology letterhead paper.
             $pdf = Pdf::loadView(
-                'apps-pathology-report-pdf',
+                'apps-pathology-report-pdf-whatsapp',
                 compact('finding', 'invoice', 'itemDescriptions')
             );
 
