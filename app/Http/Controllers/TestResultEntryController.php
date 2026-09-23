@@ -203,6 +203,32 @@ class TestResultEntryController extends Controller
      *
      * @return array{0: string, 1: int, 2: int, 3: string, 4: string} [result_status, total_tests, results_entered, test_description, test_category]
      */
+
+    /**
+     * A package's own billed line (e.g. "LIPID PROFILE", is_package=1) is a
+     * pricing label, not a measurable test -- it's never claimable on the
+     * report screen (PathologyReportController excludes it the same way),
+     * so counting it toward the qualifying/completion total left every
+     * package invoice permanently one short and stuck on "Partial" even
+     * once fully confirmed (mirrors TestReportDashboardController's
+     * identical helper). is_outsourced=1 lines are likewise excluded.
+     * $lineDetails/total_tests above stays unfiltered on purpose -- that's
+     * the human-readable "every billed line" description/count, not the
+     * completion denominator.
+     */
+    private function qualifyingLinesQuery(Invoice $invoice, array $qualifyingItemCodes)
+    {
+        return DB::table('invoice_details as d')
+            ->join('invoice_item_details as iid', function ($join) {
+                $join->on('iid.item_code', '=', 'd.item_code')
+                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+            })
+            ->where('d.invoice_no', $invoice->invoice_no)
+            ->whereIn('d.item_code', $qualifyingItemCodes)
+            ->where('iid.is_package', 0)
+            ->where('iid.is_outsourced', 0);
+    }
+
     private function resultStatusFor(Invoice $invoice, array $qualifyingItemCodes): array
     {
         $lineDetails = DB::table('invoice_details')
@@ -225,10 +251,7 @@ class TestResultEntryController extends Controller
             ->map(fn ($code) => $testCategoryNames->get($code, $code))
             ->implode(', ');
 
-        $qualifyingTotal = DB::table('invoice_details')
-            ->where('invoice_no', $invoice->invoice_no)
-            ->whereIn('item_code', $qualifyingItemCodes)
-            ->count();
+        $qualifyingTotal = $this->qualifyingLinesQuery($invoice, $qualifyingItemCodes)->count();
 
         if ($qualifyingTotal === 0) {
 
@@ -240,10 +263,7 @@ class TestResultEntryController extends Controller
             return ['Complete', $lineDetails->count(), $qualifyingTotal, $lineDetails->pluck('item_description')->implode(', '), $testCategory];
         }
 
-        $qualifyingLineIds = DB::table('invoice_details')
-            ->where('invoice_no', $invoice->invoice_no)
-            ->whereIn('item_code', $qualifyingItemCodes)
-            ->pluck('id');
+        $qualifyingLineIds = $this->qualifyingLinesQuery($invoice, $qualifyingItemCodes)->pluck('d.id');
 
         $resultsEntered = DB::table('pathology_report_finding_items')
             ->whereIn('invoice_detail_id', $qualifyingLineIds)
@@ -271,10 +291,7 @@ class TestResultEntryController extends Controller
 
         if (!$confirmed && $resultStatus === 'Complete') {
 
-            $qualifyingLineIds = DB::table('invoice_details')
-                ->where('invoice_no', $invoice->invoice_no)
-                ->whereIn('item_code', $qualifyingItemCodes)
-                ->pluck('id');
+            $qualifyingLineIds = $this->qualifyingLinesQuery($invoice, $qualifyingItemCodes)->pluck('d.id');
 
             $confirmedCount = DB::table('pathology_report_finding_items as pfi')
                 ->join('pathology_report_findings as pf', 'pf.id', '=', 'pfi.pathology_report_finding_id')
