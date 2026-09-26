@@ -44,24 +44,26 @@ body {
     font-weight: bold;
 }
 
-.doctor-line {
+{{-- Left-hand information column: doctor details, Invoice No., Patient ID.
+     Three groups, each a tight block of lines; the wide gap BETWEEN groups
+     (not between lines) is what keeps them visually distinct. The block
+     is one normal-flow container so a long doctor name / qualification
+     wrapping onto a second line pushes the groups below it down instead
+     of overlapping them. --}}
+.info-column {
     left: 10mm;
-    width: 190mm;
-    white-space: nowrap;
+    width: 50mm;
+    font-size: 10px;
+    line-height: 1.35;
 }
 
-.doctor-line .label-blue {
-    margin-right: 4px;
+.info-group {
+    margin-bottom: 4.5mm;
 }
 
 .patient-line-value {
     font-size: 10px;
     white-space: nowrap;
-}
-
-.ids-line {
-    left: 10mm;
-    font-size: 10px;
 }
 
 .signature {
@@ -78,18 +80,6 @@ body {
 
 <div class="page-canvas">
 
-    <div class="doctor-line" style="top:60mm;">
-        <span class="label-blue">Doctor :</span>
-        {{ $invoice->doctor_name ?? optional($doctor)->doctor_name }},
-        {{ optional($doctor)->qualification }}
-        &nbsp;&nbsp;&nbsp;
-        <span class="label-blue">Specialisation :</span>
-        {{ optional($doctor)->specialisation }}
-        &nbsp;&nbsp;&nbsp;
-        <span class="label-blue">Reg. No :</span>
-        {{ optional($doctor)->registration_no }}
-    </div>
-
     {{-- Name/Age/Sex/Date labels are already pre-printed on the letterhead
          paper on this line -- only the values are rendered here, each at
          the exact left margin measured from the physical page edge, so it
@@ -99,10 +89,31 @@ body {
     <div class="patient-line-value" style="top:67mm; left:148mm;">{{ $invoice->patient_gender ?? '' }}</div>
     <div class="patient-line-value" style="top:67mm; left:175mm;">{{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</div>
 
-    <div class="ids-line" style="top:84mm;"><span class="label-blue">Invoice No.</span></div>
-    <div class="ids-line" style="top:92mm;">{{ $invoice->invoice_no }}</div>
-    <div class="ids-line" style="top:100mm;"><span class="label-blue">Patient ID</span></div>
-    <div class="ids-line" style="top:108mm;">{{ $invoice->patient_id }}</div>
+    <div class="info-column" style="top:74mm;">
+
+        <div class="info-group">
+            <div class="label-blue">Doctor Name</div>
+            <div>{{ $invoice->doctor_name ?? optional($doctor)->doctor_name }}</div>
+            @if(optional($doctor)->qualification)
+            <div>{{ $doctor->qualification }}</div>
+            @endif
+            @if(optional($doctor)->specialisation)
+            <div>{{ $doctor->specialisation }}</div>
+            @endif
+            <div><span class="label-blue">Reg. No. :</span> {{ optional($doctor)->registration_no }}</div>
+        </div>
+
+        <div class="info-group">
+            <div class="label-blue">Invoice No.</div>
+            <div>{{ $invoice->invoice_no }}</div>
+        </div>
+
+        <div class="info-group">
+            <div class="label-blue">Patient ID</div>
+            <div>{{ $invoice->patient_id }}</div>
+        </div>
+
+    </div>
 
     {{-- History/BP/Weight/SPO2 are already pre-printed on the letterhead
          paper -- not rendered here, same reasoning as the header. Blank
