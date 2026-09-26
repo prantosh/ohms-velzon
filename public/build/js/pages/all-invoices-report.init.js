@@ -87,7 +87,7 @@ async function loadTab(tabKey, page = 1) {
     let startSl = (result.pagination.current_page - 1) * state.perPage;
 
     if (!result.data.length) {
-        tbody.innerHTML = '<tr><td colspan="14" class="text-center text-muted">No invoices found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="15" class="text-center text-muted">No invoices found.</td></tr>';
         state.loaded = true;
         return;
     }
@@ -97,6 +97,7 @@ async function loadTab(tabKey, page = 1) {
         <tr>
             <td>${startSl + index + 1}</td>
             <td>${escapeHtml(row.invoice_date_fmt)}</td>
+            <td>${escapeHtml(row.collected_at_fmt) || '-'}</td>
             <td class="fw-semibold">${escapeHtml(row.invoice_no)}</td>
             <td>${escapeHtml(row.invoice_type_label)}</td>
             <td>${escapeHtml(row.patient_name) || '-'}</td>
@@ -150,16 +151,48 @@ async function loadReport() {
 
     if (!currentDate()) {
         Swal.fire({ icon: 'warning', title: 'Missing Date', text: 'Please select an invoice date.' });
-        return;
+        return false;
     }
 
     tabs.forEach(t => { tabState[t].loaded = false; tabState[t].currentPage = 1; });
 
     await loadCounts();
     await loadTab(activeTabKey(), 1);
+
+    return true;
 }
 
-document.getElementById('loadReportBtn').addEventListener('click', loadReport);
+// Filters as they were when Load was last clicked -- Print uses this
+// snapshot (plus whichever tab is showing), not whatever the inputs say
+// now, so the PDF always matches the data on screen.
+let loadedFilters = null;
+
+document.getElementById('loadReportBtn').addEventListener('click', async function () {
+
+    if (!await loadReport()) {
+        return;
+    }
+
+    loadedFilters = {
+        date: currentDate(),
+        search: currentSearch(),
+        user_id: currentUserId(),
+        invoice_type: currentInvoiceType(),
+    };
+
+    document.getElementById('printReportBtn').style.display = 'inline-block';
+});
+
+document.getElementById('printReportBtn').addEventListener('click', function () {
+
+    if (!loadedFilters) {
+        return;
+    }
+
+    const params = new URLSearchParams({ ...loadedFilters, tab: activeTabKey() });
+
+    window.open(`/all-invoices-report/print?${params.toString()}`, '_blank');
+});
 
 document.querySelectorAll('.nav-tabs-custom [data-bs-toggle="tab"]').forEach(tabLink => {
     tabLink.addEventListener('shown.bs.tab', function () {

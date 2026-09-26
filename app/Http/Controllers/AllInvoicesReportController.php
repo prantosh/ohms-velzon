@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -71,35 +72,11 @@ class AllInvoicesReportController extends Controller
         $perPage = $request->get('per_page', 10);
 
         $invoices = $this->tabQuery($request)
-            ->orderByDesc('id')
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->paginate($perPage);
 
-        $userNames = DB::table('users')
-            ->whereIn('id', $invoices->getCollection()->pluck('created_by')->filter()->unique())
-            ->pluck('name', 'id');
-
-        $invoices->getCollection()->transform(function ($row) use ($userNames) {
-
-            $row->invoice_date_fmt = $row->invoice_date
-                ? Carbon::parse($row->invoice_date)->format('d-m-Y')
-                : null;
-
-            $row->invoice_type_label = self::INVOICE_TYPE_LABELS[$row->invoice_type] ?? $row->invoice_type;
-
-            $row->doctor_display = $row->doctor_name ?: ($row->referred_doctor ?: '-');
-
-            $row->is_cancelled = $row->cancelled === 'Y';
-
-            $row->is_pending = !$row->is_cancelled && (float) $row->due_amount > 0;
-
-            $row->created_by_name = $userNames->get($row->created_by) ?? '-';
-
-            $prefix = self::PRINT_URL_PREFIXES[$row->invoice_type] ?? null;
-
-            $row->print_url = $prefix ? $prefix . $row->id : null;
-
-            return $row;
-        });
+        $this->decorateRows($invoices->getCollection());
 
         return response()->json([
             'status' => true,
@@ -110,6 +87,77 @@ class AllInvoicesReportController extends Controller
                 'total' => $invoices->total(),
             ],
         ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PRINT (PDF of every invoice matching the loaded filters + active tab --
+    | not just the current page)
+    |--------------------------------------------------------------------------
+    */
+
+    public function print(Request $request)
+    {
+        // A busy day (~100 invoices, several pages, each repeating the
+        // watermark/badge images) exceeds the 128M default under dompdf.
+        ini_set('memory_limit', '512M');
+
+        $request->validate([
+            'date' => 'required|date',
+            'tab' => 'required|in:all,pending,cancelled',
+            'search' => 'nullable|string',
+            'user_id' => 'nullable|string',
+            'invoice_type' => 'nullable|in:' . implode(',', array_merge(['ALL'], array_keys(self::INVOICE_TYPE_LABELS))),
+        ]);
+
+        if ($request->filled('user_id') && $request->user_id !== 'ALL') {
+            $request->validate(['user_id' => 'exists:users,id']);
+        }
+
+        $rows = $this->tabQuery($request)->orderBy('created_at')->orderBy('id')->get();
+
+        $this->decorateRows($rows);
+
+        $billable = $rows->where('is_cancelled', false);
+
+        $summary = [
+            'count' => $rows->count(),
+            'cancelled_count' => $rows->where('is_cancelled', true)->count(),
+            'total_amount' => round((float) $billable->sum('total_amount'), 2),
+            'paid_amount' => round((float) $billable->sum('paid_amount'), 2),
+            'due_amount' => round((float) $billable->sum('due_amount'), 2),
+        ];
+
+        $filters = [
+            'user' => 'All Users',
+            'type' => 'All Types',
+            'search' => trim((string) $request->search),
+        ];
+
+        if ($request->filled('user_id') && $request->user_id !== 'ALL') {
+            $u = User::find($request->user_id);
+            $filters['user'] = $u ? $u->name . ' (' . $u->role . ')' : 'All Users';
+        }
+
+        if ($request->filled('invoice_type') && $request->invoice_type !== 'ALL') {
+            $filters['type'] = self::INVOICE_TYPE_LABELS[$request->invoice_type] ?? $request->invoice_type;
+        }
+
+        $tabLabels = ['all' => 'All Invoices', 'pending' => 'Pending Invoices', 'cancelled' => 'Cancelled Invoices'];
+
+        $date = Carbon::parse($request->date);
+
+        $pdf = Pdf::loadView('apps-all-invoices-report-pdf', [
+            'rows' => $rows,
+            'summary' => $summary,
+            'filters' => $filters,
+            'tabLabel' => $tabLabels[$request->tab],
+            'date' => $date,
+        ]);
+
+        $pdf->setPaper('A4', 'landscape');
+
+        return $pdf->stream('All-Invoices-Report-' . $request->tab . '-' . $date->format('d-m-Y') . '.pdf');
     }
 
     /*
@@ -139,6 +187,50 @@ class AllInvoicesReportController extends Controller
                 'cancelled' => (clone $this->tabQuery($request, 'cancelled'))->count(),
             ],
         ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | ROW DECORATION (shared by list() and print())
+    |--------------------------------------------------------------------------
+    */
+
+    private function decorateRows($rows)
+    {
+        $userNames = DB::table('users')
+            ->whereIn('id', $rows->pluck('created_by')->filter()->unique())
+            ->pluck('name', 'id');
+
+        return $rows->transform(function ($row) use ($userNames) {
+
+            $row->invoice_date_fmt = $row->invoice_date
+                ? Carbon::parse($row->invoice_date)->format('d-m-Y')
+                : null;
+
+            $row->collected_at_fmt = $row->created_at
+                ? Carbon::parse($row->created_at)->format('d-m-Y h:i A')
+                : null;
+
+            $row->collected_time_fmt = $row->created_at
+                ? Carbon::parse($row->created_at)->format('h:i A')
+                : null;
+
+            $row->invoice_type_label = self::INVOICE_TYPE_LABELS[$row->invoice_type] ?? $row->invoice_type;
+
+            $row->doctor_display = $row->doctor_name ?: ($row->referred_doctor ?: '-');
+
+            $row->is_cancelled = $row->cancelled === 'Y';
+
+            $row->is_pending = !$row->is_cancelled && (float) $row->due_amount > 0;
+
+            $row->created_by_name = $userNames->get($row->created_by) ?? '-';
+
+            $prefix = self::PRINT_URL_PREFIXES[$row->invoice_type] ?? null;
+
+            $row->print_url = $prefix ? $prefix . $row->id : null;
+
+            return $row;
+        });
     }
 
     /*

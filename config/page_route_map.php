@@ -95,6 +95,7 @@ return [
     'whatsapp-auto-send-settings.toggle' => 'whatsapp-auto-send-settings',
     'user-invoice-report.index' => 'user-invoice-report',
     'all-invoices-report.index' => 'all-invoices-report',
+    'all-invoices-report.print' => 'all-invoices-report',
     'doctor-settlement-by-user.index' => 'doctor-settlement-by-user',
     'doctor-payable-by-user.index' => 'doctor-payable-by-user',
     'daily-cash-settlement.index' => 'daily-cash-settlement',

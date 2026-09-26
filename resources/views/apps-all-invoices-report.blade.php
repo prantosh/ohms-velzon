@@ -67,15 +67,19 @@
                         </select>
                     </div>
 
-                    <div class="col-md-3 mb-3">
+                    <div class="col-md-2 mb-3">
                         <label class="form-label">Search</label>
                         <input type="text" id="search-field" class="form-control" placeholder="Invoice No / Patient Name / Mobile">
                     </div>
 
-                    <div class="col-md-2 mb-3">
-                        <button type="button" class="btn btn-primary w-100" id="loadReportBtn">
+                    <div class="col-md-3 mb-3 d-flex gap-2">
+                        <button type="button" class="btn btn-primary flex-fill" id="loadReportBtn">
                             <i class="ri-search-line"></i>
                             Load
+                        </button>
+                        <button type="button" class="btn btn-success flex-fill" id="printReportBtn" style="display:none;">
+                            <i class="ri-printer-line"></i>
+                            Print
                         </button>
                     </div>
 
@@ -136,6 +140,7 @@
                                     <tr>
                                         <th width="60">Sl</th>
                                         <th width="100">Invoice Date</th>
+                                        <th width="120">Collected At</th>
                                         <th width="120">Invoice No</th>
                                         <th width="130">Type</th>
                                         <th>Patient</th>

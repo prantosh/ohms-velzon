@@ -1780,6 +1780,10 @@ Route::prefix('all-invoices-report')->group(function () {
     Route::get('/list', [AllInvoicesReportController::class, 'list']);
     Route::get('/counts', [AllInvoicesReportController::class, 'counts']);
 
+    Route::get('/print', [AllInvoicesReportController::class, 'print'])
+        ->middleware('auth')
+        ->name('all-invoices-report.print');
+
 });
 
 // Wrapped in auth -- /list and /print were unnamed and so bypassed
