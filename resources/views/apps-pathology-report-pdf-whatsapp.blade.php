@@ -21,18 +21,14 @@
     negative-offset trick is what lands them back at the true edge
     (same technique proven on the Doctor Visit prescription layouts).
 
-    Both images are cropped from ONE single full-page scan of the actual
-    pre-printed stationery (same left/right pixel bounds, only the
-    vertical crop differs) so the red border running down both sides
-    lines up perfectly between the two -- cropping them independently
-    (as done previously) let their horizontal scale/framing drift apart,
-    breaking that continuity and leaving the footer looking narrower.
-    3673x920 / 3673x772 at 210mm wide -> 52.6mm / 44.1mm tall.
+    Both images are cropped from the same full-page scan, so they share
+    the same width and scale.
+    2544x530 / 2544x744 at 210mm wide -> 43.8mm / 61.4mm tall.
 */
 @page {
-    margin-top: 52.6mm;
+    margin-top: 43.8mm;
     margin-right: 0;
-    margin-bottom: 44.1mm;
+    margin-bottom: 61.4mm;
     margin-left: 0;
 }
 
@@ -46,46 +42,16 @@ body {
 
 .report-header-image {
     position: fixed;
-    top: -52.6mm;
+    top: -43.8mm;
     left: 0;
     width: 210mm;
 }
 
 .report-footer-image {
     position: fixed;
-    bottom: -44.1mm;
+    bottom: -61.4mm;
     left: 0;
     width: 210mm;
-}
-
-/*
-    Continues the stationery's outer red border down through the content
-    area between the header and footer images -- measured directly from
-    the exact seam rows (the header image's own last row / the footer
-    image's own first row, not an average further inside, which was
-    visibly off at both connection points once printed). Border CENTER
-    sits ~10.8mm from the left edge and ~8.6mm from the right edge;
-    left/right below are the line's own edge (center minus half of its
-    1.15mm width), since CSS left/right position an edge, not a center.
-    top:0/bottom:0 on a position:fixed element lands exactly at the
-    page's content-box edges, which is exactly where the header image's
-    bottom edge and the footer image's top edge already sit -- so these
-    connect with no gap or overlap, on every page.
-*/
-.report-border-line {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    width: 1.15mm;
-    background-color: rgb(234, 105, 98);
-}
-
-.report-border-left {
-    left: 10.2mm;
-}
-
-.report-border-right {
-    right: 8.0mm;
 }
 
 table {
@@ -132,19 +98,15 @@ table {
        allows it, so doctors can customize cells while composing) -- an
        inline style always wins over this rule otherwise, so the printed
        report needs to force its own compact spacing regardless. */
-    padding: 3px !important;
+    padding: 1px 3px !important;
     vertical-align: top;
+    line-height: 1.2;
 }
 
-.signature-section {
-    margin-top: 50px;
-}
-
-.signature {
-    width: 45%;
-    text-align: center;
-    display: inline-block;
-    float: right;
+/* Cells hold CKEditor <p> blocks, and DomPDF gives <p> a 1em default
+   margin -- that, not the cell padding, was most of each row's height. */
+.report-body table p {
+    margin: 0;
 }
 
 /* Matches CKEditor's own editing-view sizing exactly (ckeditor5-content.css
@@ -162,8 +124,6 @@ table {
 
 <img class="report-header-image" src="{{ public_path('images/report_pathology_header.png') }}">
 <img class="report-footer-image" src="{{ public_path('images/report_pathology_footer.png') }}">
-<div class="report-border-line report-border-left"></div>
-<div class="report-border-line report-border-right"></div>
 
 <table class="patient-detail-table">
     <tr>
@@ -194,14 +154,6 @@ table {
 
 <div class="report-body">
     {!! $finding->content !!}
-</div>
-
-<div class="signature-section">
-    <div class="signature">
-        ______________________
-        <br>
-        Doctor's Signature
-    </div>
 </div>
 
 </body>
