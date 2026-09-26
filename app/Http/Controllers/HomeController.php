@@ -250,19 +250,30 @@ class HomeController extends Controller
         |--------------------------------------------------------------------------
         */
 
-        $myInvoices = DB::table('invoices')
+        // Scoped to WHO ACTUALLY COLLECTED the cash and WHEN
+        // (daily_transactions.created_by + transaction_date), not to who
+        // raised the invoice or the invoice's own date -- these tiles are
+        // labelled "Collection", and a due/instalment payment is often
+        // collected by a different staff member, on a different day, than
+        // whoever originally created the invoice (same fix applied to
+        // CashLedgerService's cash-submission figures, which this widget
+        // was previously inconsistent with).
+        $myInvoices = DB::table('daily_transactions as dt')
+            ->join('invoices as inv', 'inv.invoice_no', '=', 'dt.invoice_reference')
             ->selectRaw('
-            invoice_type,
-            COUNT(*) total_count,
-            SUM(paid_amount) total_amount
+            inv.invoice_type,
+            COUNT(DISTINCT dt.invoice_reference) total_count,
+            SUM(dt.received_amount) total_amount
         ')
-            ->whereDate('invoice_date', $today)
-            ->where('created_by', Auth::id())
+            ->where('dt.transaction_type', 'RECEIVED')
+            ->where('dt.status', '!=', 'CANCELLED')
+            ->whereDate('dt.transaction_date', $today)
+            ->where('dt.created_by', Auth::id())
             ->where(function ($q) {
-                $q->whereNull('cancelled')
-                    ->orWhere('cancelled', '!=', 'Y');
+                $q->whereNull('inv.cancelled')
+                    ->orWhere('inv.cancelled', '!=', 'Y');
             })
-            ->groupBy('invoice_type')
+            ->groupBy('inv.invoice_type')
             ->get();
 
         // "Today's Invoices By Me" widget tiles. Doctor Visit / Diagnostic /

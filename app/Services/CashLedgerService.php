@@ -64,27 +64,32 @@ class CashLedgerService
      */
     public function buildSummary($userId, string $fromDate, string $toDate): array
     {
+        // "Invoices Created" (User History) / "Invoices" (Employee
+        // Performance) is deliberately still scoped to invoices THIS user
+        // raised, by invoice_date -- a distinct metric from the cash
+        // figures below, which is about who is actually holding the cash,
+        // not who raised the invoice it came from.
         $invoiceQuery = DB::table('invoices')
             ->where('created_by', $userId)
             ->whereBetween('invoice_date', [$fromDate, $toDate]);
 
         $invoiceCount = (clone $invoiceQuery)->count();
 
-        $invoiceNos = (clone $invoiceQuery)->pluck('invoice_no');
-
-        // Cash vs non-cash is determined per PAYMENT EVENT
-        // (daily_transactions), not by invoices.payment_mode -- that column
-        // only ever holds whichever payment (initial, phase 1, or phase 2)
-        // was recorded LAST, so an invoice paid partly by card and partly
-        // by cash was previously having its ENTIRE total_amount dumped into
-        // a single bucket based on whatever mode happened to be collected
-        // last. BINARY forces the same case-sensitive comparison used
-        // throughout this file (MySQL's default collation treats 'Cash'
-        // and 'CASH' as equal).
+        // Cash vs non-cash, and WHO actually holds it, is determined per
+        // PAYMENT EVENT (daily_transactions.created_by + transaction_date),
+        // NOT by which invoice it was collected against. A due/instalment
+        // payment is very often collected by a different staff member, on a
+        // different day, than whoever originally raised the invoice --
+        // scoping by invoice ownership/invoice_date would silently credit
+        // that cash to the wrong person's (or day's) submission entirely.
+        // BINARY forces the same case-sensitive comparison used throughout
+        // this file (MySQL's default collation treats 'Cash' and 'CASH' as
+        // equal).
         $receivedByMode = DB::table('daily_transactions')
             ->where('transaction_type', 'RECEIVED')
             ->where('status', 'ACTIVE')
-            ->whereIn('invoice_reference', $invoiceNos)
+            ->where('created_by', $userId)
+            ->whereBetween('transaction_date', [$fromDate, $toDate])
             ->select(
                 DB::raw('SUM(CASE WHEN BINARY payment_mode = \'Cash\' THEN received_amount ELSE 0 END) as cash_total'),
                 DB::raw('SUM(CASE WHEN BINARY payment_mode != \'Cash\' OR payment_mode IS NULL THEN received_amount ELSE 0 END) as non_cash_total')
@@ -97,7 +102,8 @@ class CashLedgerService
         $cashRefunded = DB::table('daily_transactions')
             ->where('transaction_type', 'REFUND')
             ->where('payment_mode', 'Cash')
-            ->whereIn('invoice_reference', $invoiceNos)
+            ->where('created_by', $userId)
+            ->whereBetween('transaction_date', [$fromDate, $toDate])
             ->sum('refund_amount');
 
         $cashPaidToDoctors = DB::table('doctor_settlement_items')
@@ -146,9 +152,48 @@ class CashLedgerService
     {
         $itemCodeToName = DB::table('invoice_item_masters')->pluck('item_name', 'item_code')->toArray();
 
-        $invoices = DB::table('invoices')
+        $totals = [];
+
+        /*
+        |------------------------------------------------------------------
+        | 1) COLLECTIONS -- cash and non-cash, split by category. Scoped by
+        |    WHO ACTUALLY COLLECTED the payment and WHEN (daily_transactions
+        |    .created_by + transaction_date), not by who raised the invoice
+        |    or the invoice's own date -- a due/instalment payment is often
+        |    collected by a different staff member, on a different day, than
+        |    whoever originally created the invoice. Each transaction's own
+        |    amount is split across categories using the invoice's weight
+        |    map (the category composition doesn't change between payment
+        |    phases, only how much of it -- and in what mode -- has been
+        |    collected so far).
+        |------------------------------------------------------------------
+        */
+
+        $receivedTxns = DB::table('daily_transactions')
+            ->where('transaction_type', 'RECEIVED')
+            ->where('status', 'ACTIVE')
             ->where('created_by', $userId)
-            ->whereBetween('invoice_date', [$fromDate, $toDate])
+            ->whereBetween('transaction_date', [$fromDate, $toDate])
+            ->get(['invoice_reference', 'received_amount', 'payment_mode']);
+
+        $refunds = DB::table('daily_transactions')
+            ->where('transaction_type', 'REFUND')
+            ->where('payment_mode', 'Cash')
+            ->where('created_by', $userId)
+            ->whereBetween('transaction_date', [$fromDate, $toDate])
+            ->get(['invoice_reference', 'refund_amount']);
+
+        // Both sets of transactions can reference invoices created by, or
+        // dated, outside this user/range -- fetch every invoice actually
+        // touched so the category weight maps below have what they need.
+        $referencedInvoiceNos = $receivedTxns->pluck('invoice_reference')
+            ->merge($refunds->pluck('invoice_reference'))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $invoices = DB::table('invoices')
+            ->whereIn('invoice_no', $referencedInvoiceNos)
             ->get(['id', 'invoice_no', 'invoice_type', 'item_code']);
 
         $invoiceByNo = $invoices->keyBy('invoice_no');
@@ -165,26 +210,6 @@ class CashLedgerService
 
             return $weightMaps[$invoice->invoice_no] ?? [self::UNCATEGORIZED_ITEM => 1.0];
         };
-
-        $totals = [];
-
-        /*
-        |------------------------------------------------------------------
-        | 1) COLLECTIONS -- cash and non-cash, split by category. Classified
-        |    per payment EVENT (daily_transactions), not by
-        |    invoices.payment_mode -- see buildLedger()'s matching comment
-        |    for why. Each transaction's own amount is split across
-        |    categories using the invoice's weight map (the category
-        |    composition doesn't change between payment phases, only how
-        |    much of it -- and in what mode -- has been collected so far).
-        |------------------------------------------------------------------
-        */
-
-        $receivedTxns = DB::table('daily_transactions')
-            ->where('transaction_type', 'RECEIVED')
-            ->where('status', 'ACTIVE')
-            ->whereIn('invoice_reference', $invoiceByNo->keys())
-            ->get(['invoice_reference', 'received_amount', 'payment_mode']);
 
         foreach ($receivedTxns as $txn) {
 
@@ -203,15 +228,9 @@ class CashLedgerService
 
         /*
         |------------------------------------------------------------------
-        | 2) CASH REFUNDS against this user's invoices, split the same way
+        | 2) CASH REFUNDS processed by this user, split the same way
         |------------------------------------------------------------------
         */
-
-        $refunds = DB::table('daily_transactions')
-            ->where('transaction_type', 'REFUND')
-            ->where('payment_mode', 'Cash')
-            ->whereIn('invoice_reference', $invoiceByNo->keys())
-            ->get(['invoice_reference', 'refund_amount']);
 
         foreach ($refunds as $refund) {
 
@@ -388,12 +407,13 @@ class CashLedgerService
      */
     public function buildLedger($userId, string $fromDate, string $toDate): array
     {
-        $invoices = DB::table('invoices')
+        // "Invoices Created" -- see buildSummary()'s matching comment: a
+        // distinct metric from the cash figures below (who raised an
+        // invoice vs. who is actually holding the cash from it).
+        $invoiceCount = DB::table('invoices')
             ->where('created_by', $userId)
             ->whereBetween('invoice_date', [$fromDate, $toDate])
-            ->get(['id', 'invoice_no', 'invoice_type', 'invoice_date', 'patient_name']);
-
-        $invoiceByNo = $invoices->keyBy('invoice_no');
+            ->count();
 
         $ledger = [];
 
@@ -403,33 +423,64 @@ class CashLedgerService
 
         /*
         |----------------------------------------------------------------
-        | 1) COLLECTIONS -- per payment EVENT (daily_transactions), not per
-        |    invoice. invoices.payment_mode only holds whichever payment
-        |    (initial, phase 1, or phase 2) was recorded LAST, so an
-        |    invoice paid partly by card and partly by cash was previously
-        |    having its ENTIRE total_amount misclassified into a single
-        |    bucket based on the last mode used. Each RECEIVED transaction
-        |    is its own ledger line here (using ITS OWN time, which is also
-        |    more accurate than the invoice's creation time for a later
-        |    due-payment phase).
+        | 1) COLLECTIONS -- per payment EVENT (daily_transactions), scoped
+        |    to WHO ACTUALLY COLLECTED it and WHEN (created_by +
+        |    transaction_date), not to who raised the invoice or the
+        |    invoice's own date. A due/instalment payment is very often
+        |    collected by a different staff member, on a different day,
+        |    than whoever originally created the invoice -- scoping by
+        |    invoice ownership would silently misattribute that cash to the
+        |    wrong person's (or day's) submission. invoices.payment_mode
+        |    only holds whichever payment (initial, phase 1, or phase 2)
+        |    was recorded LAST, so an invoice paid partly by card and partly
+        |    by cash was previously having its ENTIRE total_amount
+        |    misclassified into a single bucket based on the last mode used.
+        |    Each RECEIVED transaction is its own ledger line here (using
+        |    ITS OWN time, which is also more accurate than the invoice's
+        |    creation time for a later due-payment phase).
         |----------------------------------------------------------------
         */
 
         $receivedTxns = DB::table('daily_transactions')
             ->where('transaction_type', 'RECEIVED')
             ->where('status', 'ACTIVE')
-            ->whereIn('invoice_reference', $invoiceByNo->keys())
-            ->get(['invoice_reference', 'received_amount', 'payment_mode', 'payment_reference', 'created_at']);
+            ->where('created_by', $userId)
+            ->whereBetween('transaction_date', [$fromDate, $toDate])
+            ->get(['invoice_reference', 'received_amount', 'payment_mode', 'payment_reference', 'created_at', 'patient_name']);
+
+        /*
+        |----------------------------------------------------------------
+        | 2) CASH REFUNDS processed by this user, same attribution
+        |----------------------------------------------------------------
+        */
+
+        $refunds = DB::table('daily_transactions')
+            ->where('transaction_type', 'REFUND')
+            ->where('payment_mode', 'Cash')
+            ->where('created_by', $userId)
+            ->whereBetween('transaction_date', [$fromDate, $toDate])
+            ->get(['transaction_no', 'invoice_reference', 'patient_name', 'refund_amount', 'created_at', 'payment_mode']);
+
+        // Both sets of transactions can reference invoices created by, or
+        // dated, outside this user/range -- fetch every invoice actually
+        // touched (by invoice_no alone) for display fields (type/date/
+        // patient name), independent of who raised it or when.
+        $referencedInvoiceNos = $receivedTxns->pluck('invoice_reference')
+            ->merge($refunds->pluck('invoice_reference'))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $invoiceByNo = DB::table('invoices')
+            ->whereIn('invoice_no', $referencedInvoiceNos)
+            ->get(['id', 'invoice_no', 'invoice_type', 'invoice_date', 'patient_name'])
+            ->keyBy('invoice_no');
 
         $nonCashCollected = 0;
 
         foreach ($receivedTxns as $txn) {
 
             $invoice = $invoiceByNo->get($txn->invoice_reference);
-
-            if (!$invoice) {
-                continue;
-            }
 
             $amount = round((float) $txn->received_amount, 2);
 
@@ -446,12 +497,12 @@ class CashLedgerService
             // Collected with no supporting detail on the printed slip.
             $ledger[] = [
                 'type' => 'Collection',
-                'invoice_no' => $invoice->invoice_no,
-                'invoice_type' => $invoice->invoice_type,
-                'category' => self::INVOICE_TYPE_LABELS[$invoice->invoice_type] ?? $invoice->invoice_type,
-                'transaction_no' => $invoice->invoice_no,
-                'transaction_to' => $invoice->patient_name,
-                'invoice_date' => $invoice->invoice_date,
+                'invoice_no' => $txn->invoice_reference,
+                'invoice_type' => $invoice->invoice_type ?? null,
+                'category' => $invoice ? (self::INVOICE_TYPE_LABELS[$invoice->invoice_type] ?? $invoice->invoice_type) : '-',
+                'transaction_no' => $txn->invoice_reference,
+                'transaction_to' => $invoice->patient_name ?? $txn->patient_name,
+                'invoice_date' => $invoice->invoice_date ?? null,
                 'receive_time' => $txn->created_at,
                 'doctor_settlement_time' => null,
                 'refund_time' => null,
@@ -460,18 +511,6 @@ class CashLedgerService
                 'payment_reference' => $txn->payment_reference,
             ];
         }
-
-        /*
-        |----------------------------------------------------------------
-        | 2) CASH REFUNDS (against this user's invoices in the range)
-        |----------------------------------------------------------------
-        */
-
-        $refunds = DB::table('daily_transactions')
-            ->where('transaction_type', 'REFUND')
-            ->where('payment_mode', 'Cash')
-            ->whereIn('invoice_reference', $invoiceByNo->keys())
-            ->get(['transaction_no', 'invoice_reference', 'patient_name', 'refund_amount', 'created_at', 'payment_mode']);
 
         foreach ($refunds as $refund) {
 
@@ -646,7 +685,7 @@ class CashLedgerService
             'doctor_payments' => $doctorPaymentDetail,
             'group_breakdown' => $groupBreakdown,
             'summary' => [
-                'invoice_count' => $invoices->count(),
+                'invoice_count' => $invoiceCount,
                 'cash_collected' => $cashCollected,
                 'non_cash_collected' => round((float) $nonCashCollected, 2),
                 'cash_refunded' => $cashRefunded,
