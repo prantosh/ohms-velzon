@@ -2854,8 +2854,29 @@ Route::middleware(['auth'])->prefix('pathology-report')->group(function () {
         [PathologyReportController::class, 'printReport']
     )->name('pathology-report.print');
 
+    // Combines every confirmed report within ONE test group (e.g.
+    // Haematology) into a single printed document -- a group completed in
+    // stages (several independent reports) still hands the patient one
+    // report per type instead of one per report.
+    Route::get(
+        '/print-group',
+        [PathologyReportController::class, 'printGroup']
+    )->name('pathology-report.print-group');
+
+    // "Print All Reports" -- every confirmed report across every test
+    // group, in the same combined document actually sent via WhatsApp.
+    // Requires the whole invoice confirmed, same as the WhatsApp send.
+    Route::get(
+        '/print-invoice',
+        [PathologyReportController::class, 'printInvoice']
+    )->name('pathology-report.print-invoice');
+
+    // Invoice-scoped, not per-report: sends ONE WhatsApp message covering
+    // every confirmed Pathology report on the invoice. Auto-fires from
+    // confirm() the moment the invoice's last report is confirmed; this
+    // endpoint is the manual retry (e.g. after a WATI failure).
     Route::post(
-        '/send-whatsapp/{id}',
+        '/send-whatsapp',
         [PathologyReportController::class, 'sendWhatsapp']
     )->name('pathology-report.send-whatsapp');
 

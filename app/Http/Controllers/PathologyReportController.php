@@ -87,6 +87,7 @@ class PathologyReportController extends Controller
                 'invoice' => $this->invoicePayload($invoice),
                 'legacy_confirmed' => true,
                 'groups' => [],
+                'pathology_whatsapp' => ['sent' => false, 'sent_at' => null],
             ]);
         }
 
@@ -125,6 +126,7 @@ class PathologyReportController extends Controller
                 'invoice' => $this->invoicePayload($invoice),
                 'legacy_confirmed' => false,
                 'groups' => [],
+                'pathology_whatsapp' => ['sent' => false, 'sent_at' => null],
             ]);
         }
 
@@ -238,7 +240,33 @@ class PathologyReportController extends Controller
             'invoice' => $this->invoicePayload($invoice),
             'legacy_confirmed' => false,
             'groups' => $groups,
+            'pathology_whatsapp' => $this->pathologyWhatsappStatus($invoice->invoice_no),
         ]);
+    }
+
+    /**
+     * Whether a combined "all reports on this invoice" WhatsApp message has
+     * already gone out -- whatsapp_message_logs is the source of truth
+     * (same table every other module's WhatsApp send already logs to), so
+     * a retry/manual send never double-sends. Which test groups are
+     * complete/confirmed is fully derivable client-side already from the
+     * groups payload above (each finding carries its own confirmed_at, and
+     * unclaimed_items shows what's still open) -- this is the one piece of
+     * server-side state that isn't.
+     */
+    private function pathologyWhatsappStatus(string $invoiceNo): array
+    {
+        $log = DB::table('whatsapp_message_logs')
+            ->where('invoice_no', $invoiceNo)
+            ->where('message_type', 'PATHOLOGY_REPORT')
+            ->where('status', 'SENT')
+            ->orderByDesc('id')
+            ->first();
+
+        return [
+            'sent' => (bool) $log,
+            'sent_at' => $log ? \Carbon\Carbon::parse($log->created_at)->format('d-m-Y H:i') : null,
+        ];
     }
 
     private function invoicePayload(Invoice $invoice): array
@@ -271,7 +299,14 @@ class PathologyReportController extends Controller
         $validator = Validator::make(
             $request->all(),
             [
-                'invoice_no' => 'required',
+                // Only a NEW finding (invoice_detail_ids branch) needs
+                // invoice_no -- updating an EXISTING one (finding_id
+                // branch, see below) already knows its invoice from the
+                // finding row itself, and the JS never sends invoice_no in
+                // that case at all. Unconditionally required here broke
+                // every re-save of an already-started-but-unconfirmed
+                // report with "The invoice no field is required.".
+                'invoice_no' => 'required_without:finding_id',
                 'finding_id' => 'nullable|integer',
                 'template_id' => 'nullable|integer|exists:pathology_report_templates,id',
                 'invoice_detail_ids' => 'required_without:finding_id|array|min:1',
@@ -458,15 +493,25 @@ class PathologyReportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | CONFIRM (locks this one report)
+    | CONFIRM -- ONE TEST GROUP AT A TIME, NOT ONE REPORT AT A TIME
     |--------------------------------------------------------------------------
+    | Confirming is invoice+test-group scoped: every report within the given
+    | group is saved (see savePathologyCard() in the JS) and locked in one
+    | action, matching how the group is also printed and WhatsApp'd as one
+    | combined document. This is deliberately stricter than the old
+    | per-report confirm -- it refuses unless EVERY billed line in the group
+    | already has a report started, so a group can't be partially locked
+    | while a line in it has no report at all yet.
     */
 
     public function confirm(Request $request, AuditService $auditService, WatiService $wati)
     {
         $validator = Validator::make(
             $request->all(),
-            ['finding_id' => 'required|integer']
+            [
+                'invoice_no' => 'required',
+                'test_group_code' => 'nullable|integer',
+            ]
         );
 
         if ($validator->fails()) {
@@ -477,41 +522,81 @@ class PathologyReportController extends Controller
             ]);
         }
 
-        $finding = PathologyReportFinding::find($request->finding_id);
+        $invoiceNo = trim($request->invoice_no);
+        $testGroupCode = $request->filled('test_group_code') ? (int) $request->test_group_code : null;
 
-        if (!$finding || empty($finding->content)) {
+        $lines = DB::table('invoice_details as d')
+            ->join('invoice_item_details as iid', function ($join) {
+                $join->on('iid.item_code', '=', 'd.item_code')
+                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+            })
+            ->leftJoin('pathology_report_finding_items as pfi', 'pfi.invoice_detail_id', '=', 'd.id')
+            ->where('d.invoice_no', $invoiceNo)
+            ->where('d.item_code', self::ITEM_CODE)
+            ->where('iid.is_outsourced', 0)
+            ->where('iid.is_package', 0)
+            ->where(function ($q) use ($testGroupCode) {
+                $testGroupCode === null
+                    ? $q->whereNull('iid.test_group_code')
+                    : $q->where('iid.test_group_code', $testGroupCode);
+            })
+            ->get(['d.id as invoice_detail_id', 'pfi.pathology_report_finding_id']);
+
+        if ($lines->isEmpty()) {
 
             return response()->json([
                 'status' => false,
-                'message' => 'Cannot confirm -- report content must be entered first.'
+                'message' => 'No Pathology items found for this test group on this invoice.'
             ]);
         }
 
-        if ($finding->confirmed_at) {
+        if ($lines->contains(fn ($l) => !$l->pathology_report_finding_id)) {
 
             return response()->json([
-                'status' => true,
-                'message' => 'Already confirmed.',
-                'data' => ['confirmed_at' => $finding->confirmed_at->format('d-m-Y H:i')]
+                'status' => false,
+                'message' => 'Start a report for every test in this group before confirming.'
             ]);
         }
 
-        $finding->update([
-            'confirmed_by' => Auth::id(),
-            'confirmed_at' => now(),
-        ]);
+        $findings = PathologyReportFinding::whereIn('id', $lines->pluck('pathology_report_finding_id')->unique())->get();
 
-        $auditService->logAction(self::MODULE_CODE, $finding, 'CONFIRM', 'Pathology report confirmed and locked');
+        if ($findings->contains(fn ($f) => empty($f->content))) {
 
-        $whatsappStatus = $this->autoSendReportWhatsapp($finding, $wati, $auditService);
+            return response()->json([
+                'status' => false,
+                'message' => 'Cannot confirm -- every report in this group must have content entered first.'
+            ]);
+        }
+
+        $toConfirm = $findings->whereNull('confirmed_at');
+
+        foreach ($toConfirm as $finding) {
+
+            $finding->update([
+                'confirmed_by' => Auth::id(),
+                'confirmed_at' => now(),
+            ]);
+
+            $auditService->logAction(self::MODULE_CODE, $finding, 'CONFIRM', 'Pathology report confirmed and locked (group confirm)');
+        }
+
+        // WhatsApp is invoice-scoped, not per-group -- the patient gets
+        // exactly one combined message once every Pathology report on the
+        // whole invoice is confirmed. Most invoices have only this one
+        // group and this fires immediately; an invoice with several groups
+        // only sends once the LAST one is confirmed.
+        $whatsappStatus = $this->isInvoicePathologyFullyConfirmed($invoiceNo)
+            ? $this->autoSendInvoiceWhatsapp($invoiceNo, $wati, $auditService)
+            : 'pending_other_reports';
 
         return response()->json([
             'status' => true,
-            'message' => 'Pathology report confirmed.',
+            'message' => 'Group confirmed.',
             'data' => [
-                'id' => $finding->id,
-                'confirmed_at' => $finding->confirmed_at->format('d-m-Y H:i'),
+                'confirmed_finding_ids' => $toConfirm->pluck('id')->values(),
+                'confirmed_at' => now()->format('d-m-Y H:i'),
                 'whatsapp_status' => $whatsappStatus,
+                'whatsapp_sent_at' => $whatsappStatus === 'sent' ? now()->format('d-m-Y H:i') : null,
             ]
         ]);
     }
@@ -545,47 +630,352 @@ class PathologyReportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | SEND REPORT VIA WHATSAPP
+    | PDF PRINT -- ONE TEST GROUP, COMBINED
     |--------------------------------------------------------------------------
+    | Every confirmed report within a single test group (e.g. Haematology)
+    | as one PDF. Usually there's exactly one report covering the whole
+    | group already (a template picked up front), so this looks identical
+    | to printReport() above -- it only visibly differs once a group was
+    | completed in stages as several independent reports, which is exactly
+    | the case that needed a single combined document instead of one print
+    | per report.
     */
 
-    public function sendWhatsapp($id, AuditService $auditService, WatiService $wati)
+    public function printGroup(Request $request, AuditService $auditService)
     {
-        $finding = PathologyReportFinding::findOrFail($id);
+        $validator = Validator::make(
+            $request->all(),
+            [
+                'invoice_no' => 'required',
+                'test_group_code' => 'nullable|integer',
+            ]
+        );
 
-        if (!$finding->confirmed_at) {
+        if ($validator->fails()) {
+            abort(422, $validator->errors()->first());
+        }
+
+        $invoice = Invoice::where('invoice_no', trim($request->invoice_no))->first();
+
+        if (!$invoice) {
+            abort(404, 'Invoice not found.');
+        }
+
+        $testGroupCode = $request->filled('test_group_code') ? (int) $request->test_group_code : null;
+
+        $lines = DB::table('invoice_details as d')
+            ->join('invoice_item_details as iid', function ($join) {
+                $join->on('iid.item_code', '=', 'd.item_code')
+                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+            })
+            ->leftJoin('pathology_report_finding_items as pfi', 'pfi.invoice_detail_id', '=', 'd.id')
+            ->where('d.invoice_no', $invoice->invoice_no)
+            ->where('d.item_code', self::ITEM_CODE)
+            ->where('iid.is_outsourced', 0)
+            ->where('iid.is_package', 0)
+            ->where(function ($q) use ($testGroupCode) {
+                $testGroupCode === null
+                    ? $q->whereNull('iid.test_group_code')
+                    : $q->where('iid.test_group_code', $testGroupCode);
+            })
+            ->orderBy('d.line_no')
+            ->get(['d.id as invoice_detail_id', 'd.item_description', 'pfi.pathology_report_finding_id']);
+
+        if ($lines->isEmpty()) {
+            abort(404, 'No Pathology items found for this test group on this invoice.');
+        }
+
+        if ($lines->contains(fn ($l) => !$l->pathology_report_finding_id)) {
+            abort(422, 'Not every test in this group has a report yet -- finish those first.');
+        }
+
+        $findings = PathologyReportFinding::with('items')
+            ->whereIn('id', $lines->pluck('pathology_report_finding_id')->unique())
+            ->orderBy('id')
+            ->get();
+
+        if ($findings->contains(fn ($f) => !$f->confirmed_at)) {
+            abort(422, 'Not every report in this group is confirmed yet.');
+        }
+
+        $itemDescById = $lines->pluck('item_description', 'invoice_detail_id');
+
+        $groupName = $testGroupCode
+            ? DB::table('test_group_masters')->where('id', $testGroupCode)->value('test_group_name')
+            : self::UNGROUPED_LABEL;
+
+        $groupName = $groupName ?: self::UNGROUPED_LABEL;
+
+        $sections = $findings->map(fn ($finding) => [
+            'group_name' => $groupName,
+            'title' => $finding->items->pluck('invoice_detail_id')
+                ->map(fn ($id) => $itemDescById->get($id))
+                ->filter()
+                ->implode(', '),
+            'content' => $finding->content,
+            'confirmed_at' => $finding->confirmed_at,
+        ]);
+
+        $pdf = Pdf::loadView(
+            'apps-pathology-report-pdf-group',
+            compact('invoice', 'sections')
+        );
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $invoice,
+            'PRINT_GROUP',
+            "Pathology group report printed ({$groupName})"
+        );
+
+        $fileName = str_replace(['/', '\\'], '-', $invoice->invoice_no . '-' . $groupName) . '-pathology-report.pdf';
+
+        return $pdf->stream($fileName);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SEND WHATSAPP -- ONE MESSAGE FOR THE WHOLE INVOICE
+    |--------------------------------------------------------------------------
+    | Invoice-scoped, not per-report: a patient gets exactly one WhatsApp
+    | message covering every confirmed Pathology report on the invoice,
+    | sent automatically the moment the last one is confirmed (see
+    | confirm() below). This endpoint is the manual retry for when that
+    | auto-send failed (e.g. WATI was down) -- it re-sends the same
+    | combined document, not a second/duplicate message, since
+    | the SENT check in autoSendInvoiceWhatsapp() only blocks the
+    | AUTOMATIC path, not an explicit manual retry.
+    */
+
+    public function sendWhatsapp(Request $request, AuditService $auditService, WatiService $wati)
+    {
+        $validator = Validator::make(
+            $request->all(),
+            ['invoice_no' => 'required']
+        );
+
+        if ($validator->fails()) {
 
             return response()->json([
                 'status' => false,
-                'message' => 'Pathology report must be confirmed before sending.'
+                'errors' => $validator->errors()
             ]);
         }
 
-        $sent = $this->sendReportWhatsapp($finding, $wati, $auditService);
+        $invoiceNo = trim($request->invoice_no);
+
+        if (!$this->isInvoicePathologyFullyConfirmed($invoiceNo)) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Not every Pathology report on this invoice is confirmed yet.'
+            ]);
+        }
+
+        $sent = $this->sendCombinedInvoiceWhatsapp($invoiceNo, $wati, $auditService);
 
         return response()->json([
             'status' => $sent,
             'message' => $sent
                 ? 'Report sent via WhatsApp successfully.'
-                : 'Unable to send report via WhatsApp.'
+                : 'Unable to send report via WhatsApp.',
+            'data' => $sent ? ['sent_at' => now()->format('d-m-Y H:i')] : null,
         ], $sent ? 200 : 500);
     }
 
-    private function sendReportWhatsapp(PathologyReportFinding $finding, WatiService $wati, AuditService $auditService): bool
+    /**
+     * Every qualifying Pathology line on the invoice (mirrors search()'s own
+     * PAT001/non-outsourced/non-package filter) must be claimed by a
+     * finding, and every one of those findings confirmed -- staggered
+     * completion means some lines can still be open while others are
+     * already confirmed, so this has to check the WHOLE invoice, not just
+     * whichever finding was just confirmed.
+     */
+    private function isInvoicePathologyFullyConfirmed(string $invoiceNo): bool
+    {
+        $lines = DB::table('invoice_details as d')
+            ->join('invoice_item_details as iid', function ($join) {
+                $join->on('iid.item_code', '=', 'd.item_code')
+                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+            })
+            ->leftJoin('pathology_report_finding_items as pfi', 'pfi.invoice_detail_id', '=', 'd.id')
+            ->leftJoin('pathology_report_findings as pf', 'pf.id', '=', 'pfi.pathology_report_finding_id')
+            ->where('d.invoice_no', $invoiceNo)
+            ->where('d.item_code', self::ITEM_CODE)
+            ->where('iid.is_outsourced', 0)
+            ->where('iid.is_package', 0)
+            ->get(['d.id', 'pfi.pathology_report_finding_id', 'pf.confirmed_at']);
+
+        if ($lines->isEmpty()) {
+            return false;
+        }
+
+        return $lines->every(fn ($l) => $l->pathology_report_finding_id && $l->confirmed_at);
+    }
+
+    private function autoSendInvoiceWhatsapp(string $invoiceNo, WatiService $wati, AuditService $auditService): string
+    {
+        // Idempotency guard for the AUTOMATIC path only -- confirm() calls
+        // this every time a finding is confirmed, and once the invoice is
+        // fully confirmed it stays fully confirmed, so without this a
+        // second confirm() on an already-complete invoice (e.g. a race, or
+        // a finding re-saved/re-confirmed) would send a duplicate message.
+        // The manual sendWhatsapp() endpoint above is a deliberate retry
+        // and intentionally does not check this.
+        $alreadySent = DB::table('whatsapp_message_logs')
+            ->where('invoice_no', $invoiceNo)
+            ->where('message_type', 'PATHOLOGY_REPORT')
+            ->where('status', 'SENT')
+            ->exists();
+
+        if ($alreadySent) {
+            return 'already_sent';
+        }
+
+        if (!WhatsappAutoSendSetting::isEnabled('PATHOLOGY_REPORT')) {
+            $invoice = Invoice::where('invoice_no', $invoiceNo)->first();
+            if ($invoice) {
+                WhatsappAutoSendSetting::logSkipped('PATHOLOGY_REPORT', $invoiceNo, $invoice->patient_mobile_no, $invoice->patient_name);
+            }
+            return 'skipped';
+        }
+
+        return $this->sendCombinedInvoiceWhatsapp($invoiceNo, $wati, $auditService) ? 'sent' : 'failed';
+    }
+
+    /**
+     * Builds and sends ONE WhatsApp message covering every confirmed
+     * Pathology report on the invoice, across every test group -- the
+     * combined document is what actually gets attached, not any single
+     * report on its own.
+     */
+    /**
+     * Every confirmed Pathology report on the invoice, across every test
+     * group, in the shape apps-pathology-report-pdf-whatsapp.blade.php
+     * expects -- shared by the actual WhatsApp send AND printInvoice()
+     * below, so "print all reports" always shows exactly the same document
+     * that was (or will be) sent, not a second implementation that could
+     * quietly drift from it.
+     */
+    private function buildInvoiceSections(string $invoiceNo)
+    {
+        $lines = DB::table('invoice_details as d')
+            ->join('invoice_item_details as iid', function ($join) {
+                $join->on('iid.item_code', '=', 'd.item_code')
+                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+            })
+            ->leftJoin('pathology_report_finding_items as pfi', 'pfi.invoice_detail_id', '=', 'd.id')
+            ->where('d.invoice_no', $invoiceNo)
+            ->where('d.item_code', self::ITEM_CODE)
+            ->where('iid.is_outsourced', 0)
+            ->where('iid.is_package', 0)
+            ->get([
+                'd.id as invoice_detail_id',
+                'd.item_description',
+                'iid.test_group_code',
+                'pfi.pathology_report_finding_id',
+            ]);
+
+        $itemDescById = $lines->pluck('item_description', 'invoice_detail_id');
+        $testGroupCodeByFindingId = $lines->pluck('test_group_code', 'pathology_report_finding_id');
+
+        $findingIds = $lines->pluck('pathology_report_finding_id')->filter()->unique();
+
+        $findings = PathologyReportFinding::with('items')
+            ->whereIn('id', $findingIds)
+            ->whereNotNull('confirmed_at')
+            ->get();
+
+        $testGroupNames = DB::table('test_group_masters')
+            ->whereIn('id', $lines->pluck('test_group_code')->filter()->unique())
+            ->pluck('test_group_name', 'id');
+
+        $groupNameForFinding = fn ($findingId) => ($code = $testGroupCodeByFindingId->get($findingId))
+            ? ($testGroupNames->get($code) ?: self::UNGROUPED_LABEL)
+            : self::UNGROUPED_LABEL;
+
+        return $findings
+            ->sortBy(fn ($finding) => $groupNameForFinding($finding->id))
+            ->values()
+            ->map(fn ($finding) => [
+                'group_name' => $groupNameForFinding($finding->id),
+                'title' => $finding->items->pluck('invoice_detail_id')
+                    ->map(fn ($id) => $itemDescById->get($id))
+                    ->filter()
+                    ->implode(', '),
+                'content' => $finding->content,
+                'confirmed_at' => $finding->confirmed_at,
+            ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PDF PRINT -- WHOLE INVOICE, COMBINED
+    |--------------------------------------------------------------------------
+    | "Print All Reports" -- every confirmed Pathology report across every
+    | test group, combined into one document, same header/footer-less
+    | letterhead layout as printGroup()/printReport() (the branded
+    | header/footer-image layout stays reserved for the actual WhatsApp
+    | send). Requires the whole invoice to be fully confirmed, same
+    | precondition as the WhatsApp send, since the CONTENT still matches
+    | what was/will be sent -- only the printed page style differs.
+    |--------------------------------------------------------------------------
+    */
+
+    public function printInvoice(Request $request, AuditService $auditService)
+    {
+        $validator = Validator::make(
+            $request->all(),
+            ['invoice_no' => 'required']
+        );
+
+        if ($validator->fails()) {
+            abort(422, $validator->errors()->first());
+        }
+
+        $invoiceNo = trim($request->invoice_no);
+
+        $invoice = Invoice::where('invoice_no', $invoiceNo)->first();
+
+        if (!$invoice) {
+            abort(404, 'Invoice not found.');
+        }
+
+        if (!$this->isInvoicePathologyFullyConfirmed($invoiceNo)) {
+            abort(422, 'Not every Pathology report on this invoice is confirmed yet.');
+        }
+
+        $sections = $this->buildInvoiceSections($invoiceNo);
+
+        // Header/footer-less, same plain letterhead layout as Print Group
+        // Report -- the branded (header/footer image) layout stays
+        // reserved for the actual WhatsApp send only.
+        $pdf = Pdf::loadView(
+            'apps-pathology-report-pdf-group',
+            compact('invoice', 'sections')
+        );
+
+        $auditService->logAction(self::MODULE_CODE, $invoice, 'PRINT_ALL', 'All Pathology reports printed for this invoice');
+
+        $fileName = str_replace(['/', '\\'], '-', $invoiceNo) . '-pathology-report-all.pdf';
+
+        return $pdf->stream($fileName);
+    }
+
+    private function sendCombinedInvoiceWhatsapp(string $invoiceNo, WatiService $wati, AuditService $auditService): bool
     {
         try {
 
-            [$invoice, $itemDescriptions] = $this->loadReportContext($finding);
+            $invoice = Invoice::where('invoice_no', $invoiceNo)->firstOrFail();
 
-            // WhatsApp gets the branded (header/footer image) layout --
-            // printReport()/preview() stay on the plain layout meant for
-            // the clinic's pre-printed pathology letterhead paper.
+            $sections = $this->buildInvoiceSections($invoiceNo);
+
             $pdf = Pdf::loadView(
                 'apps-pathology-report-pdf-whatsapp',
-                compact('finding', 'invoice', 'itemDescriptions')
+                compact('invoice', 'sections')
             );
 
-            $fileName = $this->safeFileName($finding);
+            $fileName = str_replace(['/', '\\'], '-', $invoiceNo) . '-pathology-report.pdf';
 
             $pdfPath = public_path('invoices/' . $fileName);
 
@@ -612,7 +1002,7 @@ class PathologyReportController extends Controller
 
             DB::table('whatsapp_message_logs')->insert([
 
-                'invoice_no' => $finding->invoice_no,
+                'invoice_no' => $invoiceNo,
                 'mobile_no' => $invoice->patient_mobile_no,
                 'patient_name' => $invoice->patient_name,
                 'message_type' => 'PATHOLOGY_REPORT',
@@ -624,28 +1014,17 @@ class PathologyReportController extends Controller
 
             if ($sent) {
 
-                $auditService->logAction(self::MODULE_CODE, $finding, 'WHATSAPP', 'Pathology report sent via WhatsApp');
+                $auditService->logAction(self::MODULE_CODE, $invoice, 'WHATSAPP', 'Combined Pathology report sent via WhatsApp for entire invoice');
             }
 
             return $sent;
 
         } catch (\Exception $e) {
 
-            \Log::error('Pathology Report WhatsApp Send Failed: ' . $e->getMessage());
+            \Log::error('Pathology Combined Invoice WhatsApp Send Failed: ' . $e->getMessage());
 
             return false;
         }
-    }
-
-    private function autoSendReportWhatsapp(PathologyReportFinding $finding, WatiService $wati, AuditService $auditService): string
-    {
-        if (!WhatsappAutoSendSetting::isEnabled('PATHOLOGY_REPORT')) {
-            [$invoice] = $this->loadReportContext($finding);
-            WhatsappAutoSendSetting::logSkipped('PATHOLOGY_REPORT', $finding->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
-            return 'skipped';
-        }
-
-        return $this->sendReportWhatsapp($finding, $wati, $auditService) ? 'sent' : 'failed';
     }
 
     /**

@@ -94,10 +94,21 @@ class TestResultEntryController extends Controller
             // non-USG lines; NonPathologyReportController::search() already
             // filters those cards down to the non-USG lines only.
             //
+            // Cardiology (CRD001) is split the same way, but at the
+            // item_code_sub level instead of the whole item_code: its 6
+            // real Echo sub-items (CardiologyReportFields::ITEM_CODE_SUBS)
+            // have their own dedicated /cardiology-report screen, while its
+            // other sub-items (ECG, Holter, ABPM, Sleep Study) belong here.
+            // Without this second exclusion, a pure-Echo invoice showed up
+            // here as an actionable "Not Confirmed" row, but opening it
+            // found nothing to enter -- NonPathologyReportController::search()
+            // already excludes those same Echo sub-items from its cards, so
+            // the row was a dead end.
+            //
             // Outsourced tests (physically performed and reported by an
             // outside agency) are excluded the same way -- an invoice
-            // needs at least one qualifying, non-outsourced, non-USG line
-            // to belong on this tab.
+            // needs at least one qualifying, non-outsourced, non-USG,
+            // non-Echo line to belong on this tab.
             $nonUsgQualifyingItemCodes = InvoiceItemMaster::where('test_parameter_required', '!=', 'YES')
                 ->whereNotIn('item_code', ['USG001', 'DOC001'])
                 ->pluck('item_code');
@@ -111,6 +122,7 @@ class TestResultEntryController extends Controller
                     })
                     ->whereColumn('invoice_details.invoice_no', 'invoices.invoice_no')
                     ->whereIn('invoice_details.item_code', $nonUsgQualifyingItemCodes)
+                    ->whereNotIn('invoice_details.item_code_sub', \App\Support\CardiologyReportFields::ITEM_CODE_SUBS)
                     ->where('invoice_item_details.is_outsourced', 0);
             });
 

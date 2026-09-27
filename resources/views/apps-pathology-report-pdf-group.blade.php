@@ -10,26 +10,26 @@
 <style>
 
 /*
-    Header/footer are full-bleed scanned-letterhead images spanning the
-    true physical page edge to edge -- @page margin-left/right are 0 so
-    no horizontal offset math is needed, while margin-top/bottom are set
-    to each image's own height (at full 210mm page width) so DomPDF
-    reserves that band on EVERY generated page. The images themselves are
-    position:fixed with a NEGATIVE top/bottom offset equal to that same
-    margin -- DomPDF measures position:fixed from the page's
-    margin/content box, not the true page edge, so this exact
-    negative-offset trick is what lands them back at the true edge
-    (same technique proven on the Doctor Visit prescription layouts).
-
-    Both images are cropped from the same full-page scan, so they share
-    the same width and scale.
-    2544x530 / 2544x744 at 210mm wide -> 43.8mm / 61.4mm tall.
+    No system-rendered header/footer -- this prints straight onto the
+    clinic's pre-printed pathology letterhead paper, which already
+    carries its own header/footer art. Margins reuse the exact blank
+    content zone already calibrated for this same physical stationery by
+    the old grid-based report (apps-diagnostic-test-report-pdf.blade.php).
+    Same layout as apps-pathology-report-pdf.blade.php, except this one
+    combines several reports into a single printed document -- either
+    every report within ONE test group (Print Group Report, a group
+    completed in stages needs several independent reports combined), or
+    every confirmed report across EVERY group on the invoice (Print All
+    Reports) -- both share this same header/footer-less layout, printing a
+    group heading per section whenever the group changes (see $sections'
+    doc comment below); a single-group call just prints that one heading
+    once, unchanged from before.
 */
 @page {
-    margin-top: 43.8mm;
-    margin-right: 0;
-    margin-bottom: 61.4mm;
-    margin-left: 0;
+    margin-top: 50mm;
+    margin-right: 40px;
+    margin-bottom: 60mm;
+    margin-left: 40px;
 }
 
 body {
@@ -37,21 +37,7 @@ body {
     font-size: 12px;
     color: #000;
     margin: 0;
-    padding: 0 40px;
-}
-
-.report-header-image {
-    position: fixed;
-    top: -43.8mm;
-    left: 0;
-    width: 210mm;
-}
-
-.report-footer-image {
-    position: fixed;
-    bottom: -61.4mm;
-    left: 0;
-    width: 210mm;
+    padding: 0;
 }
 
 table {
@@ -77,11 +63,6 @@ table {
     vertical-align: top;
 }
 
-.study-title {
-    text-align: center;
-    margin-top: 12px;
-}
-
 .group-heading {
     color: #003399;
     font-weight: bold;
@@ -92,7 +73,18 @@ table {
 }
 
 .group-heading:first-of-type {
-    margin-top: 6px;
+    margin-top: 10px;
+}
+
+.study-title {
+    text-align: center;
+    margin-top: 12px;
+}
+
+.section-divider {
+    border: none;
+    border-top: 1px dashed #999;
+    margin: 16px 0;
 }
 
 .report-body {
@@ -111,15 +103,19 @@ table {
        allows it, so doctors can customize cells while composing) -- an
        inline style always wins over this rule otherwise, so the printed
        report needs to force its own compact spacing regardless. */
-    padding: 1px 3px !important;
+    padding: 3px !important;
     vertical-align: top;
-    line-height: 1.2;
 }
 
-/* Cells hold CKEditor <p> blocks, and DomPDF gives <p> a 1em default
-   margin -- that, not the cell padding, was most of each row's height. */
-.report-body table p {
-    margin: 0;
+.signature-section {
+    margin-top: 50px;
+}
+
+.signature {
+    width: 45%;
+    text-align: center;
+    display: inline-block;
+    float: right;
 }
 
 /* Matches CKEditor's own editing-view sizing exactly (ckeditor5-content.css
@@ -134,9 +130,6 @@ table {
 </head>
 
 <body>
-
-<img class="report-header-image" src="{{ public_path('images/report_pathology_header.png') }}">
-<img class="report-footer-image" src="{{ public_path('images/report_pathology_footer.png') }}">
 
 <table class="patient-detail-table">
     <tr>
@@ -155,20 +148,23 @@ table {
 </table>
 
 {{--
-    $sections: one entry per confirmed report unit on this invoice, covering
-    every test group -- this is what makes the WhatsApp send a single
-    document for the WHOLE invoice instead of one message per group/report.
-    Each entry: ['group_name', 'title' (item descriptions), 'content',
-    'confirmed_at']. Printed in the controller's own group order (grouped
-    together, not interleaved), with one heading per group.
+    $sections: every confirmed report to include, each carrying its own
+    'group_name' -- Print Group Report passes only one group's reports (so
+    exactly one heading prints, same as before), Print All Reports passes
+    every group's, printing a new heading each time the group changes
+    (grouped together, not interleaved, same order the controller built
+    them in) so the whole invoice still reads as one document sectioned by
+    test type, not a flat unlabelled list.
 --}}
 @php $previousGroup = null; @endphp
 
-@foreach($sections as $section)
+@foreach($sections as $i => $section)
 
 @if($section['group_name'] !== $previousGroup)
-<h3 class="group-heading">{{ $section['group_name'] }}</h3>
+<h4 class="group-heading">{{ $section['group_name'] }}</h4>
 @php $previousGroup = $section['group_name']; @endphp
+@elseif($i > 0)
+<hr class="section-divider">
 @endif
 
 <table class="no-border">
@@ -187,6 +183,14 @@ table {
 </div>
 
 @endforeach
+
+<div class="signature-section">
+    <div class="signature">
+        ______________________
+        <br>
+        Doctor's Signature
+    </div>
+</div>
 
 </body>
 

@@ -233,6 +233,19 @@
 
                 <div id="nonPathologyReportsWrap"></div>
 
+                <!-- One WhatsApp status for the WHOLE invoice's Pathology
+                     reports, not per test group/report -- the patient gets
+                     exactly one combined message once every Pathology
+                     report on the invoice is confirmed (PathologyReportController
+                     ::confirm()/autoSendInvoiceWhatsapp()). -->
+                <div id="pathologyWhatsappBanner" class="alert py-2 px-3 mb-3 d-none align-items-center justify-content-between">
+                    <span id="pathologyWhatsappBanner-text"></span>
+                    <button type="button" class="btn btn-sm btn-success ms-3" id="pathologyWhatsappBanner-sendBtn" style="display:none;">
+                        <i class="ri-whatsapp-line"></i>
+                        Send Now
+                    </button>
+                </div>
+
                 <div id="pathologyReportsWrap" style="display:none;"></div>
 
             </div>
@@ -328,7 +341,58 @@
 
     <div class="pathology-group-pane">
 
-        <h6 class="fw-semibold mt-2 mb-3 pathology-group-title"></h6>
+        <div class="d-flex justify-content-between align-items-center mt-2 mb-3">
+
+            <h6 class="fw-semibold mb-0 pathology-group-title"></h6>
+
+            <div class="d-flex gap-2">
+
+                <!-- One Confirm for the WHOLE group -- saves and locks
+                     every report in it together (pathology-report.confirm,
+                     now invoice_no+test_group_code scoped). Shown once
+                     every item in the group has a started report and at
+                     least one isn't confirmed yet; replaced by Print once
+                     the group is fully confirmed. -->
+                <button type="button" class="btn btn-sm btn-warning pathology-confirm-group-btn" style="display:none;">
+                    <i class="ri-shield-check-line"></i>
+                    Confirm Group
+                </button>
+
+                <!-- Combines every confirmed report in THIS group into one
+                     PDF (pathology-report.print-group) -- shown only once
+                     every item in the group has a confirmed report; stays
+                     hidden otherwise instead of erroring on click. -->
+                <a href="javascript:void(0)" class="btn btn-sm btn-info pathology-print-group-btn" style="display:none;" target="_blank">
+                    <i class="ri-printer-line"></i>
+                    Print Group Report
+                </a>
+
+                <!-- Manual (re)send of the SAME combined WhatsApp message
+                     that already goes out automatically once the whole
+                     invoice is confirmed (pathology-report.send-whatsapp)
+                     -- for resending on request, or after the automatic
+                     send failed. Same visibility/precondition as Print All
+                     Reports, which it sits beside. -->
+                <button type="button" class="btn btn-sm btn-warning pathology-send-whatsapp-btn" style="display:none;">
+                    <i class="ri-whatsapp-line"></i>
+                    Send WhatsApp
+                </button>
+
+                <!-- Every confirmed report across EVERY test group on this
+                     invoice, in the same combined document actually sent
+                     via WhatsApp (pathology-report.print-invoice) -- shown
+                     only once the WHOLE invoice is confirmed, same
+                     precondition as the WhatsApp send itself. Present in
+                     every group's pane (not just one), same reasoning as
+                     the WhatsApp banner above being invoice-wide. -->
+                <a href="javascript:void(0)" class="btn btn-sm btn-success pathology-print-invoice-btn" style="display:none;" target="_blank">
+                    <i class="ri-printer-line"></i>
+                    Print All Reports
+                </a>
+
+            </div>
+
+        </div>
 
         <div class="pathology-group-findings"></div>
 
@@ -378,20 +442,10 @@
                     Save
                 </button>
 
-                <button type="button" class="btn btn-warning pathology-confirm-btn">
-                    <i class="ri-shield-check-line"></i>
-                    Confirm
-                </button>
-
                 <a href="javascript:void(0)" class="btn btn-info pathology-print-btn" style="display:none;" target="_blank">
                     <i class="ri-printer-line"></i>
                     Print Report
                 </a>
-
-                <button type="button" class="btn btn-success pathology-whatsapp-btn" style="display:none;">
-                    <i class="ri-whatsapp-line"></i>
-                    Send via WhatsApp
-                </button>
 
             </div>
 

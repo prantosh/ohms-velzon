@@ -142,6 +142,8 @@ async function searchInvoice() {
     destroyAllPathologyEditors();
     document.querySelector('#pathologyReportsWrap').innerHTML = '';
     document.querySelector('#pathologyReportsWrap').style.display = 'none';
+    document.querySelector('#pathologyWhatsappBanner').classList.add('d-none');
+    pathologyState = null;
 
     if (!invoiceNo) {
         return;
@@ -166,6 +168,14 @@ async function searchInvoice() {
 
 let pathologyEditors = new Map();
 
+// The last search() response -- .invoice (for building the print-group/
+// send-whatsapp URLs) and .groups (test_group_code + unclaimed_items per
+// group, used alongside the live DOM to work out group/invoice completion;
+// see pathologyGroupProgress()). .pathology_whatsapp is the one piece of
+// this that's real server-side state (already-sent, not derivable from the
+// DOM) and gets patched in place after a send instead of a full reload.
+let pathologyState = null;
+
 function destroyAllPathologyEditors() {
     pathologyEditors.forEach(editor => editor.destroy());
     pathologyEditors.clear();
@@ -188,6 +198,8 @@ async function loadPathologyReports(invoiceNo) {
     }
 
     renderInvoiceInfo(result.invoice);
+
+    pathologyState = result;
 
     let wrap = document.querySelector('#pathologyReportsWrap');
     wrap.style.display = 'block';
@@ -221,6 +233,8 @@ async function loadPathologyReports(invoiceNo) {
     let panesContainer = wrap.querySelector('#pathologyGroupPanes');
     let paneTemplate = document.getElementById('pathologyGroupPaneTemplate');
 
+    let cardReadyPromises = [];
+
     result.groups.forEach((g, idx) => {
 
         let frag = paneTemplate.content.cloneNode(true);
@@ -234,11 +248,166 @@ async function loadPathologyReports(invoiceNo) {
 
         let findingsWrap = root.querySelector('.pathology-group-findings');
 
-        g.findings.forEach(f => renderPathologyFindingCard(findingsWrap, f, invoiceNo));
+        g.findings.forEach(f => cardReadyPromises.push(renderPathologyFindingCard(findingsWrap, f, invoiceNo)));
 
         root.querySelector('.pathology-start-picker').groupData = g;
         refreshPathologyStartPicker(root, g);
     });
+
+    // Every card's CKEditor (and, with it, lockPathologyCard()'s
+    // confirmed-badge display) must actually exist before computing
+    // group/invoice completion -- see renderPathologyFindingCard()'s
+    // comment on the returned promise.
+    await Promise.all(cardReadyPromises);
+
+    refreshPathologyGroupButtons();
+    renderPathologyWhatsappBanner();
+}
+
+/*
+|--------------------------------------------------------------------------
+| INVOICE/GROUP COMPLETION -- worked out from the live DOM (confirmed-badge
+| visibility, dataset.invoiceDetailIds) plus each group's still-mutable
+| g.unclaimed_items, NOT from the original search() findings arrays alone --
+| a report added/confirmed in THIS editing session (via the start-picker)
+| only ever exists in the DOM, since renderPathologyFindingCard() never
+| pushes it back into pathologyState.groups[i].findings.
+|--------------------------------------------------------------------------
+*/
+
+function pathologyGroupProgress(pane, g) {
+
+    let claimedTotal = 0;
+    let confirmedTotal = 0;
+
+    pane.querySelectorAll('.pathology-finding-card').forEach(card => {
+
+        let n = (card.dataset.invoiceDetailIds || '').split(',').filter(Boolean).length;
+
+        claimedTotal += n;
+
+        if (card.querySelector('.pathology-confirmed-badge').style.display !== 'none') {
+            confirmedTotal += n;
+        }
+    });
+
+    let total = claimedTotal + g.unclaimed_items.length;
+
+    return {
+        total: total,
+        confirmed: confirmedTotal,
+        complete: total > 0 && confirmedTotal === total && g.unclaimed_items.length === 0
+    };
+}
+
+function refreshPathologyGroupButtons() {
+
+    // Whole-invoice state -- "Print All Reports" lives in every pane (so
+    // it's on hand wherever staff happen to be looking) but reflects the
+    // WHOLE invoice, not just the pane it's sitting in.
+    let invoiceProgress = pathologyInvoiceProgress();
+
+    document.querySelectorAll('.pathology-group-pane').forEach(pane => {
+
+        let g = pathologyState.groups[parseInt(pane.dataset.idx, 10)];
+        let printBtn = pane.querySelector('.pathology-print-group-btn');
+        let printAllBtn = pane.querySelector('.pathology-print-invoice-btn');
+        let sendWhatsappBtn = pane.querySelector('.pathology-send-whatsapp-btn');
+        let confirmBtn = pane.querySelector('.pathology-confirm-group-btn');
+        let progress = pathologyGroupProgress(pane, g);
+
+        if (progress.complete) {
+
+            let params = new URLSearchParams({
+                invoice_no: pathologyState.invoice.invoice_no,
+                test_group_code: g.test_group_code ?? ''
+            });
+
+            printBtn.href = `/pathology-report/print-group?${params.toString()}`;
+            printBtn.style.display = 'inline-block';
+
+        } else {
+
+            printBtn.style.display = 'none';
+        }
+
+        if (invoiceProgress.complete) {
+
+            let params = new URLSearchParams({ invoice_no: pathologyState.invoice.invoice_no });
+            printAllBtn.href = `/pathology-report/print-invoice?${params.toString()}`;
+            printAllBtn.style.display = 'inline-block';
+            sendWhatsappBtn.style.display = 'inline-block';
+
+        } else {
+
+            printAllBtn.style.display = 'none';
+            sendWhatsappBtn.style.display = 'none';
+        }
+
+        // Confirm is one button for the WHOLE group -- only makes sense
+        // once every item in the group has a started report (no
+        // unclaimed_items left) and there's at least one not yet
+        // confirmed; already-complete groups show Print instead.
+        let readyToConfirm = g.unclaimed_items.length === 0 && !progress.complete && progress.total > 0;
+
+        confirmBtn.style.display = readyToConfirm ? 'inline-block' : 'none';
+    });
+}
+
+// Same {total, confirmed, complete} shape as pathologyGroupProgress(), but
+// summed across every group pane -- shared by the banner AND the "Print
+// All Reports" button, which both need to know the WHOLE invoice's state
+// (not just one group's).
+function pathologyInvoiceProgress() {
+
+    let total = 0;
+    let confirmed = 0;
+
+    document.querySelectorAll('.pathology-group-pane').forEach(pane => {
+        let g = pathologyState.groups[parseInt(pane.dataset.idx, 10)];
+        let progress = pathologyGroupProgress(pane, g);
+        total += progress.total;
+        confirmed += progress.confirmed;
+    });
+
+    return { total, confirmed, complete: total > 0 && confirmed === total };
+}
+
+function renderPathologyWhatsappBanner() {
+
+    let banner = document.querySelector('#pathologyWhatsappBanner');
+    let textEl = document.querySelector('#pathologyWhatsappBanner-text');
+    let sendBtn = document.querySelector('#pathologyWhatsappBanner-sendBtn');
+
+    if (!pathologyState || !pathologyState.groups.length) {
+        banner.classList.add('d-none');
+        return;
+    }
+
+    let { total, confirmed, complete } = pathologyInvoiceProgress();
+    let wa = pathologyState.pathology_whatsapp || { sent: false, sent_at: null };
+
+    banner.classList.remove('d-none', 'alert-success', 'alert-warning', 'alert-secondary');
+    banner.classList.add('d-flex');
+
+    if (wa.sent) {
+
+        banner.classList.add('alert-success');
+        textEl.innerHTML = `<i class="ri-whatsapp-line"></i> Combined report sent to the patient via WhatsApp on ${escapeHtml(wa.sent_at)}.`;
+        sendBtn.style.display = 'none';
+
+    } else if (complete) {
+
+        banner.classList.add('alert-warning');
+        textEl.innerText = `All ${total} Pathology test(s) on this invoice are confirmed -- WhatsApp not sent yet.`;
+        sendBtn.style.display = 'inline-block';
+
+    } else {
+
+        banner.classList.add('alert-secondary');
+        textEl.innerText = `${confirmed} of ${total} Pathology test(s) confirmed. The combined report is sent via WhatsApp automatically once every test is confirmed.`;
+        sendBtn.style.display = 'none';
+    }
 }
 
 function renderPathologyLegacyCard(wrap, invoiceId) {
@@ -344,7 +513,13 @@ function renderPathologyFindingCard(container, finding, invoiceNo) {
 
     let textarea = cardEl.querySelector('.pathology-content');
 
-    ClassicEditor.create(textarea, RICH_EDITOR_CONFIG).then(function (editor) {
+    // Returned so loadPathologyReports() can wait for every card's editor
+    // (and, with it, lockPathologyCard()'s confirmed-badge display) before
+    // computing group/invoice completion -- pathologyGroupProgress() reads
+    // that badge's visibility directly, and CKEditor's own creation is
+    // async, so refreshing right after the render loop (before any editor
+    // had actually resolved) always saw every card as still-unconfirmed.
+    return ClassicEditor.create(textarea, RICH_EDITOR_CONFIG).then(function (editor) {
 
         bindTabIndent(editor);
         pathologyEditors.set(cardEl, editor);
@@ -364,13 +539,10 @@ function lockPathologyCard(cardEl, findingId) {
 
     cardEl.querySelector('.pathology-confirmed-badge').style.display = 'inline-block';
     cardEl.querySelector('.pathology-save-btn').style.display = 'none';
-    cardEl.querySelector('.pathology-confirm-btn').style.display = 'none';
 
     let printBtn = cardEl.querySelector('.pathology-print-btn');
     printBtn.href = `/pathology-report/print/${findingId}`;
     printBtn.style.display = 'inline-block';
-
-    cardEl.querySelector('.pathology-whatsapp-btn').style.display = 'inline-block';
 }
 
 document.addEventListener('click', function (e) {
@@ -388,7 +560,7 @@ document.addEventListener('click', function (e) {
     }
 });
 
-document.addEventListener('change', function (e) {
+document.addEventListener('change', async function (e) {
 
     let picker = e.target.closest('.pathology-start-picker');
 
@@ -398,6 +570,7 @@ document.addEventListener('change', function (e) {
     let pane = picker.closest('.pathology-group-pane');
     let findingsWrap = pane.querySelector('.pathology-group-findings');
     let invoiceNo = document.querySelector('#invoiceInfoWrap').dataset.invoiceNo;
+    let cardReady = null;
 
     let [kind, idValue] = picker.value.split(':');
 
@@ -414,7 +587,7 @@ document.addEventListener('change', function (e) {
             .map(code => g.unclaimed_items.find(i => i.item_code_sub === code))
             .filter(Boolean);
 
-        renderPathologyFindingCard(findingsWrap, {
+        cardReady = renderPathologyFindingCard(findingsWrap, {
             id: null,
             content: tpl.content,
             template_id: tpl.id,
@@ -434,7 +607,7 @@ document.addEventListener('change', function (e) {
             return;
         }
 
-        renderPathologyFindingCard(findingsWrap, {
+        cardReady = renderPathologyFindingCard(findingsWrap, {
             id: null,
             content: '',
             template_id: null,
@@ -451,7 +624,173 @@ document.addEventListener('change', function (e) {
     );
 
     refreshPathologyStartPicker(pane, g);
+
+    // Wait for the new card's editor before recomputing this group's
+    // buttons -- claiming the LAST unclaimed item should reveal Confirm
+    // Group right away, but pathologyGroupProgress() reads the confirmed
+    // badge's rendered display, which only exists once the promise below
+    // resolves (same race lockPathologyCard() had on initial load).
+    if (cardReady) {
+        await cardReady;
+    }
+
+    refreshPathologyGroupButtons();
 });
+
+// Shared by the per-card Save button AND confirmPathologyGroup() below --
+// confirming a group auto-saves every one of its cards first, so nobody
+// has to remember to click Save on each item before the one group-level
+// Confirm. Returns the fetch result unchanged; callers decide how to
+// report it (a single Swal for one card, a rolled-up one for a group).
+async function savePathologyCard(card) {
+
+    let editor = pathologyEditors.get(card);
+    let content = editor ? editor.getData() : '';
+
+    let payload = { content: content };
+
+    if (card.dataset.findingId) {
+
+        payload.finding_id = card.dataset.findingId;
+
+    } else {
+
+        payload.invoice_no = card.dataset.invoiceNo;
+        payload.invoice_detail_ids = card.dataset.invoiceDetailIds.split(',').filter(Boolean);
+
+        if (card.dataset.templateId) {
+            payload.template_id = card.dataset.templateId;
+        }
+    }
+
+    const { result } = await fetchJson('/pathology-report/save', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken()
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (result.status && result.data && result.data.id) {
+        card.dataset.findingId = result.data.id;
+    }
+
+    return result;
+}
+
+// Confirming is done ONCE PER TEST GROUP (e.g. "Haematology"), not per
+// individual report -- every report in the group is saved (see
+// savePathologyCard() above) and locked together in one action, matching
+// how the group is also printed and WhatsApp'd as one combined document.
+async function confirmPathologyGroup(groupBtn) {
+
+    let pane = groupBtn.closest('.pathology-group-pane');
+    let g = pathologyState.groups[parseInt(pane.dataset.idx, 10)];
+
+    if (g.unclaimed_items.length > 0) {
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Not Ready',
+            text: 'Start a report for every test in this group before confirming.'
+        });
+
+        return;
+    }
+
+    let cards = Array.from(pane.querySelectorAll('.pathology-finding-card'))
+        .filter(card => card.querySelector('.pathology-confirmed-badge').style.display === 'none');
+
+    if (!cards.length) {
+        return;
+    }
+
+    let confirmResult = await Swal.fire({
+        icon: 'warning',
+        title: 'Confirm this group?',
+        text: `This locks all ${cards.length} report(s) in ${g.test_group_name} -- they can no longer be edited.`,
+        showCancelButton: true,
+        confirmButtonText: 'Yes, Confirm & Lock'
+    });
+
+    if (!confirmResult.isConfirmed) {
+        return;
+    }
+
+    groupBtn.disabled = true;
+
+    const saveResults = await Promise.all(cards.map(savePathologyCard));
+
+    let failedSave = saveResults.find(r => !r.status);
+
+    if (failedSave) {
+
+        groupBtn.disabled = false;
+
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: failedSave.message ?? (failedSave.errors ? Object.values(failedSave.errors).flat().join(', ') : 'Unable to save one of this group\'s reports.')
+        });
+
+        return;
+    }
+
+    const { result } = await fetchJson('/pathology-report/confirm', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken()
+        },
+        body: JSON.stringify({
+            invoice_no: pathologyState.invoice.invoice_no,
+            test_group_code: g.test_group_code ?? ''
+        })
+    });
+
+    groupBtn.disabled = false;
+
+    if (result.status) {
+
+        cards.forEach(card => lockPathologyCard(card, card.dataset.findingId));
+        refreshPathologyGroupButtons();
+
+        // The invoice's combined WhatsApp send only fires once every
+        // Pathology report is confirmed (see PathologyReportController
+        // ::confirm()) -- reflect whatever it actually did (or didn't
+        // do yet) in the banner, rather than a generic "Confirmed".
+        const waStatus = result.data ? result.data.whatsapp_status : null;
+
+        if (waStatus === 'sent') {
+            pathologyState.pathology_whatsapp = { sent: true, sent_at: result.data.whatsapp_sent_at };
+        }
+
+        renderPathologyWhatsappBanner();
+
+        const waMessages = {
+            sent: 'All reports confirmed -- combined report sent to the patient via WhatsApp.',
+            already_sent: 'Confirmed. (WhatsApp for this invoice was already sent earlier.)',
+            skipped: 'Confirmed. Automatic WhatsApp sending is currently switched off.',
+            failed: 'Confirmed, but sending the WhatsApp message failed -- use Send Now once ready.',
+            pending_other_reports: 'Confirmed. WhatsApp will be sent once every Pathology test on this invoice is confirmed.'
+        };
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Confirmed',
+            text: waMessages[waStatus] || result.message
+        });
+
+    } else {
+
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: result.message
+        });
+    }
+}
 
 document.addEventListener('click', async function (e) {
 
@@ -460,41 +799,10 @@ document.addEventListener('click', async function (e) {
     if (saveBtn) {
 
         let card = saveBtn.closest('.pathology-finding-card');
-        let editor = pathologyEditors.get(card);
-        let content = editor ? editor.getData() : '';
 
         saveBtn.disabled = true;
-
-        let payload = { content: content };
-
-        if (card.dataset.findingId) {
-
-            payload.finding_id = card.dataset.findingId;
-
-        } else {
-
-            payload.invoice_no = card.dataset.invoiceNo;
-            payload.invoice_detail_ids = card.dataset.invoiceDetailIds.split(',').filter(Boolean);
-
-            if (card.dataset.templateId) {
-                payload.template_id = card.dataset.templateId;
-            }
-        }
-
-        const { result } = await fetchJson('/pathology-report/save', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken()
-            },
-            body: JSON.stringify(payload)
-        });
-
+        const result = await savePathologyCard(card);
         saveBtn.disabled = false;
-
-        if (result.status && result.data && result.data.id) {
-            card.dataset.findingId = result.data.id;
-        }
 
         Swal.fire({
             icon: result.status ? 'success' : 'error',
@@ -507,102 +815,67 @@ document.addEventListener('click', async function (e) {
         return;
     }
 
-    let confirmBtn = e.target.closest('.pathology-confirm-btn');
+    let confirmGroupBtn = e.target.closest('.pathology-confirm-group-btn');
 
-    if (confirmBtn) {
+    if (confirmGroupBtn) {
+        await confirmPathologyGroup(confirmGroupBtn);
+    }
+});
 
-        let card = confirmBtn.closest('.pathology-finding-card');
+// Shared by the WhatsApp banner's "Send Now" button AND the per-pane
+// "Send WhatsApp" button beside Print All Reports -- both trigger the same
+// manual send (pathology-report.send-whatsapp), which always re-sends the
+// current combined document when called explicitly, whether or not the
+// automatic send already went out (a deliberate resend capability, not
+// blocked the way the automatic-on-confirm path is).
+async function sendPathologyWhatsappNow(triggerBtn) {
 
-        if (!card.dataset.findingId) {
+    triggerBtn.disabled = true;
 
-            Swal.fire({
-                icon: 'warning',
-                title: 'Save First',
-                text: 'Please save the report before confirming it.'
-            });
-
-            return;
+    Swal.fire({
+        title: 'Please wait...',
+        text: 'We are sending WhatsApp message',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: function () {
+            Swal.showLoading();
         }
+    });
 
-        let confirmResult = await Swal.fire({
-            icon: 'warning',
-            title: 'Confirm this report?',
-            text: 'Once confirmed, it can no longer be edited.',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, Confirm & Lock'
-        });
+    const { result } = await fetchJson('/pathology-report/send-whatsapp', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken()
+        },
+        body: JSON.stringify({ invoice_no: pathologyState.invoice.invoice_no })
+    });
 
-        if (!confirmResult.isConfirmed) {
-            return;
-        }
+    triggerBtn.disabled = false;
 
-        confirmBtn.disabled = true;
-
-        const { result } = await fetchJson('/pathology-report/confirm', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken()
-            },
-            body: JSON.stringify({ finding_id: card.dataset.findingId })
-        });
-
-        confirmBtn.disabled = false;
-
-        if (result.status) {
-
-            lockPathologyCard(card, card.dataset.findingId);
-
-            Swal.fire({
-                icon: 'success',
-                title: 'Confirmed',
-                text: result.message
-            });
-
-        } else {
-
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: result.message
-            });
-        }
-
-        return;
+    if (result.status) {
+        pathologyState.pathology_whatsapp = { sent: true, sent_at: result.data ? result.data.sent_at : null };
+        renderPathologyWhatsappBanner();
     }
 
-    let whatsappBtn = e.target.closest('.pathology-whatsapp-btn');
+    Swal.fire({
+        icon: result.status ? 'success' : 'error',
+        title: result.status ? 'Sent' : 'Error',
+        text: result.message
+    });
+}
 
-    if (whatsappBtn) {
+document.getElementById('pathologyWhatsappBanner-sendBtn').addEventListener('click', function () {
+    sendPathologyWhatsappNow(this);
+});
 
-        let card = whatsappBtn.closest('.pathology-finding-card');
-        let findingId = card.dataset.findingId;
+document.addEventListener('click', function (e) {
 
-        whatsappBtn.disabled = true;
+    let btn = e.target.closest('.pathology-send-whatsapp-btn');
 
-        Swal.fire({
-            title: 'Please wait...',
-            text: 'We are sending WhatsApp message',
-            allowOutsideClick: false,
-            allowEscapeKey: false,
-            showConfirmButton: false,
-            didOpen: function () {
-                Swal.showLoading();
-            }
-        });
-
-        const { result } = await fetchJson(`/pathology-report/send-whatsapp/${findingId}`, {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': csrfToken() }
-        });
-
-        whatsappBtn.disabled = false;
-
-        Swal.fire({
-            icon: result.status ? 'success' : 'error',
-            title: result.status ? 'Sent' : 'Error',
-            text: result.message
-        });
+    if (btn) {
+        sendPathologyWhatsappNow(btn);
     }
 });
 
