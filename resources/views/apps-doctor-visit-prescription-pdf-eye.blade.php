@@ -69,6 +69,11 @@ body {
     white-space: nowrap;
 }
 
+.patient-name-value {
+    font-size: 14px;
+    font-weight: bold;
+}
+
 .signature {
     left: 145mm;
     width: 55mm;
@@ -83,13 +88,14 @@ body {
 
 <div class="page-canvas">
 
-    {{-- Name/Age/Date labels are already pre-printed on the letterhead
+    {{-- Name/Age/Sex/Date labels are already pre-printed on the letterhead
          paper on this line -- only the values are rendered here, each at
          the exact left margin measured from the physical page edge, so it
-         lands in the blank space after its printed label. No Sex field on
-         this letterhead. --}}
-    <div class="patient-line-value" style="top:67mm; left:30mm;">{{ $invoice->patient_name }}</div>
+         lands in the blank space after its printed label. Sex sits at the
+         same left offset as the standard letterhead's Sex field. --}}
+    <div class="patient-line-value patient-name-value" style="top:67mm; left:30mm;">{{ $invoice->patient_name }}</div>
     <div class="patient-line-value" style="top:67mm; left:125mm;">{{ $invoice->patient_age ?? '' }}</div>
+    <div class="patient-line-value" style="top:67mm; left:148mm;">{{ $invoice->patient_gender ?? '' }}</div>
     <div class="patient-line-value" style="top:67mm; left:175mm;">{{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</div>
 
     <div class="info-column" style="top:74mm;">

@@ -57,6 +57,11 @@ table td {
     padding: 3px;
 }
 
+.patient-name-value {
+    font-size: 12px;
+    font-weight: bold;
+}
+
 .vitals-box th,
 .vitals-box td {
     font-size: 9px;
@@ -118,7 +123,7 @@ table td {
 <table class="patient-detail-table">
     <tr>
         <th width="12%">Patient Name</th>
-        <td width="18%">{{ $invoice->patient_name }}</td>
+        <td width="18%" class="patient-name-value">{{ $invoice->patient_name }}</td>
 
         <th width="10%">Age / Sex</th>
         <td width="13%">{{ $invoice->patient_age ?? '' }} / {{ $invoice->patient_gender ?? '' }}</td>
