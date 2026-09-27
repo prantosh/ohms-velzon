@@ -1820,6 +1820,142 @@ class DiagnosticInvoiceController extends Controller
                 $invoice->save();
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | DOCTOR REPLACEMENT (USG ONLY) -- AT FINAL/DUE PAYMENT
+            |--------------------------------------------------------------------------
+            | The doctor originally selected when the invoice was raised can be
+            | swapped for a different USG doctor at the point the remaining due
+            | amount is collected. The patient's line amount (and therefore the
+            | invoice total/paid/due) never changes here -- only how that fixed
+            | amount splits between the clinic's own charge and the doctor's
+            | payable, which is recalculated from the NEW doctor's own rate for
+            | this exact test (doctor_test_payment_masters), looked up
+            | server-side rather than trusted from the request, since this is
+            | recomputing money, not just accepting a fresh line like store() does.
+            | Restricted to USG001 lines only, per the requirement.
+            |--------------------------------------------------------------------------
+            */
+
+            if ($request->filled('doctor_replacements')) {
+
+                foreach ($request->doctor_replacements as $invoiceDetailId => $newDoctorId) {
+
+                    $newDoctorId = (int) $newDoctorId;
+
+                    $line = DB::table('invoice_details')
+                        ->where('id', $invoiceDetailId)
+                        ->where('invoice_no', $invoice->invoice_no)
+                        ->first();
+
+                    // Not this invoice's line, not USG, or nothing actually
+                    // changed -- silently skip rather than error, since the
+                    // dropdown always submits its currently-selected value
+                    // whether or not the operator touched it.
+                    if (!$line || $line->item_code !== 'USG001') {
+                        continue;
+                    }
+
+                    if ((int) $line->doctor_id === $newDoctorId) {
+                        continue;
+                    }
+
+                    if ($line->doctor_payment_waived) {
+
+                        DB::rollBack();
+
+                        return response()->json([
+                            'status' => false,
+                            'message' => 'Cannot change doctor on "' . $line->item_description . '" -- its doctor payment was waived.'
+                        ]);
+                    }
+
+                    $newRate = DB::table('doctor_test_payment_masters')
+                        ->where('item_code_sub', $line->item_code_sub)
+                        ->where('doctor_id', $newDoctorId)
+                        ->where('status', 'A')
+                        ->value('payment_value');
+
+                    if ($newRate === null) {
+
+                        DB::rollBack();
+
+                        return response()->json([
+                            'status' => false,
+                            'message' => 'The selected doctor has no defined payment rate for "' . $line->item_description . '".'
+                        ]);
+                    }
+
+                    $newRate = (float) $newRate;
+
+                    if ($newRate > (float) $line->amount) {
+
+                        DB::rollBack();
+
+                        return response()->json([
+                            'status' => false,
+                            'message' => 'The selected doctor\'s rate (' . number_format($newRate, 2) . ') exceeds the billed amount (' . number_format($line->amount, 2) . ') for "' . $line->item_description . '".'
+                        ]);
+                    }
+
+                    $oldPaymentValue = (float) $line->payment_value;
+
+                    $newDoctor = $newDoctorId !== 999 ? Doctor::find($newDoctorId) : null;
+
+                    DB::table('invoice_details')
+                        ->where('id', $line->id)
+                        ->update([
+                            'doctor_id' => $newDoctorId,
+                            'payment_value' => $newRate,
+                            'updated_by' => Auth::id(),
+                            'updated_at' => now(),
+                        ]);
+
+                    // Aggregate figure used by reports/Cash Ledger -- shift by
+                    // the net difference only, the same pattern the waiver
+                    // block above uses.
+                    $invoice->doctor_payment_amount = max(
+                        0,
+                        ((float) $invoice->doctor_payment_amount) - $oldPaymentValue + $newRate
+                    );
+
+                    $doctorPayable = DoctorPayable::where('invoice_id', $invoice->id)
+                        ->where('item_code_sub', $line->item_code_sub)
+                        ->first();
+
+                    if ($doctorPayable) {
+
+                        if ($doctorPayable->payment_status !== DoctorPayable::STATUS_PENDING) {
+
+                            DB::rollBack();
+
+                            return response()->json([
+                                'status' => false,
+                                'message' => 'Cannot change doctor on "' . $line->item_description . '" -- its doctor payment has already been settled.'
+                            ]);
+                        }
+
+                        $oldPayableData = $doctorPayable->only($doctorPayable->getFillable());
+
+                        $doctorPayable->doctor_id = $newDoctorId;
+                        $doctorPayable->doctor_code = $newDoctor?->doctor_code;
+                        $doctorPayable->doctor_name = $newDoctorId === 999 ? 'ALL DOCTORS' : ($newDoctor?->doctor_name ?? 'ALL DOCTORS');
+                        $doctorPayable->payment_rate = $newRate;
+                        $doctorPayable->payable_amount = $newRate;
+                        $doctorPayable->updated_by = Auth::id();
+                        $doctorPayable->save();
+
+                        $auditService->logUpdate(
+                            self::MODULE_CODE,
+                            $doctorPayable,
+                            $oldPayableData,
+                            $doctorPayable->only($doctorPayable->getFillable()),
+                            'Doctor changed at final payment (USG)'
+                        );
+                    }
+                }
+            }
+
             $additionalPaid =
                 (float) $request->additional_paid_amount;
 

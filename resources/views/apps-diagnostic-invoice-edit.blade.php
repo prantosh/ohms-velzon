@@ -359,7 +359,33 @@ Pay Rest Payment
                     </td>
 
                     <td>
-                        {{ $row->doctor_id ? $row->doctor_name : '-' }}
+                        @if($row->item_code === 'USG001' && $invoice->due_amount > 0 && !$row->doctor_payment_waived)
+                            {{--
+                                Doctor replacement, USG only, offered right
+                                at final/due payment collection -- the
+                                originally selected doctor may not be the
+                                one who actually performs the test. Options
+                                beyond the current doctor are filled in by
+                                JS from the same doctor-payments endpoint
+                                used at invoice creation
+                                (loadUsgDoctorReplacementOptions()); the
+                                select's name always submits whichever
+                                doctor is currently chosen, changed or not --
+                                the server treats "same as before" as a
+                                no-op.
+                            --}}
+                            <select
+                                class="form-select form-select-sm changeDoctorSelect"
+                                name="doctor_replacements[{{ $row->id }}]"
+                                data-item-code-sub="{{ $row->item_code_sub }}"
+                                data-current-doctor-id="{{ $row->doctor_id }}">
+                                <option value="{{ $row->doctor_id }}" data-payment="{{ $row->payment_value }}" selected>
+                                    {{ $row->doctor_id ? $row->doctor_name : '-' }} (current)
+                                </option>
+                            </select>
+                        @else
+                            {{ $row->doctor_id ? $row->doctor_name : '-' }}
+                        @endif
                     </td>
 
                     <td>

@@ -2357,6 +2357,62 @@ $('#btnBackToEditDuePayment').on('click', function () {
     )?.hide();
 });
 
+/*
+|--------------------------------------------------------------------------
+| USG DOCTOR REPLACEMENT (EDIT MODE - DUE PAYMENT SCREEN)
+|--------------------------------------------------------------------------
+| Lets the operator swap the doctor originally selected for a USG line at
+| the point the remaining due amount is collected -- see
+| DiagnosticInvoiceController::update()'s matching comment for why this
+| exists and how the payable is recalculated. Reuses the exact same
+| doctor-payments endpoint the invoice-creation screen's own doctor
+| dropdown already calls, so "available doctors" always matches what's
+| actually offered when the invoice was first raised.
+|--------------------------------------------------------------------------
+*/
+
+function loadUsgDoctorReplacementOptions(select) {
+
+    let itemCodeSub = select.data('item-code-sub');
+    let currentDoctorId = String(select.data('current-doctor-id'));
+
+    $.get('/diagnostic-invoice/doctor-payments/' + itemCodeSub, function (rows) {
+
+        $.each(rows, function (i, row) {
+
+            // Already shown as the pre-selected "(current)" option.
+            if (String(row.doctor_id) === currentDoctorId) {
+                return;
+            }
+
+            select.append(
+                `<option value="${row.doctor_id}" data-payment="${row.payment_value}">
+                    ${row.doctor_name}
+                </option>`
+            );
+        });
+    });
+}
+
+$(document).on('change', '.changeDoctorSelect', function () {
+
+    // Visual feedback only -- the server independently re-looks-up the new
+    // doctor's rate rather than trusting this value, since this is
+    // recalculating money, not just accepting a fresh line.
+    let newPayment = $(this).find('option:selected').data('payment');
+
+    $(this).closest('tr').find('.rowDoctorPayment').val(
+        (parseFloat(newPayment) || 0).toFixed(2)
+    );
+});
+
+if (window.editMode) {
+
+    $('.changeDoctorSelect').each(function () {
+        loadUsgDoctorReplacementOptions($(this));
+    });
+}
+
 $('#btnConfirmDuePayment').on('click', function () {
 
     bootstrap.Offcanvas.getInstance(
