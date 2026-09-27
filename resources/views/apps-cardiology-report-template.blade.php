@@ -14,6 +14,28 @@
       rel="stylesheet"
       type="text/css" />
 
+<style>
+/*
+    The app-wide .ck-editor__editable rule forces a 245px minimum height on
+    EVERY CKEditor field, meant for a single big narrative content box
+    elsewhere -- wrong default here, where this form has 16 separate small
+    fields (Heading, M-Mode Data, 11 chamber/valve items, Conclusion,
+    Remarks) each typically holding one short line. A much smaller default
+    lets each box fit its actual content instead of wasting a full page's
+    scroll on empty fields; the box still grows automatically past this
+    minimum as content is typed. resize:vertical + overflow:auto adds a
+    native drag handle (bottom-right corner) so the template author can
+    also manually shrink or grow any one field's box beyond what its
+    content alone would produce. Selector has 2 classes (vs. the global
+    rule's 1), so it wins despite both being !important.
+*/
+.template-field-wrap .ck-editor__editable {
+    min-height: 60px !important;
+    resize: vertical;
+    overflow: auto;
+}
+</style>
+
 @endsection
 
 @section('content')
@@ -240,7 +262,7 @@
                         </div>
 
                         @foreach($fields as $key => $label)
-                        <div class="col-md-12 mb-3">
+                        <div class="col-md-12 mb-3 template-field-wrap">
 
                             <label class="form-label">
                                 {{ $label }}

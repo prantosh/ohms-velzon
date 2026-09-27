@@ -14,6 +14,25 @@
       rel="stylesheet"
       type="text/css" />
 
+<style>
+/*
+    The app-wide .ck-editor__editable rule forces a 245px minimum height on
+    every CKEditor field. A smaller default here lets each of Clinical
+    History/Findings/Impression fit its actual content instead of three
+    tall boxes regardless of length; each still grows automatically past
+    this minimum as content is typed. resize:vertical + overflow:auto adds
+    a native drag handle (bottom-right corner) so the template author can
+    also manually shrink or grow a field's box beyond what its content
+    alone would produce. Selector has 2 classes (vs. the global rule's 1),
+    so it wins despite both being !important.
+*/
+.template-field-wrap .ck-editor__editable {
+    min-height: 60px !important;
+    resize: vertical;
+    overflow: auto;
+}
+</style>
+
 @endsection
 
 @section('content')
@@ -222,7 +241,7 @@
 
                         </div>
 
-                        <div class="col-md-12 mb-3">
+                        <div class="col-md-12 mb-3 template-field-wrap">
 
                             <label class="form-label">
                                 Clinical History
@@ -233,7 +252,7 @@
 
                         </div>
 
-                        <div class="col-md-12 mb-3">
+                        <div class="col-md-12 mb-3 template-field-wrap">
 
                             <label class="form-label">
                                 Findings
@@ -244,7 +263,7 @@
 
                         </div>
 
-                        <div class="col-md-12 mb-3">
+                        <div class="col-md-12 mb-3 template-field-wrap">
 
                             <label class="form-label">
                                 Impression

@@ -64,7 +64,7 @@ table td {
 }
 
 .report-section {
-    margin-top: 14px;
+    margin-top: 6px;
 }
 
 .report-section-heading {
@@ -72,13 +72,60 @@ table td {
     font-weight: bold;
     font-size: 12px;
     border-bottom: 1px solid #003399;
-    padding-bottom: 2px;
-    margin-bottom: 4px;
+    padding-bottom: 1px;
+    margin-bottom: 2px;
 }
 
 .report-section-body {
     min-height: 24px;
     white-space: pre-wrap;
+}
+
+/* Plain (non-list) content -- e.g. each numbered field's own sentences --
+   is typed as a run of separate <p> tags, each carrying a full default
+   top/bottom margin. That default margin, not .report-section's own
+   spacing, was most of the visible gap both between lines within one
+   numbered item and between one numbered item and the next. */
+.report-section-body p {
+    margin: 0;
+}
+
+.report-section-body ol,
+.report-section-body ul {
+    margin: 0;
+}
+
+.report-section-body li {
+    margin: 0;
+    line-height: 1.25;
+}
+
+/* A pasted (or CKEditor Document-List) numbered/bulleted item can wrap its
+   text in its own <p>, which otherwise carries a full default top/bottom
+   margin on top of the list's own spacing -- stacking into a much bigger
+   gap between sub-items, and a large blank gap after the last one.
+   display:inline on top of margin:0 additionally keeps a bold "Header"
+   paragraph and its following "content" paragraph on the SAME visual
+   line as each other (e.g. "1. Header: content...") instead of each
+   forcing its own line, since a <p> is a block box even with no margin --
+   this is what actually saves the vertical space for a header+content
+   item, not just the gap between items. */
+.report-section-body li p {
+    margin: 0;
+    display: inline;
+}
+
+/* Tables typed into the report content (CKEditor's Table feature) --
+   halved again from the general table rule above: this content is dense
+   value/reference-range data, not prose, so it can run much tighter. */
+.report-section-body table th,
+.report-section-body table td {
+    padding: 1px 3px !important;
+    line-height: 1.2;
+}
+
+.report-section-body table p {
+    margin: 0;
 }
 
 /* Matches CKEditor's own editing-view sizing exactly (ckeditor5-content.css
