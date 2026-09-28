@@ -231,21 +231,16 @@ Pay Rest Payment
 
                 <tr>
 
-                    <th>Category</th>
+                    <th style="width:12%;">Category</th>
 
-                    <th>Test</th>
+                    <th style="width:26%;">Test</th>
 
-                    <th>Rate</th>
+                    <th style="width:8%;">Rate</th>
 
-                    <th>Std. Disc %</th>
-                    <th>Addl. Disc %</th>
-                    <th>Addl. Amt</th>
-                    <th>Approved By</th>
-                    <th>Amount</th>
-                    <th>Remarks</th>
-                    <th>Doctor</th>
-                    <th>Doctor Payment</th>
-                    <th>Waive Doctor Payment</th>
+                    <th style="width:8%;">Amount</th>
+                    <th style="width:24%;">Doctor</th>
+                    <th style="width:11%;">Doctor Payment</th>
+                    <th style="width:11%;">Waive Doctor Payment</th>
 
                 </tr>
 
@@ -311,50 +306,12 @@ Pay Rest Payment
                     </td>
 
                     <td>
-                        <input type="number"
-                               class="form-control standardDiscount"
-                               value="{{ $row->standard_discount }}"
-                               readonly>
-                    </td>
-
-                    <td>
-                        <input type="number"
-                               class="form-control additionalDiscountPercent"
-                               value="{{ $row->additional_discount_percent }}"
-                               readonly>
-                    </td>
-
-                    <td>
-                        <input type="number"
-                               class="form-control additionalDiscountAmount"
-                               value="{{ $row->additional_discount_amount }}"
-                               readonly>
-                    </td>
-
-                    <td>
-                        <input type="text"
-                               class="form-control"
-                               value="{{ $row->discount_approved_by }}"
-                               readonly>
-                    </td>
-
-                    <td>
 
                         <input
                             type="number"
                             class="form-control amount"
                             value="{{ $row->amount }}"
                             readonly>
-
-                    </td>
-
-                    <td>
-
-                        <input
-                            type="text"
-                            class="form-control remarksRow"
-                            value="{{ $row->remarks }}"
-                               readonly>
 
                     </td>
 
@@ -423,6 +380,59 @@ Pay Rest Payment
                         @else
                             -
                         @endif
+                    </td>
+
+                </tr>
+
+                <tr>
+
+                    <td colspan="7" class="py-2">
+
+                        <div class="row g-2">
+
+                            <div class="col-md-2">
+                                <label class="small text-muted mb-0">Std. Disc %</label>
+                                <input type="number"
+                                       class="form-control form-control-sm standardDiscount"
+                                       value="{{ $row->standard_discount }}"
+                                       readonly>
+                            </div>
+
+                            <div class="col-md-2">
+                                <label class="small text-muted mb-0">Addl. Disc %</label>
+                                <input type="number"
+                                       class="form-control form-control-sm additionalDiscountPercent"
+                                       value="{{ $row->additional_discount_percent }}"
+                                       readonly>
+                            </div>
+
+                            <div class="col-md-2">
+                                <label class="small text-muted mb-0">Addl. Amt</label>
+                                <input type="number"
+                                       class="form-control form-control-sm additionalDiscountAmount"
+                                       value="{{ $row->additional_discount_amount }}"
+                                       readonly>
+                            </div>
+
+                            <div class="col-md-2">
+                                <label class="small text-muted mb-0">Approved By</label>
+                                <input type="text"
+                                       class="form-control form-control-sm"
+                                       value="{{ $row->discount_approved_by }}"
+                                       readonly>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="small text-muted mb-0">Remarks</label>
+                                <input
+                                    type="text"
+                                    class="form-control form-control-sm remarksRow"
+                                    value="{{ $row->remarks }}"
+                                    readonly>
+                            </div>
+
+                        </div>
+
                     </td>
 
                 </tr>
