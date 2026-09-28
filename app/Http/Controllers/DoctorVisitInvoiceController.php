@@ -1060,17 +1060,14 @@ class DoctorVisitInvoiceController extends Controller
     | BP/Weight/SPO2 and the prescription itself to be filled in by hand
     | during consultation.
     |
-    | Cardiology doctors print onto plain paper, so they get the full
-    | letterhead (clinic header/footer rendered by the system). Eye and
-    | Optometry doctors have their own letterhead, laid out like the
-    | generic one below but without a Sex field. Every other specialisation
-    | prints onto the generic pre-printed clinic letterhead paper, so that
-    | layout omits the header entirely and starts its content a fixed
-    | 60mm from the top to land in the blank space the letterhead leaves
-    | below its own printed header.
+    | Eye and Optometry doctors have their own letterhead, laid out like
+    | the generic one below but without a Sex field. Every other
+    | specialisation (including Cardiology) prints onto the generic
+    | pre-printed clinic letterhead paper, so that layout omits the
+    | header entirely and starts its content a fixed 60mm from the top
+    | to land in the blank space the letterhead leaves below its own
+    | printed header.
     */
-
-    private const PRESCRIPTION_WITH_HEADER_SPECIALISATIONS = ['CARDIOLOGY'];
 
     // "OPTIMETRY" is how this specialisation is actually spelled in the
     // doctors table (a pre-existing data-entry typo for "Optometry") --
@@ -1090,9 +1087,7 @@ class DoctorVisitInvoiceController extends Controller
 
         $specialisation = strtoupper(trim(optional($doctor)->specialisation ?? ''));
 
-        if (in_array($specialisation, self::PRESCRIPTION_WITH_HEADER_SPECIALISATIONS)) {
-            $view = 'apps-doctor-visit-prescription-pdf-with-header';
-        } elseif (in_array($specialisation, self::PRESCRIPTION_EYE_SPECIALISATIONS)) {
+        if (in_array($specialisation, self::PRESCRIPTION_EYE_SPECIALISATIONS)) {
             $view = 'apps-doctor-visit-prescription-pdf-eye';
         } else {
             $view = 'apps-doctor-visit-prescription-pdf';
