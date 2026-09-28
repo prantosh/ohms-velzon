@@ -21,7 +21,12 @@ class Kernel extends ConsoleKernel
         // `php <app-root>/artisan schedule:run` firing every minute for this
         // to actually run on production (no other scheduled task exists yet,
         // so that cron entry likely still needs to be added there).
-        $schedule->command('invoices:backup')->weekly();
+        // Prune runs only onSuccess() so a backup failure can never lead to
+        // deleting originals that didn't actually get backed up that week --
+        // pruneOriginals() also independently re-checks this per file.
+        $schedule->command('invoices:backup')->weekly()->onSuccess(function () {
+            $this->call('invoices:prune');
+        });
     }
 
     /**

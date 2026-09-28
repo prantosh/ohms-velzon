@@ -52,6 +52,7 @@ class CloudBackupController extends Controller
 
         return view('apps-cloud-backup', [
             'invoicesBackupRetention' => InvoicesBackupService::RETENTION_COUNT,
+            'invoicesPruneAfterDays' => InvoicesBackupService::PRUNE_ORIGINALS_AFTER_DAYS,
         ]);
     }
 

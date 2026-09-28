@@ -142,6 +142,11 @@
             "Backup Now" for an on-demand copy in between. The <b>{{ $invoicesBackupRetention }}</b> most recent
             backups are kept on this server -- download a copy periodically to keep it somewhere longer-term, since
             older ones here get pruned automatically.
+            <br>
+            Separately, once a file in <code>public/invoices</code> is older than
+            <b>{{ $invoicesPruneAfterDays }} days</b> <i>and</i> has already been captured by a successful backup
+            here, it is deleted from that live folder automatically to keep server disk usage from growing forever.
+            A file is never deleted until a successful backup covering it exists, no matter how old it is.
         </div>
 
         <div class="card">
