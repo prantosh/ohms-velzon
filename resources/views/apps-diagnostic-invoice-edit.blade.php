@@ -223,6 +223,14 @@ Pay Rest Payment
 
         <div class="table-responsive">
 
+            {{--
+                Two-row-per-item layout, wider Test/Doctor columns --
+                NON_PATHOLOGY only. Pathology invoices keep the original
+                single-row-per-item table below unchanged, since that
+                dashboard wasn't the one reported as cramped.
+            --}}
+            @if($invoice->invoice_category === 'NON_PATHOLOGY')
+
             <table
                 class="table table-bordered"
                 id="testTable">
@@ -442,6 +450,206 @@ Pay Rest Payment
                 </tbody>
 
             </table>
+
+            @else
+
+            <table
+                class="table table-bordered"
+                id="testTable">
+
+                <thead>
+
+                <tr>
+
+                    <th>Category</th>
+
+                    <th>Test</th>
+
+                    <th>Rate</th>
+
+                    <th>Std. Disc %</th>
+                    <th>Addl. Disc %</th>
+                    <th>Addl. Amt</th>
+                    <th>Approved By</th>
+                    <th>Amount</th>
+                    <th>Remarks</th>
+                    <th>Doctor</th>
+                    <th>Doctor Payment</th>
+                    <th>Waive Doctor Payment</th>
+
+                </tr>
+
+                </thead>
+
+                <tbody>
+
+                @foreach($tests as $row)
+
+                <tr>
+
+                    <td>
+
+                        <select
+                            class="form-select category"
+                            disabled>
+
+                            <option value="">
+
+                                Select
+
+                            </option>
+
+                            @foreach($categories as $cat)
+
+                            <option
+                                value="{{ $cat->item_code }}"
+                                {{ $row->item_code==$cat->item_code ? 'selected':'' }}>
+
+                                {{ $cat->item_name }}
+
+                            </option>
+
+                            @endforeach
+
+                        </select>
+
+                    </td>
+
+                    <td>
+
+                        <input
+                            type="hidden"
+                            class="item_code_sub"
+                            value="{{ $row->item_code_sub }}">
+
+                        <input
+                            type="text"
+                            class="form-control test_name"
+                            value="{{ $row->item_description }}"
+                            readonly>
+
+                    </td>
+
+                    <td>
+
+                        <input
+                            type="number"
+                            class="form-control rate"
+                            value="{{ $row->rate }}"
+                               readonly>
+
+                    </td>
+
+                    <td>
+                        <input type="number"
+                               class="form-control standardDiscount"
+                               value="{{ $row->standard_discount }}"
+                               readonly>
+                    </td>
+
+                    <td>
+                        <input type="number"
+                               class="form-control additionalDiscountPercent"
+                               value="{{ $row->additional_discount_percent }}"
+                               readonly>
+                    </td>
+
+                    <td>
+                        <input type="number"
+                               class="form-control additionalDiscountAmount"
+                               value="{{ $row->additional_discount_amount }}"
+                               readonly>
+                    </td>
+
+                    <td>
+                        <input type="text"
+                               class="form-control"
+                               value="{{ $row->discount_approved_by }}"
+                               readonly>
+                    </td>
+
+                    <td>
+
+                        <input
+                            type="number"
+                            class="form-control amount"
+                            value="{{ $row->amount }}"
+                            readonly>
+
+                    </td>
+
+                    <td>
+
+                        <input
+                            type="text"
+                            class="form-control remarksRow"
+                            value="{{ $row->remarks }}"
+                               readonly>
+
+                    </td>
+
+                    <td>
+                        @if($row->item_code === 'USG001' && $invoice->due_amount > 0 && !$row->doctor_payment_waived)
+                            <select
+                                class="form-select form-select-sm changeDoctorSelect"
+                                name="doctor_replacements[{{ $row->id }}]"
+                                data-item-code-sub="{{ $row->item_code_sub }}"
+                                data-current-doctor-id="{{ $row->doctor_id }}">
+                                <option value="{{ $row->doctor_id }}" data-payment="{{ $row->payment_value }}" selected>
+                                    {{ $row->doctor_id ? $row->doctor_name : '-' }} (current)
+                                </option>
+                            </select>
+                        @else
+                            {{ $row->doctor_id ? $row->doctor_name : '-' }}
+                        @endif
+                    </td>
+
+                    <td>
+                        @if($row->payment_value > 0)
+                            <input
+                                type="text"
+                                class="form-control rowDoctorPayment"
+                                value="{{ number_format($row->payment_value, 2) }}"
+                                readonly>
+                        @else
+                            -
+                        @endif
+                    </td>
+
+                    <td>
+                        @if($row->doctor_id && $row->payment_value > 0)
+                            @if($row->doctor_payment_waived)
+                                <span class="badge bg-success">Waived</span>
+                            @else
+                                <div class="form-check">
+                                    <input
+                                        type="checkbox"
+                                        class="form-check-input waiveLine"
+                                        name="waive_lines[]"
+                                        value="{{ $row->id }}"
+                                        data-payment-value="{{ $row->payment_value }}"
+                                        id="waive_line_{{ $row->id }}">
+                                    <label
+                                        class="form-check-label small"
+                                        for="waive_line_{{ $row->id }}">
+                                        Waive
+                                    </label>
+                                </div>
+                            @endif
+                        @else
+                            -
+                        @endif
+                    </td>
+
+                </tr>
+
+                @endforeach
+
+                </tbody>
+
+            </table>
+
+            @endif
 
         </div>
 
