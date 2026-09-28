@@ -1,7 +1,7 @@
 @extends('layouts.master')
 
 @section('title')
-    Cloud Database Backup
+    Backups
 @endsection
 
 @section('css')
@@ -21,7 +21,7 @@
     @endslot
 
     @slot('title')
-        Cloud Database Backup
+        Backups
     @endslot
 
 @endcomponent
@@ -126,6 +126,65 @@
                         </thead>
 
                         <tbody id="backupListBody"></tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="alert alert-warning">
+            <i class="ri-shield-keyhole-line"></i>
+            Zips every file currently in <code>public/invoices</code> (invoice and report PDFs) and saves it under
+            <code>storage/app/backups</code>, downloadable below. This also runs automatically once a week; use
+            "Backup Now" for an on-demand copy in between. The <b>{{ $invoicesBackupRetention }}</b> most recent
+            backups are kept on this server -- download a copy periodically to keep it somewhere longer-term, since
+            older ones here get pruned automatically.
+        </div>
+
+        <div class="card">
+
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Invoices Folder Backup</h5>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-primary" id="btnRunInvoicesBackup">
+                        <i class="ri-download-cloud-2-line"></i>
+                        Backup Now
+                    </button>
+                    <button type="button" class="btn btn-sm btn-soft-primary" id="btnRefreshInvoicesList">
+                        <i class="ri-refresh-line"></i>
+                        Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="card-body">
+
+                <div id="invoicesBackupProgress" class="mb-3" style="display:none;">
+                    <div class="d-flex align-items-center gap-2 text-muted">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <span>Zipping invoices folder... please don't close this page.</span>
+                    </div>
+                </div>
+
+                <div id="invoicesResultAlert" class="alert mb-3" style="display:none;"></div>
+
+                <div class="table-responsive">
+
+                    <table class="table table-bordered align-middle">
+
+                        <thead class="table-light">
+                            <tr>
+                                <th>File Name</th>
+                                <th width="130">Size</th>
+                                <th width="160">Created At</th>
+                                <th width="160">Action</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="invoicesBackupListBody"></tbody>
 
                     </table>
 

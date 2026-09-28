@@ -64,7 +64,7 @@ return [
     "activitylog" => "Activity Log",
     "auditlogs" => "Audit Logs",
     "membershipfeestatus" => "Membership Fee Payment Status",
-    "cloudbackup" => "Cloud Database Backup",
+    "cloudbackup" => "Backups",
     "systemlog" => "System Log Viewer",
     "maintenancemode" => "Maintenance Mode",
     "whatsappautosendsettings" => "WhatsApp Auto-Send Settings",

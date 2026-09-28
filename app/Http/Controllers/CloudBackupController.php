@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\BackupLog;
 use App\Services\AuditService;
+use App\Services\InvoicesBackupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
@@ -49,7 +50,9 @@ class CloudBackupController extends Controller
     {
         $this->ensureAdmin();
 
-        return view('apps-cloud-backup');
+        return view('apps-cloud-backup', [
+            'invoicesBackupRetention' => InvoicesBackupService::RETENTION_COUNT,
+        ]);
     }
 
     /*
@@ -466,6 +469,96 @@ class CloudBackupController extends Controller
             $log,
             AuditLog::ACTION_DELETE,
             'Backup file deleted: ' . $filename
+        );
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Backup file deleted.',
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | INVOICES FOLDER BACKUP
+    |--------------------------------------------------------------------------
+    | See InvoicesBackupService for why this exists -- public/invoices is a
+    | side effect of the WhatsApp-send flow, not read back by the app, but is
+    | the only copy of the exact document actually sent/printed at the time.
+    | Also runs automatically on a schedule (see Console\Kernel), this is the
+    | manual on-demand trigger plus the download/delete UI for either source.
+    */
+
+    public function backupInvoices(InvoicesBackupService $service, AuditService $auditService)
+    {
+        $this->ensureAdmin();
+
+        $result = $service->run(Auth::id());
+
+        $log = BackupLog::where('file_name', $result['file_name'] ?? null)->first() ?? new BackupLog();
+
+        $auditService->logCreate(
+            self::MODULE_CODE,
+            $log,
+            $log->exists ? $log->only($log->getFillable()) : [],
+            $result['status']
+                ? 'Invoices folder backup completed'
+                : 'Invoices folder backup failed: ' . $result['message']
+        );
+
+        return response()->json($result);
+    }
+
+    public function listInvoicesBackups(InvoicesBackupService $service)
+    {
+        $this->ensureAdmin();
+
+        return response()->json([
+            'status' => true,
+            'data' => $service->list(),
+        ]);
+    }
+
+    public function downloadInvoicesBackup(string $filename)
+    {
+        $this->ensureAdmin();
+
+        if (!preg_match('/^invoices-backup-[A-Za-z0-9_\-]+\.zip$/', $filename)) {
+            abort(404);
+        }
+
+        $filePath = $this->backupDir() . DIRECTORY_SEPARATOR . $filename;
+
+        if (!File::exists($filePath)) {
+            abort(404);
+        }
+
+        return response()->download($filePath);
+    }
+
+    public function destroyInvoicesBackup(string $filename, AuditService $auditService)
+    {
+        $this->ensureAdmin();
+
+        if (!preg_match('/^invoices-backup-[A-Za-z0-9_\-]+\.zip$/', $filename)) {
+            abort(404);
+        }
+
+        $filePath = $this->backupDir() . DIRECTORY_SEPARATOR . $filename;
+
+        if (File::exists($filePath)) {
+            File::delete($filePath);
+        }
+
+        $log = BackupLog::firstOrCreate(
+            ['file_name' => $filename],
+            ['status' => 'SUCCESS', 'created_by' => Auth::id()]
+        );
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $log,
+            AuditLog::ACTION_DELETE,
+            'Invoices backup file deleted: ' . $filename
         );
 
         return response()->json([

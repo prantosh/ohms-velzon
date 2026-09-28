@@ -1588,6 +1588,18 @@ Route::prefix('cloud-backup')->group(function () {
     Route::delete('/delete/{filename}', [CloudBackupController::class, 'destroy'])
         ->name('cloud-backup.destroy');
 
+    Route::post('/run-invoices', [CloudBackupController::class, 'backupInvoices'])
+        ->name('cloud-backup.run-invoices');
+
+    Route::get('/list-invoices', [CloudBackupController::class, 'listInvoicesBackups'])
+        ->name('cloud-backup.list-invoices');
+
+    Route::get('/download-invoices/{filename}', [CloudBackupController::class, 'downloadInvoicesBackup'])
+        ->name('cloud-backup.download-invoices');
+
+    Route::delete('/delete-invoices/{filename}', [CloudBackupController::class, 'destroyInvoicesBackup'])
+        ->name('cloud-backup.destroy-invoices');
+
 });
 
 Route::prefix('system-log')->group(function () {

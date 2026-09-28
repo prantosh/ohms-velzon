@@ -16,6 +16,12 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         // $schedule->command('inspire')->hourly();
+
+        // See InvoicesBackupService -- requires the cPanel cron entry
+        // `php <app-root>/artisan schedule:run` firing every minute for this
+        // to actually run on production (no other scheduled task exists yet,
+        // so that cron entry likely still needs to be added there).
+        $schedule->command('invoices:backup')->weekly();
     }
 
     /**

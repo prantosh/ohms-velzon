@@ -183,3 +183,116 @@ document.getElementById('backupListBody').addEventListener('click', async functi
 });
 
 loadBackupList();
+
+/*
+|--------------------------------------------------------------------------
+| INVOICES FOLDER BACKUP
+|--------------------------------------------------------------------------
+*/
+
+document.getElementById('btnRunInvoicesBackup').addEventListener('click', async function () {
+
+    let confirm = await Swal.fire({
+        title: 'Backup Invoices Folder?',
+        text: 'This will zip every file currently in public/invoices and save it on this server.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#0ab39c',
+        cancelButtonColor: '#f06548',
+        confirmButtonText: 'Yes, Start Backup'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    let box = document.getElementById('invoicesResultAlert');
+    box.style.display = 'none';
+    document.getElementById('invoicesBackupProgress').style.display = 'block';
+    document.getElementById('btnRunInvoicesBackup').disabled = true;
+
+    const response = await fetch('/cloud-backup/run-invoices', {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': csrfToken(), 'Accept': 'application/json' }
+    });
+    const result = await response.json();
+
+    document.getElementById('invoicesBackupProgress').style.display = 'none';
+    document.getElementById('btnRunInvoicesBackup').disabled = false;
+
+    box.className = 'alert mb-3 ' + (result.status ? 'alert-success' : 'alert-danger');
+    box.textContent = result.status
+        ? `Backup completed: ${result.file_name} (${fmtSize(result.size)}, ${result.file_count} file(s))`
+        : result.message;
+    box.style.display = 'block';
+
+    if (result.status) {
+        loadInvoicesBackupList();
+    }
+});
+
+async function loadInvoicesBackupList() {
+
+    const response = await fetch('/cloud-backup/list-invoices');
+    const result = await response.json();
+
+    let tbody = document.getElementById('invoicesBackupListBody');
+
+    if (!result.status || !result.data.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No backups yet.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = result.data.map(row => `
+        <tr>
+            <td>${escapeHtml(row.file_name)}</td>
+            <td>${fmtSize(row.size)}</td>
+            <td>${escapeHtml(row.created_at)}</td>
+            <td>
+                <a href="/cloud-backup/download-invoices/${encodeURIComponent(row.file_name)}" class="btn btn-sm btn-soft-success" title="Download">
+                    <i class="ri-download-2-line"></i>
+                </a>
+                <button type="button" class="btn btn-sm btn-soft-danger delete-invoices-backup-btn" data-name="${escapeHtml(row.file_name)}" title="Delete">
+                    <i class="ri-delete-bin-line"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+document.getElementById('btnRefreshInvoicesList').addEventListener('click', loadInvoicesBackupList);
+
+document.getElementById('invoicesBackupListBody').addEventListener('click', async function (e) {
+
+    let deleteBtn = e.target.closest('.delete-invoices-backup-btn');
+    if (!deleteBtn) return;
+
+    let fileName = deleteBtn.dataset.name;
+
+    let confirm = await Swal.fire({
+        title: 'Delete Backup File?',
+        text: `"${fileName}" will be permanently deleted from this machine.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#0ab39c',
+        cancelButtonColor: '#f06548',
+        confirmButtonText: 'Yes, Delete'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    const response = await fetch(`/cloud-backup/delete-invoices/${encodeURIComponent(fileName)}`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': csrfToken() }
+    });
+
+    const result = await response.json();
+
+    Swal.fire({
+        icon: result.status ? 'success' : 'error',
+        title: result.status ? 'Deleted' : 'Error',
+        text: result.message
+    });
+
+    loadInvoicesBackupList();
+});
+
+loadInvoicesBackupList();
