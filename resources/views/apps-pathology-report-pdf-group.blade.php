@@ -103,8 +103,15 @@ table {
        allows it, so doctors can customize cells while composing) -- an
        inline style always wins over this rule otherwise, so the printed
        report needs to force its own compact spacing regardless. */
-    padding: 3px !important;
+    padding: 1px 3px !important;
     vertical-align: top;
+    line-height: 1.2;
+}
+
+/* Cells hold CKEditor <p> blocks, and DomPDF gives <p> a 1em default
+   margin -- that, not the cell padding, was most of each row's height. */
+.report-body table p {
+    margin: 0;
 }
 
 .signature-section {
