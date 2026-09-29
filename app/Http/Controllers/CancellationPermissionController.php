@@ -55,7 +55,65 @@ class CancellationPermissionController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | SEARCH INVOICE BY NUMBER
+    | PENDING REQUESTS -- the dashboard's main list, no invoice number needed
+    |--------------------------------------------------------------------------
+    | A user requests permission from the Invoice Cancellation page (see
+    | InvoiceCancellationController::requestPermission()); this is where a
+    | Supervisor/Admin discovers and acts on those requests without having
+    | to already know which invoice numbers to look up.
+    */
+
+    public function pendingRequests()
+    {
+        $this->ensureApprover();
+
+        $rows = InvoiceCancellationPermission::with('requestedByUser')
+            ->where('status', InvoiceCancellationPermission::STATUS_PENDING)
+            ->orderBy('created_at')
+            ->get();
+
+        $invoicesByNo = Invoice::whereIn('invoice_no', $rows->pluck('invoice_no'))
+            ->get()
+            ->keyBy('invoice_no');
+
+        $data = $rows->map(function ($permission) use ($invoicesByNo) {
+
+            $invoice = $invoicesByNo->get($permission->invoice_no);
+
+            return [
+                'permission_id' => $permission->id,
+                'invoice_no' => $permission->invoice_no,
+                'invoice_type_label' => $invoice
+                    ? (self::INVOICE_TYPE_LABELS[$invoice->invoice_type] ?? $invoice->invoice_type)
+                    : null,
+                'invoice_date_fmt' => $invoice && $invoice->invoice_date
+                    ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y')
+                    : null,
+                'patient_name' => $invoice->patient_name ?? null,
+                'total_amount' => $invoice->total_amount ?? null,
+                'paid_amount' => $invoice->paid_amount ?? null,
+                'already_cancelled' => $invoice ? $invoice->cancelled === 'Y' : false,
+                'requested_by_name' => optional($permission->requestedByUser)->name,
+                'reason' => $permission->reason,
+                'requested_at' => $permission->created_at,
+            ];
+        })
+        // An invoice could theoretically get cancelled through some other
+        // path while its request is still sitting PENDING -- don't offer to
+        // grant permission for something that no longer needs it.
+        ->reject(fn ($row) => $row['already_cancelled'])
+        ->values();
+
+        return response()->json([
+            'status' => true,
+            'data' => $data,
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SEARCH INVOICE BY NUMBER -- ad-hoc lookup of one invoice's request/grant
+    | history, separate from the pending-requests list above.
     |--------------------------------------------------------------------------
     */
 
@@ -81,7 +139,9 @@ class CancellationPermissionController extends Controller
             ? \Carbon\Carbon::parse($invoice->invoice_date)->isToday()
             : false;
 
-        $permission = InvoiceCancellationPermission::where('invoice_id', $invoice->id)->first();
+        $permission = InvoiceCancellationPermission::with(['requestedByUser', 'grantedByUser'])
+            ->where('invoice_id', $invoice->id)
+            ->first();
 
         return response()->json([
             'status' => true,
@@ -100,17 +160,27 @@ class CancellationPermissionController extends Controller
                 'already_cancelled' => $invoice->cancelled === 'Y',
                 'needs_permission' => !$isToday && $invoice->cancelled !== 'Y',
             ],
-            'permission' => $permission ? [
-                'granted_by_name' => optional($permission->grantedByUser)->name,
-                'remarks' => $permission->remarks,
-                'created_at' => $permission->created_at,
-            ] : null,
+            'permission' => $permission ? $this->permissionPayload($permission) : null,
         ]);
+    }
+
+    private function permissionPayload(InvoiceCancellationPermission $permission): array
+    {
+        return [
+            'id' => $permission->id,
+            'status' => $permission->status,
+            'requested_by_name' => optional($permission->requestedByUser)->name,
+            'reason' => $permission->reason,
+            'requested_at' => $permission->created_at,
+            'granted_by_name' => optional($permission->grantedByUser)->name,
+            'remarks' => $permission->remarks,
+            'granted_at' => $permission->granted_at,
+        ];
     }
 
     /*
     |--------------------------------------------------------------------------
-    | GRANT PERMISSION
+    | GRANT PERMISSION -- acts on an existing PENDING request
     |--------------------------------------------------------------------------
     */
 
@@ -119,60 +189,54 @@ class CancellationPermissionController extends Controller
         $this->ensureApprover();
 
         $request->validate([
-            'invoice_id' => 'required|exists:invoices,id',
-            'remarks' => 'required|string|max:500',
+            'permission_id' => 'required|exists:invoice_cancellation_permissions,id',
+            'remarks' => 'nullable|string|max:500',
         ]);
 
         try {
 
-            $invoice = Invoice::findOrFail($request->invoice_id);
+            $permission = InvoiceCancellationPermission::findOrFail($request->permission_id);
 
-            if ($invoice->cancelled === 'Y') {
-
-                return response()->json([
-                    'status' => false,
-                    'message' => 'This invoice has already been cancelled. Permission is not needed.'
-                ], 422);
-            }
-
-            $isToday = $invoice->invoice_date
-                ? \Carbon\Carbon::parse($invoice->invoice_date)->isToday()
-                : false;
-
-            if ($isToday) {
+            if ($permission->status === InvoiceCancellationPermission::STATUS_GRANTED) {
 
                 return response()->json([
                     'status' => false,
-                    'message' => 'This invoice was created today. Any user can cancel it directly without permission.'
+                    'message' => 'This request has already been granted.'
                 ], 422);
             }
 
-            if (InvoiceCancellationPermission::where('invoice_id', $invoice->id)->exists()) {
+            $invoice = Invoice::find($permission->invoice_id);
+
+            if ($invoice && $invoice->cancelled === 'Y') {
 
                 return response()->json([
                     'status' => false,
-                    'message' => 'Cancellation permission has already been granted for this invoice.'
+                    'message' => 'This invoice has already been cancelled. Permission is no longer needed.'
                 ], 422);
             }
 
-            $permission = InvoiceCancellationPermission::create([
-                'invoice_id' => $invoice->id,
-                'invoice_no' => $invoice->invoice_no,
+            $oldData = $permission->only($permission->getFillable());
+
+            $permission->update([
+                'status' => InvoiceCancellationPermission::STATUS_GRANTED,
                 'granted_by' => Auth::id(),
+                'granted_at' => now(),
                 'remarks' => $request->remarks,
-                'created_by' => Auth::id(),
             ]);
 
-            $auditService->logCreate(
+            $auditService->logUpdate(
                 self::MODULE_CODE,
                 $permission,
+                $oldData,
                 $permission->only($permission->getFillable()),
-                'Cancellation permission granted for invoice ' . $invoice->invoice_no
+                'Cancellation permission granted for invoice ' . $permission->invoice_no
+                    . ' (requested by ' . optional($permission->requestedByUser)->name . ')'
             );
 
             return response()->json([
                 'status' => true,
-                'message' => 'Cancellation permission granted. Any user can now cancel this invoice from the Invoice Cancellation page.'
+                'message' => 'Permission granted. Only ' . optional($permission->requestedByUser)->name
+                    . ' can now cancel this invoice from the Invoice Cancellation page.'
             ]);
 
         } catch (Exception $e) {

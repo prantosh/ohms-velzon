@@ -32,14 +32,56 @@
 
         <div class="alert alert-info">
             <i class="ri-shield-user-line"></i>
-            This dashboard is for Supervisors and Admins only. Search a non-today invoice here and grant permission
-            so that any user can then cancel it from the Invoice Cancellation page. Today's invoices never need permission.
+            This dashboard is for Supervisors and Admins only. Today's invoices never need permission. For any
+            other invoice, the user wanting to cancel it submits a request with their reason from the Invoice
+            Cancellation page -- it appears below for you to review and grant. Once granted, only that same
+            user can actually cancel it.
+        </div>
+
+        <div class="card">
+
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Pending Cancellation Requests</h5>
+                <button type="button" class="btn btn-sm btn-soft-primary" id="btnRefreshPending">
+                    <i class="ri-refresh-line"></i>
+                    Refresh
+                </button>
+            </div>
+
+            <div class="card-body">
+
+                <div class="table-responsive">
+
+                    <table class="table table-bordered align-middle">
+
+                        <thead class="table-light">
+                            <tr>
+                                <th>Invoice No</th>
+                                <th>Type</th>
+                                <th>Date</th>
+                                <th>Patient / Party</th>
+                                <th width="110">Paid (&#8377;)</th>
+                                <th>Requested By</th>
+                                <th>Reason</th>
+                                <th width="140">Requested At</th>
+                                <th width="110">Action</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="pendingListBody"></tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
         </div>
 
         <div class="card">
 
             <div class="card-header">
-                <h5 class="card-title mb-0">Search Invoice</h5>
+                <h5 class="card-title mb-0">Look Up a Specific Invoice</h5>
             </div>
 
             <div class="card-body">
@@ -109,24 +151,36 @@
                 </div>
 
                 <div id="todayWrap" class="alert alert-secondary" style="display:none;">
-                    This invoice was created today. It does not need cancellation permission &mdash; any user can cancel it directly.
+                    This invoice was created today. It does not need cancellation permission &mdash; the user can cancel it directly.
                 </div>
 
                 <div id="alreadyCancelledWrap" class="alert alert-danger" style="display:none;">
                     This invoice has already been cancelled. Permission is not applicable.
                 </div>
 
+                <div id="noRequestWrap" class="alert alert-secondary" style="display:none;">
+                    No cancellation request has been submitted for this invoice yet. A user must first request
+                    permission (with a reason) from the Invoice Cancellation page before it can be granted here.
+                </div>
+
+                <div id="pendingRequestWrap" class="alert alert-warning" style="display:none;">
+                    <strong>Request pending approval.</strong><br>
+                    Requested By: <span id="pending-requested-by"></span> on <span id="pending-requested-at"></span><br>
+                    Reason: <span id="pending-reason"></span>
+                </div>
+
                 <div id="permissionGrantedWrap" class="alert alert-success" style="display:none;">
-                    <strong>Cancellation permission already granted.</strong><br>
-                    Granted By: <span id="granted-by"></span> on <span id="granted-at"></span><br>
-                    Remarks: <span id="granted-remarks"></span>
+                    <strong>Cancellation permission granted.</strong><br>
+                    Requested By: <span id="granted-requested-by"></span><br>
+                    Reason: <span id="granted-reason"></span><br>
+                    Granted By: <span id="granted-by"></span> on <span id="granted-at"></span>
                 </div>
 
                 <div id="grantActionWrap" style="display:none;">
 
                     <div class="mb-3">
-                        <label class="form-label">Remarks <span class="text-danger">*</span></label>
-                        <textarea id="grant_remarks-field" class="form-control" rows="3" placeholder="Reason for granting cancellation permission" required></textarea>
+                        <label class="form-label">Remarks (optional)</label>
+                        <textarea id="grant_remarks-field" class="form-control" rows="2" placeholder="Optional note to record alongside this approval"></textarea>
                     </div>
 
                     <button type="button" class="btn btn-success" id="btnGrantPermission">

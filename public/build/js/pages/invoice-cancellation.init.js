@@ -103,7 +103,10 @@ function renderInvoice(invoice, details, permission) {
 
     document.getElementById('alreadyCancelledWrap').style.display = 'none';
     document.getElementById('permissionGrantedInfoWrap').style.display = 'none';
-    document.getElementById('permissionRequiredWrap').style.display = 'none';
+    document.getElementById('grantedToOtherWrap').style.display = 'none';
+    document.getElementById('pendingOwnWrap').style.display = 'none';
+    document.getElementById('pendingOtherWrap').style.display = 'none';
+    document.getElementById('requestPermissionWrap').style.display = 'none';
     document.getElementById('cancelActionWrap').style.display = 'none';
 
     if (invoice.already_cancelled) {
@@ -124,20 +127,103 @@ function renderInvoice(invoice, details, permission) {
         return;
     }
 
-    if (!invoice.is_today && permission) {
+    if (invoice.is_today) {
 
-        document.getElementById('permissionGrantedInfoWrap').style.display = 'block';
-        document.getElementById('permission-granted-by').innerText = permission.granted_by_name ?? '-';
-        document.getElementById('permission-granted-at').innerText = fmtDateTime(permission.created_at);
-        document.getElementById('permission-remarks').innerText = permission.remarks ?? '-';
+        document.getElementById('cancelActionWrap').style.display = 'block';
+        return;
     }
 
-    if (invoice.can_cancel) {
-        document.getElementById('cancelActionWrap').style.display = 'block';
+    if (!permission) {
+
+        document.getElementById('requestPermissionWrap').style.display = 'block';
+        return;
+    }
+
+    if (permission.status === 'GRANTED') {
+
+        if (permission.is_granted_to_me) {
+
+            document.getElementById('permissionGrantedInfoWrap').style.display = 'block';
+            document.getElementById('permission-granted-by').innerText = permission.granted_by_name ?? '-';
+            document.getElementById('permission-granted-at').innerText = fmtDateTime(permission.granted_at);
+
+            document.getElementById('cancelActionWrap').style.display = 'block';
+
+        } else {
+
+            document.getElementById('grantedToOtherWrap').style.display = 'block';
+            document.getElementById('granted-to-other-name').innerText = permission.requested_by_name ?? '-';
+        }
+
+        return;
+    }
+
+    // PENDING
+    if (permission.requested_by_me) {
+
+        document.getElementById('pendingOwnWrap').style.display = 'block';
+        document.getElementById('pending-own-at').innerText = fmtDateTime(permission.requested_at);
+
     } else {
-        document.getElementById('permissionRequiredWrap').style.display = 'block';
+
+        document.getElementById('pendingOtherWrap').style.display = 'block';
+        document.getElementById('pending-other-name').innerText = permission.requested_by_name ?? '-';
     }
 }
+
+/* ==========================================================
+   REQUEST PERMISSION
+========================================================== */
+
+document.getElementById('btnRequestPermission').addEventListener('click', async function () {
+
+    if (!currentInvoice) return;
+
+    let reason = document.getElementById('request_reason-field').value.trim();
+
+    if (!reason) {
+        Swal.fire({ icon: 'warning', title: 'Reason required', text: 'Please enter a reason for cancellation.' });
+        return;
+    }
+
+    const response = await fetch('/invoice-cancellation/request-permission', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken(),
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+            invoice_id: currentInvoice.id,
+            reason: reason
+        })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.status) {
+
+        let errorText = result.errors
+            ? Object.values(result.errors).flat().join(', ')
+            : (result.message ?? 'Unable to submit cancellation request.');
+
+        Swal.fire({ icon: 'error', title: 'Error', text: errorText });
+        return;
+    }
+
+    Swal.fire({ icon: 'success', title: 'Request Submitted', text: result.message });
+
+    document.getElementById('request_reason-field').value = '';
+
+    const refreshed = await fetch(`/invoice-cancellation/search?invoice_no=${encodeURIComponent(currentInvoice.invoice_no)}`);
+    const refreshedResult = await refreshed.json();
+
+    if (refreshedResult.status) {
+        currentInvoice = refreshedResult.invoice;
+        currentPermission = refreshedResult.permission;
+        renderInvoice(refreshedResult.invoice, refreshedResult.details, refreshedResult.permission);
+    }
+});
 
 /* ==========================================================
    OFFCANVAS

@@ -151,14 +151,46 @@
 
                 <div id="permissionGrantedInfoWrap" class="alert alert-success" style="display:none;">
                     <i class="ri-shield-check-line"></i>
-                    Cancellation permission granted by <span id="permission-granted-by"></span>
-                    on <span id="permission-granted-at"></span>. Remarks: <span id="permission-remarks"></span>
+                    Your cancellation request was granted by <span id="permission-granted-by"></span>
+                    on <span id="permission-granted-at"></span>. You can now cancel this invoice.
                 </div>
 
-                <div id="permissionRequiredWrap" class="alert alert-warning" style="display:none;">
-                    <i class="ri-shield-user-line"></i>
-                    This invoice was not created today. It cannot be cancelled until a Supervisor or Admin grants
-                    permission for it via the Cancellation Permission dashboard.
+                <div id="grantedToOtherWrap" class="alert alert-danger" style="display:none;">
+                    <i class="ri-shield-cross-line"></i>
+                    Cancellation permission for this invoice was granted to <strong id="granted-to-other-name"></strong>.
+                    Only they can cancel it.
+                </div>
+
+                <div id="pendingOwnWrap" class="alert alert-warning" style="display:none;">
+                    <i class="ri-time-line"></i>
+                    Your cancellation request (submitted <span id="pending-own-at"></span>) is awaiting approval
+                    from a Supervisor or Admin.
+                </div>
+
+                <div id="pendingOtherWrap" class="alert alert-warning" style="display:none;">
+                    <i class="ri-time-line"></i>
+                    <strong id="pending-other-name"></strong> has already requested cancellation permission for
+                    this invoice (pending approval). Only they will be able to cancel it once granted.
+                </div>
+
+                <div id="requestPermissionWrap" style="display:none;">
+
+                    <div class="alert alert-secondary">
+                        <i class="ri-shield-user-line"></i>
+                        This invoice was not created today. Submit a reason below to request permission from a
+                        Supervisor or Admin -- once granted, only you will be able to cancel it.
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Reason for Cancellation <span class="text-danger">*</span></label>
+                        <textarea id="request_reason-field" class="form-control" rows="3" placeholder="Why does this invoice need to be cancelled?" required></textarea>
+                    </div>
+
+                    <button type="button" class="btn btn-warning" id="btnRequestPermission">
+                        <i class="ri-send-plane-line"></i>
+                        Request Cancellation Permission
+                    </button>
+
                 </div>
 
                 <div id="cancelActionWrap" style="display:none;">

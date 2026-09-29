@@ -1526,6 +1526,7 @@ Route::prefix('invoice-cancellation')->group(function () {
 
     Route::get('/search', [InvoiceCancellationController::class, 'search']);
     Route::post('/cancel', [InvoiceCancellationController::class, 'cancel']);
+    Route::post('/request-permission', [InvoiceCancellationController::class, 'requestPermission']);
 
 });
 
@@ -1534,6 +1535,7 @@ Route::prefix('cancellation-permission')->group(function () {
     Route::get('/', [CancellationPermissionController::class, 'index'])
         ->name('cancellation-permission.index');
 
+    Route::get('/pending', [CancellationPermissionController::class, 'pendingRequests']);
     Route::get('/search', [CancellationPermissionController::class, 'search']);
     Route::post('/grant', [CancellationPermissionController::class, 'grant']);
 
