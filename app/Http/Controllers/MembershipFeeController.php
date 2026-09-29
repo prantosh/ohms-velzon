@@ -8,6 +8,7 @@ use App\Models\MembershipFeeRate;
 use App\Models\User;
 use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
+use App\Services\CashInHandService;
 use App\Services\WatiService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -693,6 +694,8 @@ class MembershipFeeController extends Controller
             'created_at' => now(),
             'updated_at' => now()
         ]);
+
+        app(CashInHandService::class)->apply(Auth::id(), $type, $paymentMode, $amount);
     }
 
     private function generateInvoiceNo(): string

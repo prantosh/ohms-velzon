@@ -19,6 +19,7 @@ use App\Models\User;
 use App\Models\WhatsappAutoSendSetting;
 use App\Mail\DiscountApprovedMail;
 use App\Services\AuditService;
+use App\Services\CashInHandService;
 use App\Services\PatientIdentityGuard;
 use Illuminate\Support\Facades\Log;
 class DiagnosticInvoiceController extends Controller
@@ -1075,6 +1076,13 @@ class DiagnosticInvoiceController extends Controller
                         'updated_at' =>
                             now()
                     ]);
+
+            app(CashInHandService::class)->apply(
+                Auth::id(),
+                'RECEIVED',
+                $request->payment_mode,
+                (float) $request->paid_amount
+            );
 
             DB::commit();
 
@@ -2187,6 +2195,13 @@ class DiagnosticInvoiceController extends Controller
                     now()
             ]);
 
+            app(CashInHandService::class)->apply(
+                Auth::id(),
+                'RECEIVED',
+                $invoice->payment_mode,
+                (float) $additionalPaid
+            );
+
             DB::commit();
 
             $auditService->logUpdate(
@@ -2335,6 +2350,13 @@ class DiagnosticInvoiceController extends Controller
                     'updated_at' =>
                         now()
                 ]);
+
+            app(CashInHandService::class)->apply(
+                Auth::id(),
+                'REFUND',
+                $invoice->payment_mode,
+                (float) $invoice->paid_amount
+            );
 
             DB::commit();
 

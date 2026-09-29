@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Barryvdh\DomPDF\Facade\Pdf;
+use App\Services\CashInHandService;
 use App\Services\WatiService;
 use App\Mail\DiscountApprovedMail;
 use Illuminate\Support\Facades\Mail;
@@ -1058,5 +1059,7 @@ class EquipmentRentalController extends Controller
             'created_at' => now(),
             'updated_at' => now()
         ]);
+
+        app(CashInHandService::class)->apply(Auth::id(), $type, $paymentMode, $amount);
     }
 }

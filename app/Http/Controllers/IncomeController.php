@@ -6,6 +6,7 @@ use App\Models\IncomeCategory;
 use App\Models\Invoice;
 use App\Models\User;
 use App\Services\AuditService;
+use App\Services\CashInHandService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -416,5 +417,7 @@ class IncomeController extends Controller
             'created_at' => now(),
             'updated_at' => now()
         ]);
+
+        app(CashInHandService::class)->apply(Auth::id(), $type, $paymentMode, $amount);
     }
 }

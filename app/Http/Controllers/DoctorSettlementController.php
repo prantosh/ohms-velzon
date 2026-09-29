@@ -8,6 +8,7 @@ use App\Models\DoctorPayable;
 use App\Models\DoctorSettlement;
 use App\Models\DoctorSettlementItem;
 use App\Services\AuditService;
+use App\Services\CashInHandService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -864,6 +865,13 @@ private function generateSettlementNo()
             'updated_at' => now(),
 
         ]);
+
+        app(CashInHandService::class)->apply(
+            Auth::id(),
+            'PAYMENT',
+            $paymentModeMap[$settlement->payment_mode] ?? 'Cash',
+            (float) $item['settlement_amount']
+        );
     }
     /*
 |--------------------------------------------------------------------------
@@ -1021,6 +1029,12 @@ private function generateSettlementNo()
 
             }
 
+            $paymentRowsToCancel = DB::table('daily_transactions')
+                ->where('reference_no', $settlement->settlement_no)
+                ->where('transaction_type', 'PAYMENT')
+                ->where('status', 'ACTIVE')
+                ->get(['created_by', 'payment_mode', 'doctor_payment_amount']);
+
             DB::table('daily_transactions')
                 ->where('reference_no', $settlement->settlement_no)
                 ->where('transaction_type', 'PAYMENT')
@@ -1029,6 +1043,15 @@ private function generateSettlementNo()
                     'updated_by' => Auth::id(),
                     'updated_at' => now(),
                 ]);
+
+            foreach ($paymentRowsToCancel as $row) {
+                app(CashInHandService::class)->reverse(
+                    $row->created_by,
+                    'PAYMENT',
+                    $row->payment_mode,
+                    (float) $row->doctor_payment_amount
+                );
+            }
 
             $settlement->status = 'CANCELLED';
 

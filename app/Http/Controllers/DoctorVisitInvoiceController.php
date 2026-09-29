@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\DB;
 use App\Services\WatiService;
 use App\Services\AuditService;
+use App\Services\CashInHandService;
 use App\Models\DoctorPayable;
 use App\Models\Doctor;
 use App\Models\Patient;
@@ -570,6 +571,13 @@ class DoctorVisitInvoiceController extends Controller
 
         ]);
 
+        app(CashInHandService::class)->apply(
+            Auth::id(),
+            'RECEIVED',
+            $request->payment_mode,
+            (float) $request->paid_amount
+        );
+
         $this->autoSendInvoiceWhatsapp($invoice);
 
         return response()->json([
@@ -791,6 +799,13 @@ class DoctorVisitInvoiceController extends Controller
 
                 'updated_at' => now()
             ]);
+
+            app(CashInHandService::class)->apply(
+                Auth::id(),
+                'REFUND',
+                $invoice->payment_mode,
+                (float) $refundAmount
+            );
 
             $invoice->update([
 

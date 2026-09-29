@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use App\Models\InvoiceCancellationPermission;
 use App\Services\AuditService;
+use App\Services\CashInHandService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -274,5 +275,7 @@ class InvoiceCancellationController extends Controller
             'created_at' => now(),
             'updated_at' => now()
         ]);
+
+        app(CashInHandService::class)->apply(Auth::id(), 'REFUND', $paymentMode ?? 'Cash', $amount);
     }
 }

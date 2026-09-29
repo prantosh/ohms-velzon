@@ -481,12 +481,19 @@ class HomeController extends Controller
                 ->orderByDesc('id')
                 ->limit(10)
                 ->get();
+
+        // A plain column read -- cash_in_hand is a running balance kept up
+        // to date by CashInHandService as transactions happen, not summed
+        // from daily_transactions here (see that service's class doc).
+        $cashInHand = DB::table('users')->where('id', Auth::id())->value('cash_in_hand') ?? 0;
+
         return view(
             'index',
             compact(
                 'todayInvoices',
                 'myInvoices',
                 'myInvoiceSummary',
+                'cashInHand',
                 'todayCollection',
                 'pendingDue',
                 'doctorAppointments',

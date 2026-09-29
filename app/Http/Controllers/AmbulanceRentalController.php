@@ -6,6 +6,7 @@ use App\Models\AmbulanceDestinationMaster;
 use App\Models\Invoice;
 use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
+use App\Services\CashInHandService;
 use App\Services\WatiService;
 use App\Mail\DiscountApprovedMail;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -640,5 +641,7 @@ class AmbulanceRentalController extends Controller
             'created_at' => now(),
             'updated_at' => now()
         ]);
+
+        app(CashInHandService::class)->apply(Auth::id(), $type, $paymentMode, $amount);
     }
 }

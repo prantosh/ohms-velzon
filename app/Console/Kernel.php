@@ -27,6 +27,12 @@ class Kernel extends ConsoleKernel
         $schedule->command('invoices:backup')->weekly()->onSuccess(function () {
             $this->call('invoices:prune');
         });
+
+        // See CashInHandService -- cash_in_hand is a running balance that
+        // only moves via actual transactions during the day; this is the
+        // one place it gets reset, back to 0 for every user at the start of
+        // each new day.
+        $schedule->command('cash-in-hand:reset')->dailyAt('00:01');
     }
 
     /**

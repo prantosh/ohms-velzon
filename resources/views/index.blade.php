@@ -114,6 +114,13 @@
             <i class="ri-file-list-3-line"></i>
         </span>
         <h5>Today's Invoices By Me</h5>
+
+        <div class="ms-auto text-end">
+            <div class="fw-bold text-success">
+                ₹ {{ number_format($cashInHand, 0) }}
+            </div>
+            <small class="text-muted">Cash In Hand</small>
+        </div>
     </div>
 
     <div class="card-body">
