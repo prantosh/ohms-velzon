@@ -177,8 +177,8 @@ table {
 <table class="no-border">
     <tr>
         <td width="70%">
-            <span class="label-blue">Confirmed On :</span>
-            {{ optional($section['confirmed_at'])->format('d-m-Y H:i') }}
+            <span class="label-blue">Test Date :</span>
+            {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
         </td>
     </tr>
 </table>

@@ -195,8 +195,8 @@ table td {
             @endif
         </td>
         <td width="30%">
-            <span class="label-blue">Confirmed On :</span>
-            {{ optional($finding->confirmed_at)->format('d-m-Y H:i') }}
+            <span class="label-blue">Test Date :</span>
+            {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
         </td>
     </tr>
 </table>
