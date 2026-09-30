@@ -30,6 +30,9 @@
                                 <div class="mb-5 text-white-50">
                                     <h1 class="display-5 coming-soon-text">Site is Under Maintenance</h1>
                                     <p class="fs-14">{{ $maintenanceMessage ?? 'Please check back in sometime' }}</p>
+                                    <a href="{{ route('login') }}" class="btn btn-primary mt-2">
+                                        Admin Login
+                                    </a>
                                 </div>
                                 <div class="row justify-content-center mb-5">
                                     <div class="col-xl-4 col-lg-8">

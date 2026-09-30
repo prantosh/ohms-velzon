@@ -52,6 +52,39 @@ class Kernel extends HttpKernel
     ];
 
     /**
+     * Laravel reorders a route's final middleware list to honor this
+     * priority, REGARDLESS of where each middleware came from (route
+     * group vs. controller-level $this->middleware()) -- that reordering
+     * is what silently broke maintenance mode for HomeController's routes
+     * (including '/' itself): its constructor's $this->middleware('auth')
+     * resolves to a class matching AuthenticatesRequests below, which the
+     * *parent* Kernel's default priority list already promotes ahead of
+     * everything else in the 'web' group, including CheckMaintenanceMode
+     * -- so 'auth' redirected guests to /login before maintenance mode
+     * ever got a chance to run, even though CheckMaintenanceMode is
+     * registered earlier in the group's array. Inserting it into this
+     * list, ahead of AuthenticatesRequests, is what actually fixes that
+     * (editing the group's array order alone does not, precisely because
+     * this priority list overrides it for controller-level middleware).
+     *
+     * @var array<int, class-string|string>
+     */
+    protected $middlewarePriority = [
+        \Illuminate\Foundation\Http\Middleware\HandlePrecognitiveRequests::class,
+        \Illuminate\Cookie\Middleware\EncryptCookies::class,
+        \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+        \Illuminate\Session\Middleware\StartSession::class,
+        \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+        \App\Http\Middleware\CheckMaintenanceMode::class,
+        \Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests::class,
+        \Illuminate\Routing\Middleware\ThrottleRequests::class,
+        \Illuminate\Routing\Middleware\ThrottleRequestsWithRedis::class,
+        \Illuminate\Contracts\Session\Middleware\AuthenticatesSessions::class,
+        \Illuminate\Routing\Middleware\SubstituteBindings::class,
+        \Illuminate\Auth\Middleware\Authorize::class,
+    ];
+
+    /**
      * The application's route middleware.
      *
      * These middleware may be assigned to groups or used individually.

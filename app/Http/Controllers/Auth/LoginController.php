@@ -3,8 +3,12 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\LoginLog;
+use App\Models\MaintenanceSetting;
 use App\Providers\RouteServiceProvider;
 use Illuminate\Foundation\Auth\AuthenticatesUsers;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class LoginController extends Controller
 {
@@ -44,5 +48,38 @@ class LoginController extends Controller
     public function username()
     {
         return 'mobile_no';
+    }
+
+    /**
+     * CheckMaintenanceMode exempts the login route itself (so the form and
+     * the POST both still work -- otherwise Admin could never get back in
+     * during maintenance), which means the block has to happen here, right
+     * after credentials are verified, instead. Only then do we know the
+     * authenticating user's role, which is what actually decides it.
+     */
+    protected function authenticated(Request $request, $user)
+    {
+        $setting = MaintenanceSetting::current();
+
+        if (!$setting->is_enabled || $user->role === 'Admin') {
+            return null;
+        }
+
+        // LogSuccessfulLogin (Illuminate\Auth\Events\Login listener) already
+        // wrote a login_logs row for this attempt by this point -- it never
+        // became a real session, so it shouldn't linger as one.
+        LoginLog::where('user_id', $user->id)
+            ->whereNull('logout_time')
+            ->latest('id')
+            ->limit(1)
+            ->delete();
+
+        Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return response()->view('pages-maintenance', [
+            'maintenanceMessage' => $setting->message,
+        ], 503);
     }
 }
