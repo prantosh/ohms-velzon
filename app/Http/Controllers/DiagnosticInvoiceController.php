@@ -2238,8 +2238,12 @@ class DiagnosticInvoiceController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function destroy($id, AuditService $auditService)
+    public function destroy(Request $request, $id, AuditService $auditService)
     {
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
         DB::beginTransaction();
 
         try {
@@ -2255,17 +2259,19 @@ class DiagnosticInvoiceController extends Controller
                 ]);
             }
 
-            $approverId = \App\Support\InvoiceCancellationApproval::resolveApprover($invoice);
+            $check = \App\Support\InvoiceCancellationApproval::check($invoice, Auth::id());
 
-            if ($approverId === false) {
+            if (!$check['allowed']) {
 
                 DB::rollBack();
 
                 return response()->json([
                     'status' => false,
-                    'message' => \App\Support\InvoiceCancellationApproval::NOT_TODAY_MESSAGE
+                    'message' => $check['message']
                 ], 422);
             }
+
+            $approverId = $check['approver_id'];
 
             $oldInvoiceData = $invoice->only($invoice->getFillable());
 
@@ -2279,6 +2285,9 @@ class DiagnosticInvoiceController extends Controller
 
             $invoice->cancellation_approved_by =
                 $approverId;
+
+            $invoice->cancellation_remarks =
+                $request->reason;
 
             $invoice->refund_amount =
                 $invoice->paid_amount;
@@ -2366,6 +2375,14 @@ class DiagnosticInvoiceController extends Controller
                 $oldInvoiceData,
                 $invoice->only($invoice->getFillable()),
                 'Diagnostic invoice cancelled'
+            );
+
+            app(\App\Services\InvoiceCancellationNotifier::class)->notify(
+                $invoice,
+                (float) $invoice->paid_amount,
+                $request->reason,
+                Auth::id(),
+                $approverId
             );
 
             return response()->json([

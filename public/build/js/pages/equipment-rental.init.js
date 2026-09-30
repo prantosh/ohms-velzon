@@ -850,6 +850,14 @@ document.addEventListener('click', async function (e) {
             title: 'Cancel this rental?',
             text: 'The advance collected will be refunded and the stock restored.',
             icon: 'warning',
+            input: 'textarea',
+            inputLabel: 'Reason for cancellation',
+            inputPlaceholder: 'Why is this rental being cancelled?',
+            inputValidator: (value) => {
+                if (!value || !value.trim()) {
+                    return 'Please enter a reason for cancellation.';
+                }
+            },
             showCancelButton: true,
             confirmButtonColor: '#0ab39c',
             cancelButtonColor: '#f06548',
@@ -861,8 +869,10 @@ document.addEventListener('click', async function (e) {
         let response = await fetch(`/equipment-rental/cancel/${id}`, {
             method: 'DELETE',
             headers: {
-                'X-CSRF-TOKEN': csrfToken()
-            }
+                'X-CSRF-TOKEN': csrfToken(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason: confirm.value })
         });
 
         let result = await response.json();

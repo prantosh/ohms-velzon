@@ -1008,6 +1008,18 @@ $(document).on(
 
             icon: "warning",
 
+            input: "textarea",
+
+            inputLabel: "Reason for cancellation",
+
+            inputPlaceholder: "Why is this invoice being cancelled?",
+
+            inputValidator: (value) => {
+                if (!value || !value.trim()) {
+                    return "Please enter a reason for cancellation.";
+                }
+            },
+
             showCancelButton: true,
 
             confirmButtonColor: "#d33",
@@ -1031,7 +1043,9 @@ $(document).on(
 
                         _token:
                             $('meta[name="csrf-token"]')
-                                .attr('content')
+                                .attr('content'),
+
+                        reason: result.value
                     },
 
                     success: function (response) {

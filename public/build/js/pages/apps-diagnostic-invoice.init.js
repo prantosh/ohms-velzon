@@ -2995,6 +2995,14 @@ $(document).on(
                 '<b>Refund Amount:</b> ₹ ' + refundAmount + '<br><br>' +
                 'Refund transaction will be generated.',
             icon: 'warning',
+            input: 'textarea',
+            inputLabel: 'Reason for cancellation',
+            inputPlaceholder: 'Why is this invoice being cancelled?',
+            inputValidator: (value) => {
+                if (!value || !value.trim()) {
+                    return 'Please enter a reason for cancellation.';
+                }
+            },
             showCancelButton: true,
             confirmButtonText: 'Yes, Cancel Invoice',
             cancelButtonText: 'No'
@@ -3014,7 +3022,9 @@ $(document).on(
                     {
                         _token:
                             $('meta[name="csrf-token"]')
-                                .attr('content')
+                                .attr('content'),
+
+                        reason: result.value
                     },
 
                     success:

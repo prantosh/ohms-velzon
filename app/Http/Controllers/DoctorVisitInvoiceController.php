@@ -715,8 +715,12 @@ class DoctorVisitInvoiceController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function destroy($id, AuditService $auditService)
+    public function destroy(Request $request, $id, AuditService $auditService)
     {
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
         DB::beginTransaction();
 
         try {
@@ -731,17 +735,19 @@ class DoctorVisitInvoiceController extends Controller
                 ]);
             }
 
-            $approverId = \App\Support\InvoiceCancellationApproval::resolveApprover($invoice);
+            $check = \App\Support\InvoiceCancellationApproval::check($invoice, Auth::id());
 
-            if ($approverId === false) {
+            if (!$check['allowed']) {
 
                 DB::rollBack();
 
                 return response()->json([
                     'status' => false,
-                    'message' => \App\Support\InvoiceCancellationApproval::NOT_TODAY_MESSAGE
+                    'message' => $check['message']
                 ], 422);
             }
+
+            $approverId = $check['approver_id'];
 
             $oldInvoiceData = $invoice->only($invoice->getFillable());
 
@@ -819,6 +825,8 @@ class DoctorVisitInvoiceController extends Controller
 
                 'cancellation_approved_by' => $approverId,
 
+                'cancellation_remarks' => $request->reason,
+
                 'refund_amount' => $refundAmount,
 
                 'refund_date' => now()->format('Y-m-d'),
@@ -834,6 +842,14 @@ class DoctorVisitInvoiceController extends Controller
                 $oldInvoiceData,
                 $invoice->only($invoice->getFillable()),
                 'Doctor visit invoice cancelled'
+            );
+
+            app(\App\Services\InvoiceCancellationNotifier::class)->notify(
+                $invoice,
+                (float) $refundAmount,
+                $request->reason,
+                Auth::id(),
+                $approverId
             );
 
             return response()->json([

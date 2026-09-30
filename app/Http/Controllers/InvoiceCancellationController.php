@@ -235,58 +235,19 @@ class InvoiceCancellationController extends Controller
                 ], 422);
             }
 
-            $isToday = $invoice->invoice_date
-                ? \Carbon\Carbon::parse($invoice->invoice_date)->isToday()
-                : false;
+            $check = \App\Support\InvoiceCancellationApproval::check($invoice, Auth::id());
 
-            $approverId = null;
+            if (!$check['allowed']) {
 
-            if (!$isToday) {
+                DB::rollBack();
 
-                $permission = InvoiceCancellationPermission::with('requestedByUser')
-                    ->where('invoice_id', $invoice->id)
-                    ->first();
-
-                if (!$permission) {
-
-                    DB::rollBack();
-
-                    return response()->json([
-                        'status' => false,
-                        'message' => 'This invoice was not created today. Submit a cancellation request with your reason first, from this page.'
-                    ], 422);
-                }
-
-                if ($permission->status !== InvoiceCancellationPermission::STATUS_GRANTED) {
-
-                    DB::rollBack();
-
-                    $isOwnRequest = (int) $permission->requested_by === (int) Auth::id();
-
-                    return response()->json([
-                        'status' => false,
-                        'message' => $isOwnRequest
-                            ? 'Your cancellation request for this invoice is still pending Supervisor/Admin approval.'
-                            : 'A cancellation request for this invoice by '
-                                . optional($permission->requestedByUser)->name
-                                . ' is still pending Supervisor/Admin approval.'
-                    ], 422);
-                }
-
-                if ((int) $permission->requested_by !== (int) Auth::id()) {
-
-                    DB::rollBack();
-
-                    return response()->json([
-                        'status' => false,
-                        'message' => 'Cancellation permission for this invoice was granted to '
-                            . optional($permission->requestedByUser)->name
-                            . '. Only they can cancel it.'
-                    ], 422);
-                }
-
-                $approverId = $permission->granted_by;
+                return response()->json([
+                    'status' => false,
+                    'message' => $check['message']
+                ], 422);
             }
+
+            $approverId = $check['approver_id'];
 
             $oldData = $invoice->only($invoice->getFillable());
 
@@ -320,6 +281,14 @@ class InvoiceCancellationController extends Controller
                 $oldData,
                 $invoice->only($invoice->getFillable()),
                 'Invoice cancelled' . ($approverId ? ' using pre-granted supervisor/admin permission' : ' (same-day, no permission required)')
+            );
+
+            app(\App\Services\InvoiceCancellationNotifier::class)->notify(
+                $invoice,
+                (float) $invoice->paid_amount,
+                $request->cancellation_remarks,
+                Auth::id(),
+                $approverId
             );
 
             return response()->json([

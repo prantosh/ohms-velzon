@@ -238,6 +238,14 @@ document.addEventListener('click', async function (e) {
             title: 'Cancel this entry?',
             text: 'The received amount will be refunded in the ledger and the entry marked cancelled.',
             icon: 'warning',
+            input: 'textarea',
+            inputLabel: 'Reason for cancellation',
+            inputPlaceholder: 'Why is this entry being cancelled?',
+            inputValidator: (value) => {
+                if (!value || !value.trim()) {
+                    return 'Please enter a reason for cancellation.';
+                }
+            },
             showCancelButton: true,
             confirmButtonColor: '#0ab39c',
             cancelButtonColor: '#f06548',
@@ -248,7 +256,8 @@ document.addEventListener('click', async function (e) {
 
         let response = await fetch(`/income/cancel/${id}`, {
             method: 'DELETE',
-            headers: { 'X-CSRF-TOKEN': csrfToken() }
+            headers: { 'X-CSRF-TOKEN': csrfToken(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: confirm.value })
         });
 
         let result = await response.json();

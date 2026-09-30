@@ -669,8 +669,12 @@ class EquipmentRentalController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function cancel($id, AuditService $auditService)
+    public function cancel(Request $request, $id, AuditService $auditService)
     {
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
         DB::beginTransaction();
 
         try {
@@ -688,15 +692,19 @@ class EquipmentRentalController extends Controller
                 ], 422);
             }
 
-            if (!\App\Support\InvoiceCancellationApproval::isToday($invoice)) {
+            $check = \App\Support\InvoiceCancellationApproval::check($invoice, Auth::id());
+
+            if (!$check['allowed']) {
 
                 DB::rollBack();
 
                 return response()->json([
                     'status' => false,
-                    'message' => 'Only a rental issued today can be cancelled.'
+                    'message' => $check['message']
                 ], 422);
             }
+
+            $approverId = $check['approver_id'];
 
             $detail = DB::table('invoice_details')
                 ->where('invoice_no', $invoice->invoice_no)
@@ -708,7 +716,9 @@ class EquipmentRentalController extends Controller
                 'status' => 'Cancelled',
                 'cancelled' => 'Y',
                 'cancelled_by' => Auth::id(),
-                'cancelled_at' => now()
+                'cancelled_at' => now(),
+                'cancellation_approved_by' => $approverId,
+                'cancellation_remarks' => $request->reason,
             ]);
 
             $auditService->logUpdate(
@@ -739,6 +749,14 @@ class EquipmentRentalController extends Controller
             }
 
             DB::commit();
+
+            app(\App\Services\InvoiceCancellationNotifier::class)->notify(
+                $invoice,
+                (float) $invoice->paid_amount,
+                $request->reason,
+                Auth::id(),
+                $approverId
+            );
 
             return response()->json([
                 'status' => true,

@@ -6,10 +6,24 @@ use App\Models\Invoice;
 use App\Models\InvoiceCancellationPermission;
 use Carbon\Carbon;
 
+/**
+ * Single shared rule for every "Cancel"/"Delete" button on any invoice type
+ * in the app: an invoice created today can be cancelled by anyone; an older
+ * one needs a Supervisor/Admin to have granted a cancellation request for
+ * it first (see InvoiceCancellationController::requestPermission()), and
+ * even then only the user who originally requested it may actually cancel.
+ *
+ * Every cancellation entry point (Invoice Cancellation page, and the
+ * per-invoice-type Delete/Cancel buttons on Diagnostic, Doctor Visit,
+ * Ambulance, Equipment, and Income) must call check() rather than
+ * re-implementing this -- this class used to only expose resolveApprover(),
+ * which several of those call sites used in a way that let a merely
+ * PENDING (not yet granted) request through, and none of them checked that
+ * the canceller was actually the requester. That drift is exactly what
+ * check() exists to prevent from happening again.
+ */
 class InvoiceCancellationApproval
 {
-    public const NOT_TODAY_MESSAGE = 'This invoice was not created today. A Supervisor or Admin must first grant cancellation permission for it via the Cancellation Permission dashboard.';
-
     public static function isToday(Invoice $invoice): bool
     {
         return $invoice->invoice_date
@@ -18,19 +32,52 @@ class InvoiceCancellationApproval
     }
 
     /**
-     * Resolves who approved this cancellation.
-     * Returns null when the invoice was created today (no approval needed).
-     * Returns the approving user's id when a Supervisor/Admin has pre-granted permission.
-     * Returns false when the invoice is not from today and no permission has been granted.
+     * @return array{allowed: bool, approver_id: ?int, message: ?string}
      */
-    public static function resolveApprover(Invoice $invoice): int|false|null
+    public static function check(Invoice $invoice, int $currentUserId): array
     {
         if (self::isToday($invoice)) {
-            return null;
+            return ['allowed' => true, 'approver_id' => null, 'message' => null];
         }
 
-        $permission = InvoiceCancellationPermission::where('invoice_id', $invoice->id)->first();
+        $permission = InvoiceCancellationPermission::with('requestedByUser')
+            ->where('invoice_id', $invoice->id)
+            ->first();
 
-        return $permission ? $permission->granted_by : false;
+        if (!$permission) {
+            return [
+                'allowed' => false,
+                'approver_id' => null,
+                'message' => 'This invoice was not created today. Submit a cancellation request with your reason first, from the Invoice Cancellation page.',
+            ];
+        }
+
+        if ($permission->status !== InvoiceCancellationPermission::STATUS_GRANTED) {
+
+            $isOwnRequest = (int) $permission->requested_by === $currentUserId;
+
+            return [
+                'allowed' => false,
+                'approver_id' => null,
+                'message' => $isOwnRequest
+                    ? 'Your cancellation request for this invoice is still pending Supervisor/Admin approval.'
+                    : 'A cancellation request for this invoice by '
+                        . optional($permission->requestedByUser)->name
+                        . ' is still pending Supervisor/Admin approval.',
+            ];
+        }
+
+        if ((int) $permission->requested_by !== $currentUserId) {
+
+            return [
+                'allowed' => false,
+                'approver_id' => null,
+                'message' => 'Cancellation permission for this invoice was granted to '
+                    . optional($permission->requestedByUser)->name
+                    . '. Only they can cancel it.',
+            ];
+        }
+
+        return ['allowed' => true, 'approver_id' => $permission->granted_by, 'message' => null];
     }
 }

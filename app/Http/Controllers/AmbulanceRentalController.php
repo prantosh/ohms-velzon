@@ -336,8 +336,12 @@ class AmbulanceRentalController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function cancel($id, AuditService $auditService)
+    public function cancel(Request $request, $id, AuditService $auditService)
     {
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
         DB::beginTransaction();
 
         try {
@@ -355,17 +359,19 @@ class AmbulanceRentalController extends Controller
                 ], 422);
             }
 
-            $approverId = \App\Support\InvoiceCancellationApproval::resolveApprover($invoice);
+            $check = \App\Support\InvoiceCancellationApproval::check($invoice, Auth::id());
 
-            if ($approverId === false) {
+            if (!$check['allowed']) {
 
                 DB::rollBack();
 
                 return response()->json([
                     'status' => false,
-                    'message' => \App\Support\InvoiceCancellationApproval::NOT_TODAY_MESSAGE
+                    'message' => $check['message']
                 ], 422);
             }
+
+            $approverId = $check['approver_id'];
 
             $oldData = $invoice->only($invoice->getFillable());
 
@@ -374,7 +380,8 @@ class AmbulanceRentalController extends Controller
                 'cancelled' => 'Y',
                 'cancelled_by' => Auth::id(),
                 'cancelled_at' => now(),
-                'cancellation_approved_by' => $approverId
+                'cancellation_approved_by' => $approverId,
+                'cancellation_remarks' => $request->reason,
             ]);
 
             if ($invoice->paid_amount > 0) {
@@ -398,6 +405,14 @@ class AmbulanceRentalController extends Controller
                 $oldData,
                 $invoice->only($invoice->getFillable()),
                 'Ambulance rental invoice cancelled'
+            );
+
+            app(\App\Services\InvoiceCancellationNotifier::class)->notify(
+                $invoice,
+                (float) $invoice->paid_amount,
+                $request->reason,
+                Auth::id(),
+                $approverId
             );
 
             return response()->json([
