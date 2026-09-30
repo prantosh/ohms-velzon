@@ -482,9 +482,15 @@ class HomeController extends Controller
                 ->limit(10)
                 ->get();
 
-        // A plain column read -- cash_in_hand is a running balance kept up
-        // to date by CashInHandService as transactions happen, not summed
-        // from daily_transactions here (see that service's class doc).
+        // ensureFreshForToday() resets a stale (previous-day) balance to 0
+        // right here if nothing has touched it yet today -- this is what
+        // makes the reset correct even if the scheduled cash-in-hand:reset
+        // command never actually fires (see that service's class doc).
+        // Still just a plain column read after that -- cash_in_hand itself
+        // is a running balance kept up to date by CashInHandService as
+        // transactions happen, never summed from daily_transactions here.
+        app(\App\Services\CashInHandService::class)->ensureFreshForToday(Auth::id());
+
         $cashInHand = DB::table('users')->where('id', Auth::id())->value('cash_in_hand') ?? 0;
 
         return view(
