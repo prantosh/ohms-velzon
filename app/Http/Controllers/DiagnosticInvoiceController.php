@@ -500,6 +500,28 @@ class DiagnosticInvoiceController extends Controller
                             number_format($doctorPayable, 2) . '.'
                     ], 422);
                 }
+
+                // Mirrors the client-side check in apps-diagnostic-invoice.init.js
+                // (doctor selection is mandatory whenever the doctor dropdown got
+                // populated, i.e. a payment rule exists) -- but re-derived here
+                // from doctor_test_payment_masters directly rather than trusting
+                // the submitted doctor_id/payment_value, since a request that
+                // skips the browser entirely could otherwise leave a
+                // doctor-payable line with no doctor attributed to it at all.
+                $hasDoctorRule = !$isWaived && DB::table('doctor_test_payment_masters')
+                    ->where('item_code_sub', $test['item_code_sub'] ?? null)
+                    ->where('status', 'A')
+                    ->exists();
+
+                if ($hasDoctorRule && empty($test['doctor_id'])) {
+
+                    DB::rollBack();
+
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Select a Doctor for "' . ($test['test_name'] ?? 'a test') . '" -- it has a doctor payment rule configured.'
+                    ], 422);
+                }
             }
 
             $firstIsPathology = null;
