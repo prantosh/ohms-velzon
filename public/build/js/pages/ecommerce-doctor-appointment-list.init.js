@@ -92,9 +92,13 @@ function loadDoctorsBySpecialisation() {
                                             ${doctor.schedule_summary || ''}
                                         </p>
 
-                                        <p class="mb-3">
+                                        <p class="mb-1">
                                             Experience :
                                             ${doctor.experience_years ?? 0} Years
+                                        </p>
+
+                                        <p class="mb-3 fw-semibold text-success">
+                                            Consultation Fee : &#8377;${Number(doctor.consultation_fee_total ?? 0).toFixed(2)}
                                         </p>
 
                                         <button
