@@ -288,6 +288,18 @@ $('#appointment_day').on('change', function () {
 
 /*
 |--------------------------------------------------------------------------
+| Mobile Number Validation -- digits only, max 10 (same restriction used on
+| the public appointment booking page and diagnostic invoice patient search)
+|--------------------------------------------------------------------------
+*/
+
+$('#patient_mobile_no').on('input', function () {
+
+    this.value = this.value.replace(/\D/g, '').substring(0, 10);
+});
+
+/*
+|--------------------------------------------------------------------------
 | Patient Mobile Search
 |--------------------------------------------------------------------------
 */
