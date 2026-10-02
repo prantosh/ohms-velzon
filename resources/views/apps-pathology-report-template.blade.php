@@ -22,6 +22,15 @@
     border-radius: 4px;
     padding: 8px;
 }
+
+/* CKEditor's table row/column toolbar renders as a balloon panel appended
+   outside the Bootstrap modal (to a shared ck-body container on <body>),
+   with a default z-index of 1000 -- lower than Bootstrap 5's own
+   .modal (1055), so the modal painted on top of it, making the balloon
+   present but invisible and unclickable. */
+.ck-balloon-panel {
+    z-index: 10000 !important;
+}
 </style>
 
 @endsection

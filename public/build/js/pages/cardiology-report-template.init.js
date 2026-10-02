@@ -97,6 +97,19 @@ function bindTabIndent(editor) {
     return editor;
 }
 
+// Bootstrap 5's modal focus-trap snaps focus back inside the modal the
+// instant it moves anywhere else -- including into CKEditor's own table
+// row/column dropdown, which lives OUTSIDE the modal (appended to a shared
+// ck-body container on <body>). That stolen focus reads to CKEditor as
+// "selection left the table", collapsing the whole contextual toolbar
+// before its dropdown can even open. Pre-creating the modal instance with
+// focus:false (before the data-bs-toggle button creates its own default
+// one) disables that trap; the button then reuses this instance as-is.
+bootstrap.Modal.getOrCreateInstance(
+    document.getElementById('showModal'),
+    { focus: false }
+);
+
 let cardioEditors = {};
 
 function cardioFieldKeys() {
