@@ -234,6 +234,22 @@ Doctor Visit Invoice
                                >
 
                     </div>
+
+                    <div class="col-md-12 mb-3">
+
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="btnAddMobileDV">
+                            <i class="ri-phone-line"></i> Add Mobile
+                        </button>
+
+                        <button type="button" class="btn btn-sm btn-outline-warning ms-1" id="btnChangePrimaryMobileDV">
+                            <i class="ri-smartphone-line"></i> Change Primary Mobile
+                        </button>
+
+                        <button type="button" class="btn btn-sm btn-outline-danger ms-1" id="btnDeactivatePatientDV">
+                            <i class="ri-user-unfollow-line"></i> Deactivate Patient
+                        </button>
+
+                    </div>
                         <div class="col-md-3 mb-3">
                         <label class="form-label">
                             Age <span class="text-danger">*</span>

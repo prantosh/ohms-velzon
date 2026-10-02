@@ -1274,6 +1274,205 @@ $("#addInvoiceBtn").click(function () {
 
 /*
 |--------------------------------------------------------------------------
+| ADD / CHANGE PRIMARY / DEACTIVATE MOBILE -- acts on whichever patient is
+| currently loaded into the invoice modal (#patient_id), same endpoints and
+| flow as the Diagnostic Invoice / Patient History patient search.
+|--------------------------------------------------------------------------
+*/
+
+$(document).on("click", "#btnAddMobileDV", async function () {
+
+    let patientId = $("#patient_id").val();
+
+    if (!patientId) {
+        return;
+    }
+
+    // Bootstrap's modal focus-trap fights SweetAlert2's input for focus --
+    // every click into the Swal input gets immediately refocused back into
+    // #invoiceModal, so typing never registers. Hiding the Bootstrap modal
+    // while any Swal is open (and reshowing it only once EVERY Swal in this
+    // flow -- including the result confirmation below -- has fully closed)
+    // avoids the conflict. Reshowing it earlier, while the result Swal is
+    // still about to open, left both overlay systems fighting over the
+    // page's scroll-lock state and froze the form underneath.
+    // transitioningToConfirm tells the "hidden.bs.modal" handler below to
+    // skip its usual form-reset -- this hide is temporary, not a real close
+    // (same flag used when transitioning to the Confirm Review offcanvas).
+    transitioningToConfirm = true;
+
+    $("#invoiceModal").modal("hide");
+
+    const result = await Swal.fire({
+        title: "Add Mobile Number",
+        html: `<input id="newMobileDV" class="swal2-input" placeholder="Enter mobile number" maxlength="15">`,
+        icon: "info",
+        showCancelButton: true,
+        confirmButtonText: "Save",
+        cancelButtonText: "Cancel",
+        preConfirm: function () {
+            const mobile = document.getElementById("newMobileDV").value;
+            if (!mobile) {
+                Swal.showValidationMessage("Mobile number is required");
+                return false;
+            }
+            return mobile;
+        }
+    });
+
+    if (!result.isConfirmed) {
+        $("#invoiceModal").modal("show");
+        return;
+    }
+
+    try {
+
+        const response = await $.post(
+            "/patient/add-mobile",
+            {
+                _token: $('meta[name="csrf-token"]').attr("content"),
+                patient_id: patientId,
+                mobile_no: result.value
+            }
+        );
+
+        await Swal.fire({
+            icon: response.status ? "success" : "error",
+            title: response.status ? "Success" : "Error",
+            text: response.message
+        });
+
+    } catch (xhr) {
+
+        await Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: xhr.responseJSON?.message ?? "Could not add the mobile number."
+        });
+    }
+
+    $("#invoiceModal").modal("show");
+});
+
+$(document).on("click", "#btnChangePrimaryMobileDV", async function () {
+
+    let patientId = $("#patient_id").val();
+
+    if (!patientId) {
+        return;
+    }
+
+    // See #btnAddMobileDV above for why the Bootstrap modal is hidden here
+    // (and not reshown until every Swal in this flow has fully closed), and
+    // why transitioningToConfirm must be set first.
+    transitioningToConfirm = true;
+
+    $("#invoiceModal").modal("hide");
+
+    const result = await Swal.fire({
+        title: "Change Primary Mobile Number",
+        html: `<input id="newPrimaryMobileDV" class="swal2-input" placeholder="Enter new primary mobile number" maxlength="10">`,
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Change",
+        cancelButtonText: "Cancel",
+        preConfirm: function () {
+            const mobile = document.getElementById("newPrimaryMobileDV").value.trim();
+            if (!/^[1-9][0-9]{9}$/.test(mobile)) {
+                Swal.showValidationMessage("Enter a valid 10 digit mobile number (cannot start with 0)");
+                return false;
+            }
+            return mobile;
+        }
+    });
+
+    if (!result.isConfirmed) {
+        $("#invoiceModal").modal("show");
+        return;
+    }
+
+    try {
+
+        const response = await $.post(
+            "/patient/change-primary-mobile",
+            {
+                _token: $('meta[name="csrf-token"]').attr("content"),
+                patient_id: patientId,
+                mobile_no: result.value
+            }
+        );
+
+        await Swal.fire({
+            icon: response.status ? "success" : "error",
+            title: response.status ? "Success" : "Error",
+            text: response.message
+        });
+
+    } catch (xhr) {
+
+        await Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: xhr.responseJSON?.message ?? "Could not change the primary mobile number."
+        });
+    }
+
+    $("#invoiceModal").modal("show");
+});
+
+$(document).on("click", "#btnDeactivatePatientDV", async function () {
+
+    let patientId = $("#patient_id").val();
+
+    if (!patientId) {
+        return;
+    }
+
+    const confirmResult = await Swal.fire({
+        title: "Deactivate Patient?",
+        icon: "warning",
+        showCancelButton: true
+    });
+
+    if (!confirmResult.isConfirmed) {
+        return;
+    }
+
+    try {
+
+        const response = await $.post(
+            "/patient/deactivate",
+            {
+                _token: $('meta[name="csrf-token"]').attr("content"),
+                patient_id: patientId
+            }
+        );
+
+        // Wait for the success alert to actually close before touching the
+        // Bootstrap modal -- hiding it while this Swal is still open/closing
+        // left both overlay systems fighting over the page's scroll-lock
+        // state and froze the form underneath (same fix as
+        // #btnAddMobileDV/#btnChangePrimaryMobileDV above).
+        await Swal.fire("Success", response.message, "success");
+
+    } catch (xhr) {
+
+        await Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: xhr.responseJSON?.message ?? "Could not deactivate the patient."
+        });
+
+        return;
+    }
+
+    $("#invoiceModal").modal("hide");
+
+    loadInvoices();
+});
+
+/*
+|--------------------------------------------------------------------------
 | PAGE LOAD
 |--------------------------------------------------------------------------
 */

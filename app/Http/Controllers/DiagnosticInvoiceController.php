@@ -1602,6 +1602,11 @@ class DiagnosticInvoiceController extends Controller
 
     public function changePrimaryMobile(Request $request)
     {
+        $request->validate([
+            'patient_id' => 'required|string',
+            'mobile_no' => 'required|regex:/^[1-9][0-9]{9}$/',
+        ]);
+
         DB::beginTransaction();
 
         try {
@@ -1618,6 +1623,34 @@ class DiagnosticInvoiceController extends Controller
                 throw new \Exception(
                     'Patient not found'
                 );
+            }
+
+            // Unlike addMobileNumber(), this previously never checked
+            // whether the new number already belongs to a DIFFERENT
+            // patient -- neither patients.mobile_no nor
+            // patient_mobile_numbers.mobile_no is unique at the DB level,
+            // so without this check it would silently hand one patient's
+            // primary number to two different patient records. Excludes
+            // this same patient's own rows so re-promoting one of their
+            // existing secondary numbers still works.
+            if ($request->mobile_no !== $patient->mobile_no) {
+
+                $usedByAnotherPatient =
+                    DB::table('patients')
+                        ->where('mobile_no', $request->mobile_no)
+                        ->where('patient_id', '!=', $patient->patient_id)
+                        ->exists()
+                    || DB::table('patient_mobile_numbers')
+                        ->where('mobile_no', $request->mobile_no)
+                        ->where('patient_id', '!=', $patient->patient_id)
+                        ->exists();
+
+                if ($usedByAnotherPatient) {
+
+                    throw new \Exception(
+                        'This mobile number is already assigned to a different patient.'
+                    );
+                }
             }
 
             DB::table('patient_mobile_numbers')
@@ -1680,7 +1713,8 @@ class DiagnosticInvoiceController extends Controller
             DB::commit();
 
             return response()->json([
-                'status' => true
+                'status' => true,
+                'message' => 'Primary mobile number updated.'
             ]);
 
         } catch (\Exception $e) {

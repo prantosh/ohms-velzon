@@ -3173,6 +3173,17 @@ $(document).on('click', '#searchPatient', function () {
 
                                 </label>
 
+                                <label class="me-3">
+
+                                    <input
+                                        type="checkbox"
+                                        class="form-check-input changePrimaryMobile"
+                                        data-patient-id="${row.patient_id}">
+
+                                    Change Primary Mobile
+
+                                </label>
+
                                 <label>
 
                                     <input
@@ -3180,7 +3191,7 @@ $(document).on('click', '#searchPatient', function () {
                                         class="form-check-input deactivatePatient"
                                         data-patient-id="${row.patient_id}">
 
-                                    Deactivate 
+                                    Deactivate
 
                                 </label>
 
@@ -3403,7 +3414,7 @@ $(document).on(
 
 $(document).on(
     'click',
-    '.addMobile, .deactivatePatient',
+    '.addMobile, .changePrimaryMobile, .deactivatePatient',
     function (e) {
 
         e.stopPropagation();
@@ -3507,6 +3518,119 @@ $(document).on(
                 );
             }
         );
+    }
+);
+
+$(document).on(
+    'change',
+    '.changePrimaryMobile',
+    async function () {
+
+        let patientId =
+            $(this).data('patient-id');
+
+        let checkbox =
+            $(this);
+
+        const result = await Swal.fire({
+
+            title: 'Change Primary Mobile Number',
+
+            html: `
+                <input
+                    id="newPrimaryMobile"
+                    class="swal2-input"
+                    placeholder="Enter new primary mobile number"
+                    maxlength="10">
+            `,
+
+            icon: 'warning',
+
+            showCancelButton: true,
+
+            confirmButtonText: 'Change',
+
+            cancelButtonText: 'Cancel',
+
+            preConfirm: () => {
+
+                const mobile =
+                    document.getElementById('newPrimaryMobile').value.trim();
+
+                if (!/^[1-9][0-9]{9}$/.test(mobile)) {
+
+                    Swal.showValidationMessage(
+                        'Enter a valid 10 digit mobile number (cannot start with 0)'
+                    );
+
+                    return false;
+                }
+
+                return mobile;
+            }
+        });
+
+        if (!result.isConfirmed) {
+
+            checkbox.prop(
+                'checked',
+                false
+            );
+
+            return;
+        }
+
+        $.post(
+            '/patient/change-primary-mobile',
+            {
+                _token:
+                    $('meta[name="csrf-token"]').attr('content'),
+
+                patient_id:
+                    patientId,
+
+                mobile_no:
+                    result.value
+            },
+
+            function (response) {
+
+                Swal.fire({
+
+                    icon:
+                        response.status
+                            ? 'success'
+                            : 'error',
+
+                    title:
+                        response.status
+                            ? 'Success'
+                            : 'Error',
+
+                    text:
+                        response.message
+                });
+
+                checkbox.prop(
+                    'checked',
+                    false
+                );
+            }
+
+        ).fail(function (xhr) {
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: xhr.responseJSON?.message
+                    ?? 'Could not change the primary mobile number.'
+            });
+
+            checkbox.prop(
+                'checked',
+                false
+            );
+        });
     }
 );
 

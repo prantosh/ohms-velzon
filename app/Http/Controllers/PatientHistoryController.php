@@ -46,7 +46,17 @@ class PatientHistoryController extends Controller
 
         $mobile = trim($request->mobile_no);
 
+        // A patient can have multiple linked numbers (patient_mobile_numbers)
+        // besides their current primary (patients.mobile_no) -- e.g. after a
+        // Change Primary Mobile, the old number stays searchable as an alias.
+        // Same two-way match as DiagnosticInvoiceController::searchPatient().
         $patients = Patient::where('mobile_no', $mobile)
+            ->orWhereIn(
+                'patient_id',
+                DB::table('patient_mobile_numbers')
+                    ->where('mobile_no', $mobile)
+                    ->pluck('patient_id')
+            )
             ->orderBy('patient_name')
             ->get(['id', 'patient_id', 'patient_name', 'age', 'gender', 'status']);
 

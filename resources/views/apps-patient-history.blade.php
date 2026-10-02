@@ -137,6 +137,15 @@
                             <button type="button" class="btn btn-sm btn-outline-primary ms-2" id="btnEditPatient" style="display:none;">
                                 <i class="ri-edit-line"></i> Edit
                             </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="btnAddMobile" style="display:none;">
+                                <i class="ri-phone-line"></i> Add Mobile
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-warning ms-1" id="btnChangePrimaryMobile" style="display:none;">
+                                <i class="ri-smartphone-line"></i> Change Primary Mobile
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger ms-1" id="btnDeactivatePatient" style="display:none;">
+                                <i class="ri-user-unfollow-line"></i> Deactivate
+                            </button>
                         </h5>
                         <div class="text-muted">
                             <span id="info-patient-id"></span>

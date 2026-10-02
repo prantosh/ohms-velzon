@@ -130,6 +130,9 @@ function selectPatient(mobile) {
     document.querySelector('#info-mobile').textContent = currentPatient.mobile_no;
 
     document.querySelector('#btnEditPatient').style.display = currentPatient.id ? 'inline-block' : 'none';
+    document.querySelector('#btnAddMobile').style.display = currentPatient.patient_id ? 'inline-block' : 'none';
+    document.querySelector('#btnChangePrimaryMobile').style.display = currentPatient.patient_id ? 'inline-block' : 'none';
+    document.querySelector('#btnDeactivatePatient').style.display = currentPatient.patient_id ? 'inline-block' : 'none';
 
     document.querySelector('#historyWrap').style.display = 'block';
 
@@ -233,6 +236,142 @@ document.getElementById('btnEditPatient').addEventListener('click', function () 
             })
             .catch(function () {
                 Swal.fire({ icon: 'error', title: 'Something went wrong. Please try again.' });
+            });
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| ADD / CHANGE PRIMARY / DEACTIVATE MOBILE -- same endpoints and flow as
+| the Diagnostic Invoice patient search (see apps-diagnostic-invoice.init.js)
+|--------------------------------------------------------------------------
+*/
+
+document.getElementById('btnAddMobile').addEventListener('click', async function () {
+
+    if (!currentPatient || !currentPatient.patient_id) return;
+
+    const result = await Swal.fire({
+        title: 'Add Mobile Number',
+        html: `<input id="newMobile" class="swal2-input" placeholder="Enter mobile number" maxlength="15">`,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'Save',
+        cancelButtonText: 'Cancel',
+        preConfirm: function () {
+            const mobile = document.getElementById('newMobile').value;
+            if (!mobile) {
+                Swal.showValidationMessage('Mobile number is required');
+                return false;
+            }
+            return mobile;
+        }
+    });
+
+    if (!result.isConfirmed) return;
+
+    fetch('/patient/add-mobile', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken(),
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({ patient_id: currentPatient.patient_id, mobile_no: result.value })
+    })
+        .then(response => response.json())
+        .then(function (response) {
+            Swal.fire({
+                icon: response.status ? 'success' : 'error',
+                title: response.status ? 'Success' : 'Error',
+                text: response.message
+            });
+        })
+        .catch(function () {
+            Swal.fire({ icon: 'error', title: 'Error', text: 'Could not add the mobile number.' });
+        });
+});
+
+document.getElementById('btnChangePrimaryMobile').addEventListener('click', async function () {
+
+    if (!currentPatient || !currentPatient.patient_id) return;
+
+    const result = await Swal.fire({
+        title: 'Change Primary Mobile Number',
+        html: `<input id="newPrimaryMobile" class="swal2-input" placeholder="Enter new primary mobile number" maxlength="10">`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Change',
+        cancelButtonText: 'Cancel',
+        preConfirm: function () {
+            const mobile = document.getElementById('newPrimaryMobile').value.trim();
+            if (!/^[1-9][0-9]{9}$/.test(mobile)) {
+                Swal.showValidationMessage('Enter a valid 10 digit mobile number (cannot start with 0)');
+                return false;
+            }
+            return mobile;
+        }
+    });
+
+    if (!result.isConfirmed) return;
+
+    fetch('/patient/change-primary-mobile', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken(),
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({ patient_id: currentPatient.patient_id, mobile_no: result.value })
+    })
+        .then(response => response.json())
+        .then(function (response) {
+            Swal.fire({
+                icon: response.status ? 'success' : 'error',
+                title: response.status ? 'Success' : 'Error',
+                text: response.message
+            });
+        })
+        .catch(function () {
+            Swal.fire({ icon: 'error', title: 'Error', text: 'Could not change the primary mobile number.' });
+        });
+});
+
+document.getElementById('btnDeactivatePatient').addEventListener('click', function () {
+
+    if (!currentPatient || !currentPatient.patient_id) return;
+
+    Swal.fire({
+        title: 'Deactivate Patient?',
+        icon: 'warning',
+        showCancelButton: true
+    }).then(function (result) {
+
+        if (!result.isConfirmed) return;
+
+        fetch('/patient/deactivate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken(),
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ patient_id: currentPatient.patient_id })
+        })
+            .then(response => response.json())
+            .then(function (response) {
+
+                Swal.fire('Success', response.message, 'success');
+
+                // The patient is no longer active -- drop back to a clean
+                // search state instead of leaving a now-stale result shown.
+                currentPatient = null;
+                document.querySelector('#historyWrap').style.display = 'none';
+                document.querySelector('#patientSelectWrap').style.display = 'none';
+                document.querySelector('#mobileInput').value = '';
+            })
+            .catch(function () {
+                Swal.fire({ icon: 'error', title: 'Error', text: 'Could not deactivate the patient.' });
             });
     });
 });
