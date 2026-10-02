@@ -86,17 +86,6 @@ table {
     margin: 0;
 }
 
-.signature-section {
-    margin-top: 50px;
-}
-
-.signature {
-    width: 45%;
-    text-align: center;
-    display: inline-block;
-    float: right;
-}
-
 /* Matches CKEditor's own editing-view sizing exactly (ckeditor5-content.css
    --ck-content-font-size-*), so the printed report matches what was typed. */
 .text-tiny { font-size: 0.7em; }
@@ -139,14 +128,6 @@ table {
 
 <div class="report-body">
     {!! $finding->content !!}
-</div>
-
-<div class="signature-section">
-    <div class="signature">
-        ______________________
-        <br>
-        Doctor's Signature
-    </div>
 </div>
 
 </body>
