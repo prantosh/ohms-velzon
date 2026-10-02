@@ -218,27 +218,27 @@ $isShort = ($paperSize ?? 'STANDARD') === 'SHORT';
 <table>
 
 <tr>
+    <td width="25%" class="label-blue">Patient Name</td>
+    <td><strong>{{ $invoice->patient_name }}</strong></td>
+
     <td width="25%" class="label-blue">Invoice No</td>
     <td>{{ $invoice->invoice_no }}</td>
-
-    <td width="25%" class="label-blue">Invoice Date</td>
-    <td>{{ fmtDate($invoice->invoice_date) }}</td>
 </tr>
 
 <tr>
-    <td class="label-blue">Patient ID</td>
-    <td>{{ $invoice->patient_id }}</td>
+    <td class="label-blue">Gender</td>
+    <td>{{ $invoice->patient_gender }}</td>
 
-    <td class="label-blue">Patient Name</td>
-    <td>{{ $invoice->patient_name }}</td>
+    <td class="label-blue">Invoice Date</td>
+    <td>{{ fmtDate($invoice->invoice_date) }}</td>
 </tr>
 
 <tr>
     <td class="label-blue">Age</td>
     <td>{{ $invoice->patient_age }}</td>
 
-    <td class="label-blue">Gender</td>
-    <td>{{ $invoice->patient_gender }}</td>
+    <td class="label-blue">Patient ID</td>
+    <td>{{ $invoice->patient_id }}</td>
 </tr>
 
 <tr>
