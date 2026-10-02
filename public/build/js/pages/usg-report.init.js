@@ -120,6 +120,19 @@ function bindTabIndent(editor) {
     return editor;
 }
 
+// Bootstrap 5's modal focus-trap snaps focus back inside the modal the
+// instant it moves anywhere else -- including into CKEditor's own table
+// row/column dropdown, which lives OUTSIDE the modal (appended to a shared
+// ck-body container on <body>). That stolen focus reads to CKEditor as
+// "selection left the table", collapsing the whole contextual toolbar
+// before its dropdown can even open. Pre-creating the modal instance with
+// focus:false (before the data-bs-toggle button creates its own default
+// one) disables that trap; the button then reuses this instance as-is.
+bootstrap.Modal.getOrCreateInstance(
+    document.getElementById('usgReportModal'),
+    { focus: false }
+);
+
 async function createCardEditors(root) {
 
     const fields = {
@@ -505,6 +518,35 @@ document.addEventListener('click', function (e) {
 */
 
 document.addEventListener('click', async function (e) {
+
+    let clearSectionBtn = e.target.closest('.study-clear-section');
+    if (clearSectionBtn) {
+
+        let root = clearSectionBtn.closest('.usg-study-card');
+        let field = clearSectionBtn.dataset.field;
+
+        if (!root.usgEditors || !root.usgEditors[field]) {
+            return;
+        }
+
+        let fieldLabel = clearSectionBtn.closest('.mb-3').querySelector('label').textContent.trim();
+
+        let confirmResult = await Swal.fire({
+            icon: 'warning',
+            title: `Delete ${fieldLabel}?`,
+            text: `This clears the ${fieldLabel} section for this study. It won't print on the report if left empty.`,
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Delete'
+        });
+
+        if (!confirmResult.isConfirmed) {
+            return;
+        }
+
+        root.usgEditors[field].setData('');
+
+        return;
+    }
 
     let saveBtn = e.target.closest('.study-save-btn');
     if (saveBtn) {

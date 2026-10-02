@@ -26,6 +26,16 @@
     opacity: 1;
 }
 
+/* CKEditor's table row/column toolbar renders as a balloon panel appended
+   outside the Bootstrap modal (to a shared ck-body container on <body>),
+   with a default z-index of 1000 -- lower than Bootstrap 5's own
+   .modal (1055), so the modal painted on top of it, making the balloon
+   present but invisible and unclickable (same fix as the USG Report
+   Template master). */
+.ck-balloon-panel {
+    z-index: 10000 !important;
+}
+
 </style>
 
 @endsection
@@ -273,17 +283,32 @@
             </div>
 
             <div class="mb-3">
-                <label class="form-label fw-semibold">Clinical History</label>
+                <div class="d-flex justify-content-between align-items-center">
+                    <label class="form-label fw-semibold mb-0">Clinical History</label>
+                    <button type="button" class="btn btn-sm btn-outline-danger study-clear-section" data-field="clinical_history" title="Delete this section's content">
+                        <i class="ri-delete-bin-line"></i>
+                    </button>
+                </div>
                 <textarea class="form-control study-clinical-history"></textarea>
             </div>
 
             <div class="mb-3">
-                <label class="form-label fw-semibold">Findings</label>
+                <div class="d-flex justify-content-between align-items-center">
+                    <label class="form-label fw-semibold mb-0">Findings</label>
+                    <button type="button" class="btn btn-sm btn-outline-danger study-clear-section" data-field="findings" title="Delete this section's content">
+                        <i class="ri-delete-bin-line"></i>
+                    </button>
+                </div>
                 <textarea class="form-control study-findings"></textarea>
             </div>
 
             <div class="mb-3">
-                <label class="form-label fw-semibold">Impression</label>
+                <div class="d-flex justify-content-between align-items-center">
+                    <label class="form-label fw-semibold mb-0">Impression</label>
+                    <button type="button" class="btn btn-sm btn-outline-danger study-clear-section" data-field="impression" title="Delete this section's content">
+                        <i class="ri-delete-bin-line"></i>
+                    </button>
+                </div>
                 <textarea class="form-control study-impression"></textarea>
             </div>
 
