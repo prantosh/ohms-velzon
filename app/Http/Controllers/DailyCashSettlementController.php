@@ -123,6 +123,11 @@ class DailyCashSettlementController extends Controller
                 'invoices.invoice_no'
             )
             ->where('invoices.due_amount', 0)
+            // A cancelled invoice's doctor payment never happened in
+            // substance, whatever its doctor_payables row still says --
+            // cancellation doesn't currently update that row, so this must
+            // be checked on the invoice itself.
+            ->where('invoices.cancelled', '!=', 'Y')
             ->where('doctor_payables.payment_status', 'PAID')
             ->whereDate('doctor_payables.last_settlement_date', $date);
 

@@ -110,6 +110,12 @@ class DoctorSettlementController extends Controller
                 // attributed to whoever happened to make that partial payment.
                 ->where('invoices.due_amount', 0)
 
+                // A cancelled invoice has no payable settlement left to make,
+                // whatever its doctor_payables row still says -- cancellation
+                // doesn't currently update that row, so this must be checked
+                // on the invoice itself.
+                ->where('invoices.cancelled', '!=', 'Y')
+
                 ->whereRaw(
                     'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',
                     [$request->user_id]
@@ -244,6 +250,9 @@ class DoctorSettlementController extends Controller
                     DB::raw('(doctor_payables.payable_amount - IFNULL(doctor_payables.paid_amount,0)) as balance_amount')
                 )
                 ->where('invoices.due_amount', 0)
+                // Same as getOutstandingPayables() -- a cancelled invoice's
+                // payable has nothing left to settle.
+                ->where('invoices.cancelled', '!=', 'Y')
                 ->whereRaw(
                     'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',
                     [$request->user_id]
@@ -1328,6 +1337,9 @@ private function generateSettlementNo()
                 // invoice (those are frequently different people once a due
                 // payment is collected later by someone else).
                 ->where('invoices.due_amount', 0)
+
+                // A cancelled invoice has no payable settlement left to make.
+                ->where('invoices.cancelled', '!=', 'Y')
 
                 ->whereRaw(
                     'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',

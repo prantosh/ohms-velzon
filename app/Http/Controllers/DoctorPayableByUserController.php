@@ -259,6 +259,11 @@ class DoctorPayableByUserController extends Controller
                 'invoices.invoice_no'
             )
             ->where('invoices.due_amount', 0)
+            // A cancelled invoice's doctor payment never happened in
+            // substance, whatever its doctor_payables row still says --
+            // cancellation doesn't currently update that row, so this must
+            // be checked on the invoice itself.
+            ->where('invoices.cancelled', '!=', 'Y')
             ->where('doctor_payables.payment_status', 'PAID');
 
         if (!$isAllUsers) {
@@ -290,7 +295,13 @@ class DoctorPayableByUserController extends Controller
                 'invoices.invoice_no'
             )
             ->whereIn('doctor_payables.payment_status', ['PENDING', 'APPROVED'])
-            ->where('doctor_payables.payable_amount', '>', 0);
+            ->where('doctor_payables.payable_amount', '>', 0)
+            // A cancelled invoice has no payable settlement left to make,
+            // whatever its doctor_payables row still says -- cancellation
+            // doesn't currently update that row, so this must be checked on
+            // the invoice itself. Applies regardless of isAllUsers, unlike
+            // the due_amount/collected_by filter below.
+            ->where('invoices.cancelled', '!=', 'Y');
 
         if (!$isAllUsers) {
             $query->where('invoices.due_amount', 0)

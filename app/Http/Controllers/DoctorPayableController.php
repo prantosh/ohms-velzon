@@ -442,6 +442,14 @@ class DoctorPayableController extends Controller
             ]
         );
         $query->where('payable_amount', '>', 0);
+
+        // A cancelled invoice has no payable settlement left to make,
+        // whatever its doctor_payables row still says -- cancellation
+        // doesn't currently update that row, so this must be checked on
+        // the invoice itself.
+        $query->whereHas('invoice', function ($q) {
+            $q->where('cancelled', '!=', 'Y');
+        });
         $rows = $query
             ->orderBy('doctor_name')
             ->orderBy('created_at')
