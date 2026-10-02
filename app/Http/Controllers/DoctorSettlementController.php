@@ -121,7 +121,21 @@ class DoctorSettlementController extends Controller
                     [$request->user_id]
                 )
 
-                ->whereDate('invoices.invoice_date', $request->invoice_date)
+                // Deliberately NOT invoices.invoice_date -- a due/instalment
+                // payment is frequently collected days after the invoice was
+                // first raised, and this screen's whole purpose is "what can
+                // this user settle today", not "what was invoiced today". A
+                // fully-paid invoice's last write is exactly the moment its
+                // final payment was recorded (due_amount/paid_amount/
+                // payment_mode all update then), so updated_at is the
+                // invoice's own true "became collectible" date -- it matches
+                // invoice_date for the common same-day-paid case, and only
+                // diverges for exactly the due-payment case this needs to
+                // catch. Filtering by invoice_date instead silently hid any
+                // payable whose invoice predates the day its due balance was
+                // actually collected -- the collecting user had no reason to
+                // search any date other than today.
+                ->whereDate('invoices.updated_at', $request->invoice_date)
 
                 ->whereRaw(
                     '(doctor_payables.payable_amount - IFNULL(doctor_payables.paid_amount,0)) > 0'
@@ -1346,7 +1360,12 @@ private function generateSettlementNo()
                     [$request->user_id]
                 )
 
-                ->whereDate('invoices.invoice_date', $request->invoice_date)
+                // See getOutstandingPayables()'s own comment on this same
+                // column choice -- a due/instalment payment is frequently
+                // collected days after the invoice was first raised, and
+                // this screen's whole purpose is "what can this user settle
+                // today", not "what was invoiced today".
+                ->whereDate('invoices.updated_at', $request->invoice_date)
 
                 ->whereRaw(
                     '(doctor_payables.payable_amount - IFNULL(doctor_payables.paid_amount,0)) > 0'
