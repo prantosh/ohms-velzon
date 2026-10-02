@@ -107,6 +107,43 @@
 
 
 
+@if($isAdmin)
+
+    @forelse($allUserInvoiceSummaries as $userSummary)
+
+    <div class="card dash-card mb-4">
+
+        <div class="dash-section-header">
+            <span class="dash-section-icon bg-primary-subtle text-primary">
+                <i class="ri-file-list-3-line"></i>
+            </span>
+            <h5>Today's Invoices By {{ $userSummary['user_name'] }}</h5>
+
+            <div class="ms-auto text-end">
+                <div class="fw-bold text-success">
+                    ₹ {{ number_format($userSummary['cash_in_hand'], 0) }}
+                </div>
+                <small class="text-muted">Cash In Hand</small>
+            </div>
+        </div>
+
+        <div class="card-body">
+            @include('partials.dashboard-invoice-tiles', ['tiles' => $userSummary['tiles']])
+        </div>
+    </div>
+
+    @empty
+
+    <div class="card dash-card mb-4">
+        <div class="card-body text-muted text-center py-4">
+            No staff member has logged in yet today.
+        </div>
+    </div>
+
+    @endforelse
+
+@else
+
 <div class="card dash-card mb-4">
 
     <div class="dash-section-header">
@@ -124,59 +161,11 @@
     </div>
 
     <div class="card-body">
-
-        <div class="row g-3 row-cols-xl-5 row-cols-lg-3 row-cols-md-2 row-cols-sm-1">
-
-            @foreach($myInvoiceSummary as $tile)
-
-            <div class="col">
-
-                <div class="card stat-card h-100 mb-0">
-
-                    <div class="card-body">
-
-                        <div class="d-flex align-items-center justify-content-between mb-3">
-
-                            <span class="stat-icon-badge bg-{{ $tile['color'] }}-subtle text-{{ $tile['color'] }}">
-                                <i class="{{ $tile['icon'] }}"></i>
-                            </span>
-
-                            <span class="stat-label text-muted">
-                                {{ $tile['label'] }}
-                            </span>
-
-                        </div>
-
-                        <div class="d-flex align-items-end justify-content-between">
-
-                            <div>
-                                <div class="stat-value">
-                                    {{ $tile['count'] }}
-                                </div>
-                                <small class="text-muted">Transactions</small>
-                            </div>
-
-                            <div class="text-end">
-                                <div class="fw-bold text-{{ $tile['color'] }}">
-                                    ₹ {{ number_format($tile['amount'], 0) }}
-                                </div>
-                                <small class="text-muted">{{ $tile['amount_caption'] }}</small>
-                            </div>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-            @endforeach
-
-        </div>
-
+        @include('partials.dashboard-invoice-tiles', ['tiles' => $myInvoiceSummary])
     </div>
 </div>
+
+@endif
 
     <div class="card dash-card mb-4">
 

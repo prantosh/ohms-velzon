@@ -246,112 +246,52 @@ class HomeController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | MY TODAY INVOICES
+        | TODAY INVOICES "BY ME" -- Admin sees this per-user instead
+        |--------------------------------------------------------------------------
+        | A non-Admin only ever sees their own collection figures ("By Me").
+        | An Admin doesn't collect cash themselves, so instead of one
+        | meaningless card for Admin's own (empty) figures, they see this
+        | same card repeated once per staff member (Admin excluded, same
+        | convention as liveUsers() below) who has actually logged in today
+        | -- one table per person, not just a flat combined total, so it's
+        | still possible to see who personally collected what.
         |--------------------------------------------------------------------------
         */
 
-        // Scoped to WHO ACTUALLY COLLECTED the cash and WHEN
-        // (daily_transactions.created_by + transaction_date), not to who
-        // raised the invoice or the invoice's own date -- these tiles are
-        // labelled "Collection", and a due/instalment payment is often
-        // collected by a different staff member, on a different day, than
-        // whoever originally created the invoice (same fix applied to
-        // CashLedgerService's cash-submission figures, which this widget
-        // was previously inconsistent with).
-        $myInvoices = DB::table('daily_transactions as dt')
-            ->join('invoices as inv', 'inv.invoice_no', '=', 'dt.invoice_reference')
-            ->selectRaw('
-            inv.invoice_type,
-            COUNT(DISTINCT dt.invoice_reference) total_count,
-            SUM(dt.received_amount) total_amount
-        ')
-            ->where('dt.transaction_type', 'RECEIVED')
-            ->where('dt.status', '!=', 'CANCELLED')
-            ->whereDate('dt.transaction_date', $today)
-            ->where('dt.created_by', Auth::id())
-            ->where(function ($q) {
-                $q->whereNull('inv.cancelled')
-                    ->orWhere('inv.cancelled', '!=', 'Y');
-            })
-            ->groupBy('inv.invoice_type')
-            ->get();
+        $isAdmin = Auth::user()->role === 'Admin';
 
-        // "Today's Invoices By Me" widget tiles. Doctor Visit / Diagnostic /
-        // Oxygen+Concentrator come from $myInvoices above (grouped by
-        // invoice_type); Refund and Doctor Payment Made are separate money
-        // movements recorded on daily_transactions, not on invoices at all
-        // (a refund/doctor payment isn't itself an invoice row), so they're
-        // queried independently here with the same today + created_by=me
-        // filtering used for every other figure in this widget.
-        $doctorVisitRow = $myInvoices->firstWhere('invoice_type', 'DOCTOR_VISIT');
-        $diagnosticRow = $myInvoices->firstWhere('invoice_type', 'DIAGNOSTIC');
+        $myInvoiceSummary = [];
+        $allUserInvoiceSummaries = collect();
 
-        $oxygenConcentratorCount = $myInvoices
-            ->whereIn('invoice_type', ['OXYGEN_RENT', 'CONCENTRATOR_RENT'])
-            ->sum('total_count');
+        if ($isAdmin) {
 
-        $oxygenConcentratorAmount = $myInvoices
-            ->whereIn('invoice_type', ['OXYGEN_RENT', 'CONCENTRATOR_RENT'])
-            ->sum('total_amount');
+            $todayUserIds = DB::table('login_logs')
+                ->join('users', 'users.id', '=', 'login_logs.user_id')
+                ->whereDate('login_logs.login_time', $today)
+                ->where('users.role', '!=', 'Admin')
+                ->distinct()
+                ->pluck('login_logs.user_id');
 
-        $myRefunds = DB::table('daily_transactions')
-            ->where('transaction_type', 'REFUND')
-            ->whereDate('transaction_date', $today)
-            ->where('created_by', Auth::id())
-            ->where('status', '!=', 'CANCELLED')
-            ->selectRaw('COUNT(*) total_count, SUM(refund_amount) total_amount')
-            ->first();
+            $usersById = DB::table('users')
+                ->whereIn('id', $todayUserIds)
+                ->pluck('name', 'id');
 
-        $myDoctorPayments = DB::table('daily_transactions')
-            ->where('transaction_type', 'PAYMENT')
-            ->whereDate('transaction_date', $today)
-            ->where('created_by', Auth::id())
-            ->where('status', '!=', 'CANCELLED')
-            ->selectRaw('COUNT(*) total_count, SUM(doctor_payment_amount) total_amount')
-            ->first();
+            $allUserInvoiceSummaries = $usersById->map(function ($name, $userId) use ($today) {
 
-        $myInvoiceSummary = [
-            [
-                'label' => 'Doctor Visit Collection',
-                'count' => $doctorVisitRow->total_count ?? 0,
-                'amount' => $doctorVisitRow->total_amount ?? 0,
-                'color' => 'primary',
-                'icon' => 'ri-stethoscope-line',
-                'amount_caption' => 'Collection',
-            ],
-            [
-                'label' => 'Diagnostic Collection',
-                'count' => $diagnosticRow->total_count ?? 0,
-                'amount' => $diagnosticRow->total_amount ?? 0,
-                'color' => 'success',
-                'icon' => 'ri-test-tube-line',
-                'amount_caption' => 'Collection',
-            ],
-            [
-                'label' => 'Oxygen/Concentrator Collection',
-                'count' => $oxygenConcentratorCount,
-                'amount' => $oxygenConcentratorAmount,
-                'color' => 'warning',
-                'icon' => 'ri-gas-station-line',
-                'amount_caption' => 'Collection',
-            ],
-            [
-                'label' => 'Refund',
-                'count' => $myRefunds->total_count ?? 0,
-                'amount' => $myRefunds->total_amount ?? 0,
-                'color' => 'danger',
-                'icon' => 'ri-refund-2-line',
-                'amount_caption' => 'Refunded',
-            ],
-            [
-                'label' => 'Doctor Payment Made',
-                'count' => $myDoctorPayments->total_count ?? 0,
-                'amount' => $myDoctorPayments->total_amount ?? 0,
-                'color' => 'dark',
-                'icon' => 'ri-hand-coin-line',
-                'amount_caption' => 'Paid',
-            ],
-        ];
+                app(\App\Services\CashInHandService::class)->ensureFreshForToday($userId);
+
+                return [
+                    'user_id' => $userId,
+                    'user_name' => $name,
+                    'tiles' => $this->buildInvoiceSummaryTiles($userId, $today),
+                    'cash_in_hand' => DB::table('users')->where('id', $userId)->value('cash_in_hand') ?? 0,
+                ];
+            })->values();
+
+        } else {
+
+            $myInvoiceSummary = $this->buildInvoiceSummaryTiles(Auth::id(), $today);
+        }
 
         /*
         |--------------------------------------------------------------------------
@@ -497,8 +437,9 @@ class HomeController extends Controller
             'index',
             compact(
                 'todayInvoices',
-                'myInvoices',
+                'isAdmin',
                 'myInvoiceSummary',
+                'allUserInvoiceSummaries',
                 'cashInHand',
                 'todayCollection',
                 'pendingDue',
@@ -520,6 +461,119 @@ class HomeController extends Controller
                 'futureBookingCount'
             )
         );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | "Today's Invoices By Me" tile set, for one user
+    |--------------------------------------------------------------------------
+    | Scoped to WHO ACTUALLY COLLECTED the cash and WHEN
+    | (daily_transactions.created_by + transaction_date), not to who raised
+    | the invoice or the invoice's own date -- these tiles are labelled
+    | "Collection", and a due/instalment payment is often collected by a
+    | different staff member, on a different day, than whoever originally
+    | created the invoice (same fix applied to CashLedgerService's
+    | cash-submission figures, which this widget was previously inconsistent
+    | with). Shared by both the non-Admin "By Me" card and each per-user card
+    | Admin sees instead -- see root()'s TODAY INVOICES "BY ME" block.
+    */
+
+    private function buildInvoiceSummaryTiles(int $userId, Carbon $today): array
+    {
+        $invoices = DB::table('daily_transactions as dt')
+            ->join('invoices as inv', 'inv.invoice_no', '=', 'dt.invoice_reference')
+            ->selectRaw('
+            inv.invoice_type,
+            COUNT(DISTINCT dt.invoice_reference) total_count,
+            SUM(dt.received_amount) total_amount
+        ')
+            ->where('dt.transaction_type', 'RECEIVED')
+            ->where('dt.status', '!=', 'CANCELLED')
+            ->whereDate('dt.transaction_date', $today)
+            ->where('dt.created_by', $userId)
+            ->where(function ($q) {
+                $q->whereNull('inv.cancelled')
+                    ->orWhere('inv.cancelled', '!=', 'Y');
+            })
+            ->groupBy('inv.invoice_type')
+            ->get();
+
+        // Doctor Visit / Diagnostic / Oxygen+Concentrator come from
+        // $invoices above (grouped by invoice_type); Refund and Doctor
+        // Payment Made are separate money movements recorded on
+        // daily_transactions, not on invoices at all (a refund/doctor
+        // payment isn't itself an invoice row), so they're queried
+        // independently here with the same today + created_by filtering
+        // used for every other figure in this widget.
+        $doctorVisitRow = $invoices->firstWhere('invoice_type', 'DOCTOR_VISIT');
+        $diagnosticRow = $invoices->firstWhere('invoice_type', 'DIAGNOSTIC');
+
+        $oxygenConcentratorCount = $invoices
+            ->whereIn('invoice_type', ['OXYGEN_RENT', 'CONCENTRATOR_RENT'])
+            ->sum('total_count');
+
+        $oxygenConcentratorAmount = $invoices
+            ->whereIn('invoice_type', ['OXYGEN_RENT', 'CONCENTRATOR_RENT'])
+            ->sum('total_amount');
+
+        $refunds = DB::table('daily_transactions')
+            ->where('transaction_type', 'REFUND')
+            ->whereDate('transaction_date', $today)
+            ->where('created_by', $userId)
+            ->where('status', '!=', 'CANCELLED')
+            ->selectRaw('COUNT(*) total_count, SUM(refund_amount) total_amount')
+            ->first();
+
+        $doctorPayments = DB::table('daily_transactions')
+            ->where('transaction_type', 'PAYMENT')
+            ->whereDate('transaction_date', $today)
+            ->where('created_by', $userId)
+            ->where('status', '!=', 'CANCELLED')
+            ->selectRaw('COUNT(*) total_count, SUM(doctor_payment_amount) total_amount')
+            ->first();
+
+        return [
+            [
+                'label' => 'Doctor Visit Collection',
+                'count' => $doctorVisitRow->total_count ?? 0,
+                'amount' => $doctorVisitRow->total_amount ?? 0,
+                'color' => 'primary',
+                'icon' => 'ri-stethoscope-line',
+                'amount_caption' => 'Collection',
+            ],
+            [
+                'label' => 'Diagnostic Collection',
+                'count' => $diagnosticRow->total_count ?? 0,
+                'amount' => $diagnosticRow->total_amount ?? 0,
+                'color' => 'success',
+                'icon' => 'ri-test-tube-line',
+                'amount_caption' => 'Collection',
+            ],
+            [
+                'label' => 'Oxygen/Concentrator Collection',
+                'count' => $oxygenConcentratorCount,
+                'amount' => $oxygenConcentratorAmount,
+                'color' => 'warning',
+                'icon' => 'ri-gas-station-line',
+                'amount_caption' => 'Collection',
+            ],
+            [
+                'label' => 'Refund',
+                'count' => $refunds->total_count ?? 0,
+                'amount' => $refunds->total_amount ?? 0,
+                'color' => 'danger',
+                'icon' => 'ri-refund-2-line',
+                'amount_caption' => 'Refunded',
+            ],
+            [
+                'label' => 'Doctor Payment Made',
+                'count' => $doctorPayments->total_count ?? 0,
+                'amount' => $doctorPayments->total_amount ?? 0,
+                'color' => 'dark',
+                'icon' => 'ri-hand-coin-line',
+                'amount_caption' => 'Paid',
+            ],
+        ];
     }
 
     /*
