@@ -210,15 +210,19 @@ table td {
 </div>
 @endif
 
+@if(!empty($finding->findings))
 <div class="report-section">
     <div class="report-section-heading">Findings</div>
     <div class="report-section-body">{!! usgRenderClinicalField($finding->findings) !!}</div>
 </div>
+@endif
 
+@if(!empty($finding->impression))
 <div class="report-section">
     <div class="report-section-heading">Impression</div>
     <div class="report-section-body">{!! usgRenderClinicalField($finding->impression) !!}</div>
 </div>
+@endif
 
 </body>
 
