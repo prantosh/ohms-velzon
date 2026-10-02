@@ -115,6 +115,19 @@ table td {
     display: inline;
 }
 
+/* But text-align has NO effect on a display:inline element -- CKEditor's
+   Alignment toolbar always sets it as an inline style directly on the <p>
+   (e.g. style="text-align:center"), so a centered/right/justified list
+   item silently rendered flush-left in the PDF despite looking correct in
+   the editor, which never applies this print-only display:inline rule.
+   Reinstating display:block ONLY for a paragraph that actually carries an
+   explicit text-align restores its alignment, while plain (unaligned)
+   paragraphs -- the common "Header" + "content" pair this rule exists for
+   -- keep merging onto one line exactly as before. */
+.report-section-body li p[style*="text-align"] {
+    display: block;
+}
+
 /* Tables typed into the report content (CKEditor's Table feature) --
    halved again from the general table rule above: this content is dense
    value/reference-range data, not prose, so it can run much tighter. */
