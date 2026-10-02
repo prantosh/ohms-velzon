@@ -96,6 +96,12 @@ class DoctorConsultationListController extends Controller
                             ->orWhere('invoices.cancelled', '!=', 'Y');
                     });
             })
+            // The appointment's own patient_age/patient_gender are just a
+            // snapshot taken at booking time and are frequently left blank
+            // (e.g. walk-in bookings) -- fall back to the patients table's
+            // current values (joined by patient_id, which is unique) so the
+            // list still prints what's actually on record for the patient.
+            ->leftJoin('patients', 'patients.patient_id', '=', 'doctor_appointments.patient_id')
             ->where('doctor_appointments.doctor_id', $doctorId)
             ->whereDate('doctor_appointments.appointment_date', $date)
             ->where('doctor_appointments.appointment_status', '!=', 'Cancelled')
@@ -106,8 +112,8 @@ class DoctorConsultationListController extends Controller
                 'doctor_appointments.token_no',
                 'doctor_appointments.patient_name',
                 'doctor_appointments.patient_mobile_no',
-                'doctor_appointments.patient_age',
-                'doctor_appointments.patient_gender',
+                DB::raw("COALESCE(NULLIF(doctor_appointments.patient_age, ''), NULLIF(patients.age, '')) as patient_age"),
+                DB::raw("COALESCE(NULLIF(doctor_appointments.patient_gender, ''), NULLIF(patients.gender, '')) as patient_gender"),
                 'doctor_appointments.appointment_time',
                 'doctor_appointments.appointment_status',
                 'invoices.id as invoice_id',
