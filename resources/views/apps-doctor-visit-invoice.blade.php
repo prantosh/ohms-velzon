@@ -46,46 +46,110 @@ Doctor Visit Invoice
 
     <div class="card">
 
-        <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
 
             <h4 class="card-title mb-0">
                 Doctor Visit Invoice
             </h4>
 
-            
+            <div>
+                <label for="doctorFilter" class="form-label small text-muted mb-0 me-1">Doctor</label>
+                <select id="doctorFilter" class="form-select form-select-sm d-inline-block" style="width:auto;">
+                    <option value="">All Doctors</option>
+                </select>
+            </div>
 
         </div>
 
         <div class="card-body">
 
-            <div class="table-responsive">
+            <ul class="nav nav-tabs mb-3">
 
-                <table class="table table-bordered table-sm align-middle"
-                       id="invoiceTable">
+                <li class="nav-item">
+                    <a class="nav-link active" data-bs-toggle="tab" href="#pendingTab">
+                        Pending <span class="badge bg-warning-subtle text-warning ms-1" id="pendingCount">0</span>
+                    </a>
+                </li>
 
-                    <thead class="table-light">
+                <li class="nav-item">
+                    <a class="nav-link" data-bs-toggle="tab" href="#createdTab">
+                        Invoice Created <span class="badge bg-success-subtle text-success ms-1" id="createdCount">0</span>
+                    </a>
+                </li>
 
-                       <tr>
+            </ul>
 
-                        <th>Appointment No</th>
-                        <th>Patient ID</th>
-                        <th>Doctor Name</th>
-                        <th>Patient Name</th>
-                        <th>Serial No.</th>
-                        <th>Invoice No.</th>
-                        <th>Appointment Date</th>
-                        <th>Total Fees</th>
-                        <th>Paid</th>
-                        <th>Invoice Status</th>
-                        <th>Action</th>
+            <div class="tab-content">
 
-                    </tr>
+                <div class="tab-pane fade show active" id="pendingTab">
 
-                    </thead>
+                    <div class="table-responsive">
 
-                    <tbody></tbody>
+                        <table class="table table-bordered table-sm align-middle"
+                               id="pendingTable">
 
-                </table>
+                            <thead class="table-light">
+
+                               <tr>
+
+                                <th>Appointment No</th>
+                                <th>Patient ID</th>
+                                <th>Doctor Name</th>
+                                <th>Patient Name</th>
+                                <th>Serial No.</th>
+                                <th>Invoice No.</th>
+                                <th>Appointment Date</th>
+                                <th>Total Fees</th>
+                                <th>Paid</th>
+                                <th>Invoice Status</th>
+                                <th>Action</th>
+
+                            </tr>
+
+                            </thead>
+
+                            <tbody></tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
+
+                <div class="tab-pane fade" id="createdTab">
+
+                    <div class="table-responsive">
+
+                        <table class="table table-bordered table-sm align-middle"
+                               id="createdTable">
+
+                            <thead class="table-light">
+
+                               <tr>
+
+                                <th>Appointment No</th>
+                                <th>Patient ID</th>
+                                <th>Doctor Name</th>
+                                <th>Patient Name</th>
+                                <th>Serial No.</th>
+                                <th>Invoice No.</th>
+                                <th>Appointment Date</th>
+                                <th>Total Fees</th>
+                                <th>Paid</th>
+                                <th>Invoice Status</th>
+                                <th>Action</th>
+
+                            </tr>
+
+                            </thead>
+
+                            <tbody></tbody>
+
+                        </table>
+
+                    </div>
+
+                </div>
 
             </div>
 

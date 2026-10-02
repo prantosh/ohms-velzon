@@ -91,6 +91,8 @@ class DoctorVisitInvoiceController extends Controller
 
                         'invoices.invoice_date',
 
+                        'invoices.created_at as invoice_created_at',
+
                         'invoices.consultation_fee',
 
                         'invoices.discount',

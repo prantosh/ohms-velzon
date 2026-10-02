@@ -72,63 +72,17 @@ function setInvoiceDateLocked(locked) {
 |--------------------------------------------------------------------------
 */
 
-function loadInvoices() {
+let lastInvoiceData = [];
 
-    $.ajax({
+/*
+|--------------------------------------------------------------------------
+| ROW HTML -- shared by both the Pending and Invoice Created tables
+|--------------------------------------------------------------------------
+*/
 
-        url: "/doctor-visit-invoice/list",
+function buildInvoiceRowHtml(raw) {
 
-        type: "GET",
-
-        dataType: "json",
-
-        success: function (response) {
-
-            console.log(response);
-
-            let tbody =
-                $("#invoiceTable tbody");
-
-            /*
-            |--------------------------------------------------------------------------
-            | CLEAR TABLE
-            |--------------------------------------------------------------------------
-            */
-
-            if ($.fn.DataTable.isDataTable('#invoiceTable')) {
-
-                $('#invoiceTable')
-                    .DataTable()
-                    .destroy();
-            }
-
-            tbody.html('');
-
-            /*
-            |--------------------------------------------------------------------------
-            | CHECK RESPONSE
-            |--------------------------------------------------------------------------
-            */
-
-            if (
-                response.status !== true ||
-                !Array.isArray(response.data)
-            ) {
-
-                console.log("Invalid response");
-
-                return;
-            }
-
-            /*
-            |--------------------------------------------------------------------------
-            | LOOP DATA
-            |--------------------------------------------------------------------------
-            */
-
-            $.each(response.data, function (index, raw) {
-
-                tbody.append(`
+    return `
 
 <tr>
 
@@ -180,7 +134,7 @@ function loadInvoices() {
                                             ?
 
                                             `<span>
-                        
+
                      </span>`
 
                                             :
@@ -241,21 +195,134 @@ function loadInvoices() {
 
     </td>
 </tr>
-                `);
-            });
+                `;
+}
 
-            /*
-            |--------------------------------------------------------------------------
-            | INIT DATATABLE
-            |--------------------------------------------------------------------------
-            */
+/*
+|--------------------------------------------------------------------------
+| DOCTOR FILTER -- distinct doctor names across today's appointments,
+| independent of which tab is active so switching tabs keeps the filter.
+|--------------------------------------------------------------------------
+*/
 
-            $('#invoiceTable').DataTable({
+function populateDoctorFilter(data) {
 
-                responsive: true,
+    let select = $('#doctorFilter');
+    let previousValue = select.val();
 
-                destroy: true
-            });
+    let doctorNames = [...new Set(
+        data.map(row => row.doctor_name).filter(name => !!name)
+    )].sort();
+
+    select.html('<option value="">All Doctors</option>');
+
+    doctorNames.forEach(name => {
+        select.append(`<option value="${name}">${name}</option>`);
+    });
+
+    if (doctorNames.includes(previousValue)) {
+        select.val(previousValue);
+    }
+}
+
+/*
+|--------------------------------------------------------------------------
+| RENDER BOTH TABLES -- split by invoice_no presence into Pending /
+| Invoice Created, apply the doctor filter, sort each tab's own default
+| order, and (re)init a separate DataTable per tab.
+|--------------------------------------------------------------------------
+*/
+
+function renderInvoiceTables() {
+
+    let doctorFilter = $('#doctorFilter').val();
+
+    let filtered = doctorFilter
+        ? lastInvoiceData.filter(row => row.doctor_name === doctorFilter)
+        : lastInvoiceData;
+
+    let pendingRows = filtered.filter(row => !row.invoice_no);
+    let createdRows = filtered.filter(row => !!row.invoice_no);
+
+    // Pending: natural queue order (today's token/serial number).
+    pendingRows.sort((a, b) => (a.token_no ?? 0) - (b.token_no ?? 0));
+
+    // Invoice Created: most recently created invoice on top.
+    createdRows.sort((a, b) =>
+        new Date(b.invoice_created_at ?? 0) - new Date(a.invoice_created_at ?? 0)
+    );
+
+    $('#pendingCount').text(pendingRows.length);
+    $('#createdCount').text(createdRows.length);
+
+    [['#pendingTable', pendingRows], ['#createdTable', createdRows]].forEach(([selector, rows]) => {
+
+        if ($.fn.DataTable.isDataTable(selector)) {
+            $(selector).DataTable().destroy();
+        }
+
+        $(`${selector} tbody`).html(rows.map(buildInvoiceRowHtml).join(''));
+
+        $(selector).DataTable({
+            responsive: true,
+            destroy: true,
+            // Preserve the default order just built above -- DataTables
+            // otherwise auto-sorts by the first column on init. Clicking a
+            // column header still works normally from here.
+            order: [],
+            // Action column was auto-sized by DataTables to ~75px; widened
+            // to double that (150px). autoWidth must be off, otherwise
+            // DataTables recalculates and overrides this fixed width based
+            // on content instead of respecting it.
+            autoWidth: false,
+            columnDefs: [
+                { targets: -1, width: '150px' }
+            ]
+        });
+    });
+}
+
+// DataTables mis-sizes columns initialized while its tab-pane is hidden --
+// re-measure once the Invoice Created tab actually becomes visible.
+$(document).on('shown.bs.tab', 'a[data-bs-toggle="tab"]', function () {
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+});
+
+$(document).on('change', '#doctorFilter', renderInvoiceTables);
+
+/*
+|--------------------------------------------------------------------------
+| LOAD INVOICES
+|--------------------------------------------------------------------------
+*/
+
+function loadInvoices() {
+
+    $.ajax({
+
+        url: "/doctor-visit-invoice/list",
+
+        type: "GET",
+
+        dataType: "json",
+
+        success: function (response) {
+
+            if (
+                response.status !== true ||
+                !Array.isArray(response.data)
+            ) {
+
+                console.log("Invalid response");
+
+                return;
+            }
+
+            lastInvoiceData = response.data;
+
+            populateDoctorFilter(lastInvoiceData);
+
+            renderInvoiceTables();
         },
 
         error: function (xhr) {
