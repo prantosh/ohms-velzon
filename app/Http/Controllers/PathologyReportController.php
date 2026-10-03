@@ -343,6 +343,16 @@ class PathologyReportController extends Controller
                     ], 422);
                 }
 
+                if (\App\Support\DiagnosticReportGuard::invoiceIsCancelled($finding->invoice_no)) {
+
+                    DB::rollBack();
+
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'This invoice has been cancelled -- its report can no longer be edited.'
+                    ], 422);
+                }
+
                 $finding->update([
                     'content' => $content,
                     'updated_by' => Auth::id(),
@@ -389,6 +399,16 @@ class PathologyReportController extends Controller
             }
 
             $invoiceNo = $lines->first()->invoice_no;
+
+            if (\App\Support\DiagnosticReportGuard::invoiceIsCancelled($invoiceNo)) {
+
+                DB::rollBack();
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'This invoice has been cancelled -- no report can be created for it.'
+                ], 422);
+            }
 
             $finding = PathologyReportFinding::create([
                 'invoice_no' => $invoiceNo,

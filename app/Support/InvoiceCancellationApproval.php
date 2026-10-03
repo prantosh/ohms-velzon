@@ -36,6 +36,18 @@ class InvoiceCancellationApproval
      */
     public static function check(Invoice $invoice, int $currentUserId): array
     {
+        // Checked before even the same-day shortcut below -- a report
+        // already represents real diagnostic work, so it blocks
+        // cancellation regardless of how recently the invoice was raised.
+        if (DiagnosticReportGuard::anyReportExists($invoice->invoice_no)) {
+
+            return [
+                'allowed' => false,
+                'approver_id' => null,
+                'message' => 'This invoice already has a diagnostic report started or completed against it and can no longer be cancelled.',
+            ];
+        }
+
         if (self::isToday($invoice)) {
             return ['allowed' => true, 'approver_id' => null, 'message' => null];
         }

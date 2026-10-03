@@ -257,6 +257,16 @@ class CardiologyReportController extends Controller
             ], 422);
         }
 
+        if (\App\Support\DiagnosticReportGuard::invoiceIsCancelled($line->invoice_no)) {
+
+            return response()->json([
+                'status' => false,
+                'message' => $existing
+                    ? 'This invoice has been cancelled -- its report can no longer be edited.'
+                    : 'This invoice has been cancelled -- no report can be created for it.'
+            ], 422);
+        }
+
         $finding = CardiologyReportFinding::updateOrCreate(
             ['invoice_detail_id' => $line->id],
             array_merge([

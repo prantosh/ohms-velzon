@@ -530,6 +530,14 @@ class TestResultEntryController extends Controller
             ]);
         }
 
+        if (\App\Support\DiagnosticReportGuard::invoiceIsCancelled($detail->invoice_no)) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This invoice has been cancelled -- no report can be created or edited for it.'
+            ]);
+        }
+
         $analyteId = (int) ($request->analyte_id ?? 0);
 
         if ($analyteId > 0) {
