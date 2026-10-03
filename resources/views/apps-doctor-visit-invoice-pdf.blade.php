@@ -219,7 +219,13 @@ function fmtDateTime($date)
 
             <tr>
                 <th>Name of Doctor</th>
-                <td>{{ $appointment->doctor_name ?? '' }}</td>
+                {{-- doctors.doctor_name is stored as "Dr. NAME" -- a mixed-case
+                     "Dr." prefix in front of an all-caps name (consistent across
+                     every doctor record, not a data error) -- which visually
+                     read as "smaller" print next to fully-capitalized fields
+                     like Patient Name. Uppercased here for printing only; the
+                     stored data itself is left untouched. --}}
+                <td>{{ strtoupper($appointment->doctor_name ?? '') }}</td>
 
                 <th>Visit Date</th>
                 <td>{{ $appointment->appointment_date ?? '' }}</td>
