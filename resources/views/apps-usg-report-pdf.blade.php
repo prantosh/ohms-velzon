@@ -201,7 +201,7 @@ table td {
 <table class="no-border">
     <tr>
         <td width="70%">
-            <span class="label-blue">Reported By :</span>
+            <span class="label-blue">Performed By :</span>
             {{ optional($doctor)->doctor_name }}
             @if(optional($doctor)->qualification)
                 ({!! usgBoldAllCaps($doctor->qualification) !!})
@@ -218,7 +218,6 @@ table td {
 
 @if(!empty($finding->clinical_history))
 <div class="report-section">
-    <div class="report-section-heading">Clinical History</div>
     <div class="report-section-body">{!! usgRenderClinicalField($finding->clinical_history) !!}</div>
 </div>
 @endif
