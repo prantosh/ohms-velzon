@@ -10,7 +10,12 @@
 <style>
 
 @page {
-    margin-top: 45mm;
+    /* 45mm is the clinic's pre-printed letterhead art zone (unchanged);
+       +15mm pushes the patient-detail strip 1.5cm further down than USG's
+       (a prior, Cardiology-only request); the remaining 20mm reserves room
+       for that strip itself, which is position:fixed so it repeats on
+       every page for a multi-page report -- see .patient-detail-fixed. */
+    margin-top: 80mm;
     margin-right: 40px;
     margin-bottom: 60mm;
     margin-left: 40px;
@@ -47,16 +52,37 @@ table td {
     padding: 4px 0;
 }
 
+.patient-detail-table .no-border-row td {
+    border: none !important;
+    padding: 4px 0 !important;
+}
+
 .label-blue {
     color: #003399;
     font-weight: bold;
 }
 
+/* Repeats on every page (DomPDF renders position:fixed elements once per
+   page) -- positioned above the normal content box, in the reserved strip
+   @page's margin-top carves out just below the letterhead art zone (see
+   @page comment above for the 1.5cm Cardiology-specific extra push-down),
+   so a multi-page report still identifies the patient on every page. */
+.patient-detail-fixed {
+    position: fixed;
+    top: -20mm;
+    left: 0;
+    right: 0;
+}
+
 .patient-detail-table th,
 .patient-detail-table td {
-    font-size: 9px;
+    font-size: 11px;
     padding: 3px;
 }
+
+.payment-status-paid { color: #0a8043; font-weight: bold; }
+.payment-status-due { color: #c00000; font-weight: bold; }
+.payment-status-partial { color: #b26a00; font-weight: bold; }
 
 .study-title {
     text-align: center;
@@ -65,14 +91,17 @@ table td {
 
 .report-section {
     margin-top: 6px;
+    /* Keeps a numbered item's heading and its own content together --
+       without this, a page break can land right between them, leaving
+       e.g. "5. Aortic Valve" alone at the bottom of one page and its
+       actual finding orphaned at the top of the next. */
+    page-break-inside: avoid;
 }
 
 .report-section-heading {
     color: #003399;
     font-weight: bold;
     font-size: 12px;
-    border-bottom: 1px solid #003399;
-    padding-bottom: 1px;
     margin-bottom: 2px;
 }
 
@@ -158,9 +187,32 @@ table td {
     // needed here -- content is trusted/sanitized HTML from the CKEditor
     // entry as-is.
     $cardioFields = \App\Support\CardiologyReportFields::FIELDS;
+
+    // Same Paid/Due/Partial classification used by the Test Report
+    // Dashboard's payment_status filter (TestReportDashboardController) --
+    // no stored column for it, so it's derived the same way here.
+    if (!function_exists('cardioPaymentStatus')) {
+        function cardioPaymentStatus($invoice) {
+            $due = (float) $invoice->due_amount;
+            $paid = (float) $invoice->paid_amount;
+
+            if ($due <= 0) {
+                return ['label' => 'PAID', 'class' => 'payment-status-paid'];
+            }
+
+            if ($paid <= 0) {
+                return ['label' => 'DUE (Rs. ' . number_format($due, 2) . ' pending)', 'class' => 'payment-status-due'];
+            }
+
+            return ['label' => 'PARTIAL (Rs. ' . number_format($due, 2) . ' pending)', 'class' => 'payment-status-partial'];
+        }
+    }
 @endphp
 
 <body>
+
+@php $cardioPaymentStatus = cardioPaymentStatus($invoice); @endphp
+<div class="patient-detail-fixed">
 
 <table class="patient-detail-table">
     <tr>
@@ -176,23 +228,23 @@ table td {
         <th width="7%">Date</th>
         <td width="10%">{{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</td>
     </tr>
-</table>
-
-<table class="no-border">
-    <tr>
-        <td width="70%">
-            <span class="label-blue">Reported By :</span>
+    <tr class="no-border-row">
+        <td colspan="3">
+            <span class="label-blue">Referred By :</span>
             {{ optional($doctor)->doctor_name }}
-            @if(optional($doctor)->qualification)
-                ({{ $doctor->qualification }})
-            @endif
         </td>
-        <td width="30%">
+        <td colspan="2">
             <span class="label-blue">Test Date :</span>
             {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
         </td>
+        <td colspan="3">
+            <span class="label-blue">Payment Status :</span>
+            <span class="{{ $cardioPaymentStatus['class'] }}">{{ $cardioPaymentStatus['label'] }}</span>
+        </td>
     </tr>
 </table>
+
+</div>
 
 <h4 class="study-title">
     {{ !empty($finding->heading) ? strip_tags($finding->heading) : '2D ECHOCARDIOGRAPHY REPORT' }}

@@ -10,7 +10,11 @@
 <style>
 
 @page {
-    margin-top: 45mm;
+    /* 45mm is the clinic's pre-printed letterhead art zone (unchanged);
+       the extra 20mm reserves room for the patient-detail strip below it,
+       which is position:fixed so it repeats on every page for a
+       multi-page report -- see .patient-detail-fixed. */
+    margin-top: 65mm;
     margin-right: 40px;
     margin-bottom: 60mm;
     margin-left: 40px;
@@ -47,16 +51,36 @@ table td {
     padding: 4px 0;
 }
 
+.patient-detail-table .no-border-row td {
+    border: none !important;
+    padding: 4px 0 !important;
+}
+
 .label-blue {
     color: #003399;
     font-weight: bold;
 }
 
+/* Repeats on every page (DomPDF renders position:fixed elements once per
+   page) -- positioned above the normal content box, in the 20mm strip
+   @page reserves for it just below the letterhead art zone, so a
+   multi-page report still identifies the patient on every page. */
+.patient-detail-fixed {
+    position: fixed;
+    top: -20mm;
+    left: 0;
+    right: 0;
+}
+
 .patient-detail-table th,
 .patient-detail-table td {
-    font-size: 9px;
+    font-size: 11px;
     padding: 3px;
 }
+
+.payment-status-paid { color: #0a8043; font-weight: bold; }
+.payment-status-due { color: #c00000; font-weight: bold; }
+.payment-status-partial { color: #b26a00; font-weight: bold; }
 
 .study-title {
     text-align: center;
@@ -178,9 +202,32 @@ table td {
             return ($text !== strip_tags($text)) ? $text : usgBoldAllCaps($text);
         }
     }
+
+    // Same Paid/Due/Partial classification used by the Test Report
+    // Dashboard's payment_status filter (TestReportDashboardController) --
+    // no stored column for it, so it's derived the same way here.
+    if (!function_exists('usgPaymentStatus')) {
+        function usgPaymentStatus($invoice) {
+            $due = (float) $invoice->due_amount;
+            $paid = (float) $invoice->paid_amount;
+
+            if ($due <= 0) {
+                return ['label' => 'PAID', 'class' => 'payment-status-paid'];
+            }
+
+            if ($paid <= 0) {
+                return ['label' => 'DUE (Rs. ' . number_format($due, 2) . ' pending)', 'class' => 'payment-status-due'];
+            }
+
+            return ['label' => 'PARTIAL (Rs. ' . number_format($due, 2) . ' pending)', 'class' => 'payment-status-partial'];
+        }
+    }
 @endphp
 
 <body>
+
+@php $usgPaymentStatus = usgPaymentStatus($invoice); @endphp
+<div class="patient-detail-fixed">
 
 <table class="patient-detail-table">
     <tr>
@@ -196,23 +243,23 @@ table td {
         <th width="7%">Date</th>
         <td width="10%">{{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</td>
     </tr>
-</table>
-
-<table class="no-border">
-    <tr>
-        <td width="70%">
-            <span class="label-blue">Performed By :</span>
+    <tr class="no-border-row">
+        <td colspan="3">
+            <span class="label-blue">Referred By :</span>
             {{ optional($doctor)->doctor_name }}
-            @if(optional($doctor)->qualification)
-                ({!! usgBoldAllCaps($doctor->qualification) !!})
-            @endif
         </td>
-        <td width="30%">
+        <td colspan="2">
             <span class="label-blue">Test Date :</span>
             {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
         </td>
+        <td colspan="3">
+            <span class="label-blue">Payment Status :</span>
+            <span class="{{ $usgPaymentStatus['class'] }}">{{ $usgPaymentStatus['label'] }}</span>
+        </td>
     </tr>
 </table>
+
+</div>
 
 <h4 class="study-title">{!! usgBoldAllCaps('USG ' . $finding->item_description) !!}</h4>
 
