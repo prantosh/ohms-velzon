@@ -22,6 +22,23 @@ class AllInvoicesReportController extends Controller
         'OTHER_INCOME' => 'Income from Other Source',
     ];
 
+    /**
+     * The Type filter/dropdown splits the single DIAGNOSTIC invoice_type
+     * into its two invoice_category values (Pathology/Non-Pathology) --
+     * these aren't real invoice_type column values, tabQuery() translates
+     * them into an invoice_type=DIAGNOSTIC + invoice_category filter.
+     */
+    private const FILTER_TYPE_OPTIONS = [
+        'DOCTOR_VISIT' => 'Doctor Visit',
+        'DIAGNOSTIC_PATHOLOGY' => 'Pathology',
+        'DIAGNOSTIC_NON_PATHOLOGY' => 'Non-Pathology',
+        'OXYGEN_RENT' => 'Oxygen Concentrator/Cylinder Rental',
+        'CONCENTRATOR_RENT' => 'Concentrator Rental',
+        'AMBULANCE_RENT' => 'Ambulance Rental',
+        'MEMBERSHIP_FEE' => 'Membership Fee',
+        'OTHER_INCOME' => 'Income from Other Source',
+    ];
+
     private const PRINT_URL_PREFIXES = [
         'DOCTOR_VISIT' => '/doctor-visit-invoice/print/',
         'DIAGNOSTIC' => '/diagnostic-invoice/print/',
@@ -44,7 +61,7 @@ class AllInvoicesReportController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'role']);
 
-        $invoiceTypes = self::INVOICE_TYPE_LABELS;
+        $invoiceTypes = self::FILTER_TYPE_OPTIONS;
 
         return view('apps-all-invoices-report', compact('users', 'invoiceTypes'));
     }
@@ -62,7 +79,7 @@ class AllInvoicesReportController extends Controller
             'tab' => 'required|in:all,pending,cancelled',
             'search' => 'nullable|string',
             'user_id' => 'nullable|string',
-            'invoice_type' => 'nullable|in:' . implode(',', array_merge(['ALL'], array_keys(self::INVOICE_TYPE_LABELS))),
+            'invoice_type' => 'nullable|in:' . implode(',', array_merge(['ALL'], array_keys(self::FILTER_TYPE_OPTIONS))),
         ]);
 
         if ($request->filled('user_id') && $request->user_id !== 'ALL') {
@@ -107,7 +124,7 @@ class AllInvoicesReportController extends Controller
             'tab' => 'required|in:all,pending,cancelled',
             'search' => 'nullable|string',
             'user_id' => 'nullable|string',
-            'invoice_type' => 'nullable|in:' . implode(',', array_merge(['ALL'], array_keys(self::INVOICE_TYPE_LABELS))),
+            'invoice_type' => 'nullable|in:' . implode(',', array_merge(['ALL'], array_keys(self::FILTER_TYPE_OPTIONS))),
         ]);
 
         if ($request->filled('user_id') && $request->user_id !== 'ALL') {
@@ -140,7 +157,7 @@ class AllInvoicesReportController extends Controller
         }
 
         if ($request->filled('invoice_type') && $request->invoice_type !== 'ALL') {
-            $filters['type'] = self::INVOICE_TYPE_LABELS[$request->invoice_type] ?? $request->invoice_type;
+            $filters['type'] = self::FILTER_TYPE_OPTIONS[$request->invoice_type] ?? $request->invoice_type;
         }
 
         $tabLabels = ['all' => 'All Invoices', 'pending' => 'Pending Invoices', 'cancelled' => 'Cancelled Invoices'];
@@ -172,7 +189,7 @@ class AllInvoicesReportController extends Controller
             'date' => 'required|date',
             'search' => 'nullable|string',
             'user_id' => 'nullable|string',
-            'invoice_type' => 'nullable|in:' . implode(',', array_merge(['ALL'], array_keys(self::INVOICE_TYPE_LABELS))),
+            'invoice_type' => 'nullable|in:' . implode(',', array_merge(['ALL'], array_keys(self::FILTER_TYPE_OPTIONS))),
         ]);
 
         if ($request->filled('user_id') && $request->user_id !== 'ALL') {
@@ -215,7 +232,9 @@ class AllInvoicesReportController extends Controller
                 ? Carbon::parse($row->created_at)->format('h:i A')
                 : null;
 
-            $row->invoice_type_label = self::INVOICE_TYPE_LABELS[$row->invoice_type] ?? $row->invoice_type;
+            $row->invoice_type_label = $row->invoice_type === 'DIAGNOSTIC'
+                ? ($row->invoice_category === 'PATHOLOGY' ? 'Pathology' : 'Non-Pathology')
+                : (self::INVOICE_TYPE_LABELS[$row->invoice_type] ?? $row->invoice_type);
 
             $row->doctor_display = $row->doctor_name ?: ($row->referred_doctor ?: '-');
 
@@ -274,7 +293,14 @@ class AllInvoicesReportController extends Controller
         }
 
         if ($request->filled('invoice_type') && $request->invoice_type !== 'ALL') {
-            $query->where('invoice_type', $request->invoice_type);
+
+            if ($request->invoice_type === 'DIAGNOSTIC_PATHOLOGY') {
+                $query->where('invoice_type', 'DIAGNOSTIC')->where('invoice_category', 'PATHOLOGY');
+            } elseif ($request->invoice_type === 'DIAGNOSTIC_NON_PATHOLOGY') {
+                $query->where('invoice_type', 'DIAGNOSTIC')->where('invoice_category', 'NON_PATHOLOGY');
+            } else {
+                $query->where('invoice_type', $request->invoice_type);
+            }
         }
 
         return $query;
