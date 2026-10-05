@@ -122,4 +122,8 @@ return [
 
     'users.index' => 'users',
     'role-page-access.index' => 'role-page-access',
+
+    'patient-detail-correction.index' => 'patient-detail-correction',
+    'patient-detail-correction.lookup' => 'patient-detail-correction',
+    'patient-detail-correction.update' => 'patient-detail-correction',
 ];

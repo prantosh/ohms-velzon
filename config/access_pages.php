@@ -74,6 +74,7 @@ return [
     'reporting-group' => 'Reporting Group Master',
     'reporting-group-summary-report' => 'Reporting Group Summary Report',
     'role-page-access' => 'Role Page Access',
+    'patient-detail-correction' => 'Patient Detail Correction',
     'sample-master' => 'Sample Master',
     'stock-as-on-date' => 'Stock As On Date',
     'stock-issue' => 'Stock Issue',

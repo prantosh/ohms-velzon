@@ -68,6 +68,7 @@ use App\Http\Controllers\GoodsReceiptReportController;
 use App\Http\Controllers\GoodsIssueReportController;
 use App\Http\Controllers\StockAsOnDateController;
 use App\Http\Controllers\CloudBackupController;
+use App\Http\Controllers\PatientDetailCorrectionController;
 use App\Http\Controllers\SystemLogController;
 use App\Http\Controllers\MaintenanceController;
 use App\Http\Controllers\WhatsappAutoSendSettingController;
@@ -1602,6 +1603,19 @@ Route::prefix('cloud-backup')->group(function () {
 
     Route::delete('/delete-invoices/{filename}', [CloudBackupController::class, 'destroyInvoicesBackup'])
         ->name('cloud-backup.destroy-invoices');
+
+});
+
+Route::middleware(['auth'])->prefix('patient-detail-correction')->group(function () {
+
+    Route::get('/', [PatientDetailCorrectionController::class, 'index'])
+        ->name('patient-detail-correction.index');
+
+    Route::get('/lookup', [PatientDetailCorrectionController::class, 'lookup'])
+        ->name('patient-detail-correction.lookup');
+
+    Route::post('/update', [PatientDetailCorrectionController::class, 'update'])
+        ->name('patient-detail-correction.update');
 
 });
 

@@ -215,6 +215,8 @@ return [
 
     'AUDIT'               => 'Audit',
 
+    'PATIENT_DETAIL_CORRECTION' => 'Patient Detail Correction',
+
 ],
 
     /*

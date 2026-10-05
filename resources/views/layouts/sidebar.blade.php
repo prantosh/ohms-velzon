@@ -116,6 +116,11 @@
                                         <a href="{{ route('role-page-access.index') }}" class="nav-link">@lang('translation.rolepageaccess')</a>
                                         </li>
                             @endif
+                            @if(is_null($allowedPages) || in_array('patient-detail-correction', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('patient-detail-correction.index') }}" class="nav-link">@lang('translation.patientdetailcorrection')</a>
+                                        </li>
+                            @endif
 
                         </ul>
                     </div>

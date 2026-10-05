@@ -92,6 +92,7 @@ return [
     "usermanagement" => "User Management",
     "usermaster" => "User Master",
     "rolepageaccess" => "Role Page Access",
+    "patientdetailcorrection" => "Patient Detail Correction",
     "diagnostictest" => "Diagnostic Test",
     "diagnostictestadditionalinfo" => "Diagnostic Test Additional Info",
     "testcategorymaster" => "Test Category Master",
