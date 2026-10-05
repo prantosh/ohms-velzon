@@ -64,15 +64,6 @@
                     </div>
 
                     <div class="col-md-2">
-                        <label class="form-label mb-1">Delivery Status</label>
-                        <select id="deliveryStatusFilter" class="form-select form-select-sm">
-                            <option value="">All</option>
-                            <option value="Delivered">Delivered</option>
-                            <option value="Pending">Not Delivered</option>
-                        </select>
-                    </div>
-
-                    <div class="col-md-2">
                         <label class="form-label mb-1">From Date</label>
                         <input type="text" id="fromDateFilter" class="form-control form-control-sm flatpickr">
                     </div>
@@ -100,6 +91,22 @@
                     </div>
 
                 </div>
+
+                <ul class="nav nav-tabs mb-3" id="deliveryStatusTabs">
+
+                    <li class="nav-item">
+                        <a class="nav-link active" href="javascript:void(0)" data-delivery-status="Pending">
+                            Not Delivered <span class="badge bg-warning-subtle text-warning ms-1" id="notDeliveredCount">0</span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link" href="javascript:void(0)" data-delivery-status="Delivered">
+                            Delivered <span class="badge bg-success-subtle text-success ms-1" id="deliveredCount">0</span>
+                        </a>
+                    </li>
+
+                </ul>
 
                 <div class="table-responsive">
 

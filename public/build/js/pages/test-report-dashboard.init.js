@@ -1,5 +1,6 @@
 let currentPage = 1;
 let lastPage = 1;
+let currentDeliveryStatus = 'Pending';
 
 function escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -14,13 +15,43 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]').content;
 }
 
+// Where a given invoice's report(s) actually live -- USG and Cardiology
+// are each their OWN standalone page (not reachable through Test Result
+// Entry), so routing by print_route (computed server-side from the
+// invoice's actual item codes) instead of a blanket category check avoids
+// sending staff to a page that 403s with "must be confirmed" even though
+// the report genuinely is confirmed, just through a different module's
+// own confirmed_at. Plain Non-Pathology items still fall back to the
+// shared Test Result Entry modal's Non-Pathology tab (?category= tells it
+// which tab to search in, since a fresh page load otherwise defaults to
+// Pathology).
+function printRouteUrl(printRoute, invoiceNo) {
+
+    let base = {
+        pathology: '/test-result-entry',
+        usg: '/usg-report',
+        cardiology: '/cardiology-report',
+        non_pathology: '/test-result-entry',
+    }[printRoute];
+
+    if (!base) return null;
+
+    let params = new URLSearchParams({ open: invoiceNo });
+
+    if (printRoute === 'non_pathology') {
+        params.set('category', 'NON_PATHOLOGY');
+    }
+
+    return `${base}?${params.toString()}`;
+}
+
 function currentFilters() {
     return {
         per_page: document.querySelector('#perPage').value,
         search: document.querySelector('#searchInput').value.trim(),
         invoice_category: document.querySelector('#categoryFilter').value,
         payment_status: document.querySelector('#paymentStatusFilter').value,
-        delivery_status: document.querySelector('#deliveryStatusFilter').value,
+        delivery_status: currentDeliveryStatus,
         from_date: document.querySelector('#fromDateFilter').value,
         to_date: document.querySelector('#toDateFilter').value,
     };
@@ -90,6 +121,11 @@ async function loadReports(page = 1) {
     document.querySelector('#pageNumber').innerText = `Page ${result.pagination.current_page}`;
     document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
 
+    if (result.counts) {
+        document.querySelector('#notDeliveredCount').innerText = result.counts.not_delivered;
+        document.querySelector('#deliveredCount').innerText = result.counts.delivered;
+    }
+
     if (!result.data.length) {
         tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">No diagnostic test report invoices found.</td></tr>';
         return;
@@ -103,7 +139,7 @@ async function loadReports(page = 1) {
             <button class="btn btn-sm btn-soft-info print-report-btn me-1"
                     data-id="${row.id}"
                     data-invoice-no="${escapeHtml(row.invoice_no)}"
-                    data-category="${row.invoice_category ?? ''}"
+                    data-print-route="${row.print_route ?? ''}"
                     title="${canPrintOrSend ? 'Print Test Report' : 'Confirm the report before printing'}"
                     ${canPrintOrSend ? '' : 'disabled'}>
                 <i class="ri-printer-line"></i>
@@ -112,7 +148,7 @@ async function loadReports(page = 1) {
             <button class="btn btn-sm btn-soft-success whatsapp-report-btn me-1"
                     data-id="${row.id}"
                     data-invoice-no="${escapeHtml(row.invoice_no)}"
-                    data-category="${row.invoice_category ?? ''}"
+                    data-print-route="${row.print_route ?? ''}"
                     title="${canPrintOrSend ? 'Send Report via WhatsApp' : 'Confirm the report before sending'}"
                     ${canPrintOrSend ? '' : 'disabled'}>
                 <i class="ri-whatsapp-line"></i>
@@ -183,7 +219,6 @@ document.getElementById('nextPage').addEventListener('click', function () {
 document.getElementById('perPage').addEventListener('change', () => loadReports(1));
 document.getElementById('categoryFilter').addEventListener('change', () => loadReports(1));
 document.getElementById('paymentStatusFilter').addEventListener('change', () => loadReports(1));
-document.getElementById('deliveryStatusFilter').addEventListener('change', () => loadReports(1));
 document.getElementById('fromDateFilter').addEventListener('change', () => loadReports(1));
 document.getElementById('toDateFilter').addEventListener('change', () => loadReports(1));
 
@@ -198,10 +233,26 @@ document.getElementById('resetFiltersBtn').addEventListener('click', function ()
     document.querySelector('#searchInput').value = '';
     document.querySelector('#categoryFilter').value = '';
     document.querySelector('#paymentStatusFilter').value = '';
-    document.querySelector('#deliveryStatusFilter').value = '';
     setFlatpickrValue('fromDateFilter', '');
     setFlatpickrValue('toDateFilter', '');
     document.querySelector('#perPage').value = '15';
+
+    loadReports(1);
+});
+
+document.getElementById('deliveryStatusTabs').addEventListener('click', function (e) {
+
+    let tab = e.target.closest('.nav-link');
+    if (!tab) return;
+
+    e.preventDefault();
+
+    if (tab.classList.contains('active')) return;
+
+    document.querySelectorAll('#deliveryStatusTabs .nav-link').forEach(el => el.classList.remove('active'));
+    tab.classList.add('active');
+
+    currentDeliveryStatus = tab.dataset.deliveryStatus;
 
     loadReports(1);
 });
@@ -211,12 +262,17 @@ document.getElementById('reportTableBody').addEventListener('click', async funct
     let printBtn = e.target.closest('.print-report-btn');
     if (printBtn && !printBtn.disabled) {
 
-        // A Pathology invoice can now have several independent narrative
-        // reports (see PathologyReportController) -- rather than guess
-        // which one to print, send staff to Test Result Entry's Pathology
-        // tab, where each report has its own Print/WhatsApp button.
-        if (printBtn.dataset.category === 'PATHOLOGY') {
-            window.open(`/test-result-entry?open=${encodeURIComponent(printBtn.dataset.invoiceNo)}`, '_blank');
+        // An invoice can now have several independent narrative reports
+        // (Pathology, USG, Cardiology, Non-Pathology all claim/confirm/print
+        // per billed line, not per invoice) -- rather than guess which one
+        // to print, send staff to the module that actually owns this
+        // invoice's report(s), where each one has its own Print/WhatsApp
+        // button. Only falls back to the legacy single-PDF route for an
+        // invoice with no qualifying lines at all (nothing to route to).
+        let printUrl = printRouteUrl(printBtn.dataset.printRoute, printBtn.dataset.invoiceNo);
+
+        if (printUrl) {
+            window.open(printUrl, '_blank');
             return;
         }
 
@@ -227,8 +283,10 @@ document.getElementById('reportTableBody').addEventListener('click', async funct
     let whatsappBtn = e.target.closest('.whatsapp-report-btn');
     if (whatsappBtn && !whatsappBtn.disabled) {
 
-        if (whatsappBtn.dataset.category === 'PATHOLOGY') {
-            window.open(`/test-result-entry?open=${encodeURIComponent(whatsappBtn.dataset.invoiceNo)}`, '_blank');
+        let whatsappUrl = printRouteUrl(whatsappBtn.dataset.printRoute, whatsappBtn.dataset.invoiceNo);
+
+        if (whatsappUrl) {
+            window.open(whatsappUrl, '_blank');
             return;
         }
 

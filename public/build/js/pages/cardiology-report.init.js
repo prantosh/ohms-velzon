@@ -516,6 +516,19 @@ document.addEventListener('click', function (e) {
     }
 });
 
+// Deep link from the Test Report Dashboard's Print/WhatsApp actions
+// (test-report-dashboard.init.js) on an invoice made up entirely of
+// Cardiology items -- setting the input then showing the modal is enough,
+// since 'shown.bs.modal' below already runs searchInvoice() off whatever
+// is in invoiceNoInput.
+let deepLinkInvoiceNo = new URLSearchParams(location.search).get('open');
+
+if (deepLinkInvoiceNo) {
+
+    document.getElementById('invoiceNoInput').value = deepLinkInvoiceNo;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('cardioReportModal')).show();
+}
+
 /*
 |--------------------------------------------------------------------------
 | SAVE / CONFIRM (delegated -- study cards are added dynamically)
