@@ -54,6 +54,7 @@ return [
     'inventory-category' => 'Inventory Category Master',
     'inventory-item' => 'Inventory Item Master',
     'invoice-cancellation' => 'Invoice Cancellation',
+    'invoice-cancellation-history' => 'Invoice Cancellation History',
     'item-wise-report' => 'Item Wise Report',
     'kit-master' => 'Kit Master',
     'maintenance-mode' => 'Maintenance Mode',

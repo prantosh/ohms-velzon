@@ -523,7 +523,7 @@
                     </a>
                     <div class="collapse menu-dropdown" id="sidebarUsers">
                         <ul class="nav nav-sm flex-column">
-                            @if(is_null($allowedPages) || in_array('patient-history', $allowedPages) || in_array('user-history', $allowedPages) || in_array('doctor-activity-history', $allowedPages))
+                            @if(is_null($allowedPages) || in_array('patient-history', $allowedPages) || in_array('user-history', $allowedPages) || in_array('doctor-activity-history', $allowedPages) || in_array('invoice-cancellation-history', $allowedPages))
                             <li class="nav-item">
                                 <a class="nav-link menu-link" href="#sidebarReportHistory" data-bs-toggle="collapse" role="button"
                                     aria-expanded="false" aria-controls="sidebarReportHistory">
@@ -544,6 +544,11 @@
                                         @if(is_null($allowedPages) || in_array('doctor-activity-history', $allowedPages))
                                         <li class="nav-item">
                                                     <a href="{{ route('doctor-activity-history.index') }}" class="nav-link">@lang('translation.doctoractivityhistory')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('invoice-cancellation-history', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('invoice-cancellation-history.index') }}" class="nav-link">@lang('translation.invoicecancellationhistory')</a>
                                                     </li>
                                         @endif
                                     </ul>

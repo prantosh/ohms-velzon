@@ -40,6 +40,7 @@ return [
     "patienthistory" => "Patient History",
     "userhistory" => "User History",
     "doctoractivityhistory" => "Doctor History",
+    "invoicecancellationhistory" => "Invoice Cancellation History",
     "history" => "History",
 
     "inventory" => "Inventory",

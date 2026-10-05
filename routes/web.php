@@ -97,6 +97,7 @@ use App\Http\Controllers\UserInvoiceReportController;
 use App\Http\Controllers\AllInvoicesReportController;
 use App\Http\Controllers\CashSubmissionReportController;
 use App\Http\Controllers\EmployeePerformanceController;
+use App\Http\Controllers\InvoiceCancellationHistoryController;
 use App\Http\Controllers\ReportingGroupController;
 
 
@@ -1834,6 +1835,19 @@ Route::middleware(['auth'])->prefix('employee-performance')->group(function () {
 
     Route::get('/print-detail', [EmployeePerformanceController::class, 'printDetail'])
         ->name('employee-performance.print-detail');
+
+});
+
+Route::middleware(['auth'])->prefix('invoice-cancellation-history')->group(function () {
+
+    Route::get('/', [InvoiceCancellationHistoryController::class, 'index'])
+        ->name('invoice-cancellation-history.index');
+
+    Route::get('/list', [InvoiceCancellationHistoryController::class, 'list'])
+        ->name('invoice-cancellation-history.list');
+
+    Route::get('/detail', [InvoiceCancellationHistoryController::class, 'detail'])
+        ->name('invoice-cancellation-history.detail');
 
 });
 
