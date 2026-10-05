@@ -73,22 +73,40 @@ const CARDIO_EDITOR_CONFIG = {
     }
 };
 
+// The PDF deliberately strip_tags()'s this one field -- it's rendered as a
+// single centered title line, never as rich HTML like every other field
+// here. A table (or list/alignment) pasted into it survives editing just
+// fine but comes out as a flattened wall of text in the printed report,
+// with no warning until someone actually prints it. No Table/List/
+// Alignment/Indent plugins here at all closes that trap at the source
+// instead of relying on whoever builds a template to know not to use them
+// in this one field.
+const CARDIO_HEADING_EDITOR_CONFIG = {
+    licenseKey: 'GPL',
+    plugins: [Essentials, Paragraph, Bold, Italic, Underline, FontSize, Undo],
+    toolbar: ['bold', 'italic', 'underline', '|', 'fontSize', '|', 'undo', 'redo'],
+};
+
 // CKEditor5 only auto-binds Tab to indent inside a list -- for plain
 // paragraphs/headings Tab just moves focus out of the editor by default.
 // This makes Tab/Shift+Tab indent/outdent the current block everywhere,
 // falling through to normal focus navigation when indent isn't applicable
-// (e.g. already at the base level).
+// (e.g. already at the base level). The heading-only config above has no
+// Indent plugin at all -- commands.get() returns undefined for it rather
+// than a disabled command, so this must check existence first.
 function bindTabIndent(editor) {
 
     editor.keystrokes.set('Tab', (data, cancel) => {
-        if (editor.commands.get('indent').isEnabled) {
+        let command = editor.commands.get('indent');
+        if (command && command.isEnabled) {
             editor.execute('indent');
             cancel();
         }
     }, { priority: 'high' });
 
     editor.keystrokes.set('Shift+Tab', (data, cancel) => {
-        if (editor.commands.get('outdent').isEnabled) {
+        let command = editor.commands.get('outdent');
+        if (command && command.isEnabled) {
             editor.execute('outdent');
             cancel();
         }
@@ -121,7 +139,7 @@ async function initCardioTemplateEditors() {
     for (const field of cardioFieldKeys()) {
         cardioEditors[field] = bindTabIndent(await ClassicEditor.create(
             document.querySelector(`#${field}-field`),
-            CARDIO_EDITOR_CONFIG
+            field === 'heading' ? CARDIO_HEADING_EDITOR_CONFIG : CARDIO_EDITOR_CONFIG
         ));
     }
 }
