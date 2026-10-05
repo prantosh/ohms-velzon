@@ -72,10 +72,6 @@ function initialiseSelect2() {
 
     $('#user_id').select2({
 
-        placeholder: "Select User",
-
-        allowClear: true,
-
         width: '100%'
 
     });

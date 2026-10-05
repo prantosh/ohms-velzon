@@ -35,9 +35,11 @@ class DoctorSettlementController extends Controller
                 'doctor_name'
             ]);
 
-        $users = \App\Models\User::whereIn('role', ['Admin', 'Supervisor', 'Employee'])
-            ->orderBy('name')
-            ->get(['id', 'name', 'role']);
+        // The "User" field is a filter on which staff member's collected
+        // invoices to settle against, not a free pick of any staff member --
+        // locked to the logged-in user only so settlement always stays
+        // scoped to what the current session actually collected.
+        $currentUser = Auth::user();
 
         $paymentModes = [
 
@@ -52,7 +54,7 @@ class DoctorSettlementController extends Controller
             'apps-doctor-settlement',
             compact(
                 'doctors',
-                'users',
+                'currentUser',
                 'paymentModes'
             )
         );
@@ -71,7 +73,6 @@ class DoctorSettlementController extends Controller
             $request->validate([
 
                 'doctor_id' => 'required|exists:doctors,id',
-                'user_id' => 'required|exists:users,id',
                 'invoice_date' => 'required|date',
 
             ]);
@@ -116,9 +117,12 @@ class DoctorSettlementController extends Controller
                 // on the invoice itself.
                 ->where('invoices.cancelled', '!=', 'Y')
 
+                // Always the logged-in user, never a client-submitted value --
+                // this screen only ever settles payables against invoices the
+                // CURRENT session collected, not an arbitrary colleague's.
                 ->whereRaw(
                     'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',
-                    [$request->user_id]
+                    [Auth::id()]
                 )
 
                 // Deliberately NOT invoices.invoice_date -- a due/instalment
@@ -235,7 +239,6 @@ class DoctorSettlementController extends Controller
 
             $request->validate([
 
-                'user_id' => 'required|exists:users,id',
                 'invoice_date' => 'required|date',
 
             ]);
@@ -267,9 +270,11 @@ class DoctorSettlementController extends Controller
                 // Same as getOutstandingPayables() -- a cancelled invoice's
                 // payable has nothing left to settle.
                 ->where('invoices.cancelled', '!=', 'Y')
+                // Always the logged-in user, never a client-submitted value --
+                // see getOutstandingPayables()'s own comment on this.
                 ->whereRaw(
                     'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',
-                    [$request->user_id]
+                    [Auth::id()]
                 )
                 ->whereDate('invoices.invoice_date', $request->invoice_date)
                 ->orderByDesc('doctor_payables.id')
@@ -1279,9 +1284,10 @@ private function generateSettlementNo()
 
     public function indexByUser()
     {
-        $users = \App\Models\User::whereIn('role', ['Admin', 'Supervisor', 'Employee'])
-            ->orderBy('name')
-            ->get(['id', 'name', 'role']);
+        // Same reasoning as DoctorSettlementController::index() -- the
+        // "User" field is locked to the logged-in user only, not a pick of
+        // any staff member.
+        $currentUser = Auth::user();
 
         $paymentModes = [
 
@@ -1295,7 +1301,7 @@ private function generateSettlementNo()
         return view(
             'apps-doctor-settlement-by-user',
             compact(
-                'users',
+                'currentUser',
                 'paymentModes'
             )
         );
@@ -1313,7 +1319,6 @@ private function generateSettlementNo()
 
             $request->validate([
 
-                'user_id' => 'required|exists:users,id',
                 'invoice_date' => 'required|date',
 
             ]);
@@ -1355,9 +1360,11 @@ private function generateSettlementNo()
                 // A cancelled invoice has no payable settlement left to make.
                 ->where('invoices.cancelled', '!=', 'Y')
 
+                // Always the logged-in user, never a client-submitted value --
+                // see getOutstandingPayables()'s own comment on this.
                 ->whereRaw(
                     'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',
-                    [$request->user_id]
+                    [Auth::id()]
                 )
 
                 // See getOutstandingPayables()'s own comment on this same
@@ -1421,7 +1428,7 @@ private function generateSettlementNo()
                 'Doctor Settlement Outstanding By User',
                 [
 
-                    'user_id' => $request->user_id,
+                    'user_id' => Auth::id(),
 
                     'error' => $e->getMessage()
 

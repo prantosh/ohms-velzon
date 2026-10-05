@@ -506,21 +506,14 @@ border:none;
                     id="user_id"
                     class="form-select">
 
-                    <option value="">
+                    {{-- Locked to the logged-in user -- this screen only
+                         ever settles payables against invoices the CURRENT
+                         session collected, never an arbitrary colleague's. --}}
+                    <option value="{{ $currentUser->id }}" selected>
 
-                        Select User
+                        {{ $currentUser->name }}
 
                     </option>
-
-                    @foreach($users as $user)
-
-                        <option value="{{ $user->id }}">
-
-                            {{ $user->name }}
-
-                        </option>
-
-                    @endforeach
 
                 </select>
 

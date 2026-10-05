@@ -61,11 +61,12 @@
 
                     <div class="col-md-3 mb-3">
                         <label class="form-label">User <span class="text-danger">*</span></label>
+                        {{-- Locked to the logged-in user -- this screen only
+                             ever settles payables against invoices the
+                             CURRENT session collected, never an arbitrary
+                             colleague's. --}}
                         <select id="user_id-field" class="form-select" required>
-                            <option value="">-- Select User --</option>
-                            @foreach($users as $user)
-                            <option value="{{ $user->id }}">{{ $user->name }} ({{ $user->role }})</option>
-                            @endforeach
+                            <option value="{{ $currentUser->id }}" selected>{{ $currentUser->name }} ({{ $currentUser->role }})</option>
                         </select>
                     </div>
 
