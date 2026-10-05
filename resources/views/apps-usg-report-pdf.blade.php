@@ -78,10 +78,6 @@ table td {
     padding: 3px;
 }
 
-.payment-status-paid { color: #0a8043; font-weight: bold; }
-.payment-status-due { color: #c00000; font-weight: bold; }
-.payment-status-partial { color: #b26a00; font-weight: bold; }
-
 .study-title {
     text-align: center;
     margin-top: 12px;
@@ -203,30 +199,10 @@ table td {
         }
     }
 
-    // Same Paid/Due/Partial classification used by the Test Report
-    // Dashboard's payment_status filter (TestReportDashboardController) --
-    // no stored column for it, so it's derived the same way here.
-    if (!function_exists('usgPaymentStatus')) {
-        function usgPaymentStatus($invoice) {
-            $due = (float) $invoice->due_amount;
-            $paid = (float) $invoice->paid_amount;
-
-            if ($due <= 0) {
-                return ['label' => 'PAID', 'class' => 'payment-status-paid'];
-            }
-
-            if ($paid <= 0) {
-                return ['label' => 'DUE (Rs. ' . number_format($due, 2) . ' pending)', 'class' => 'payment-status-due'];
-            }
-
-            return ['label' => 'PARTIAL (Rs. ' . number_format($due, 2) . ' pending)', 'class' => 'payment-status-partial'];
-        }
-    }
 @endphp
 
 <body>
 
-@php $usgPaymentStatus = usgPaymentStatus($invoice); @endphp
 <div class="patient-detail-fixed">
 
 <table class="patient-detail-table">
@@ -253,8 +229,8 @@ table td {
             {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
         </td>
         <td colspan="3">
-            <span class="label-blue">Payment Status :</span>
-            <span class="{{ $usgPaymentStatus['class'] }}">{{ $usgPaymentStatus['label'] }}</span>
+            <span class="label-blue">Patient ID :</span>
+            {{ $invoice->patient_id ?? '-' }}
         </td>
     </tr>
 </table>
