@@ -67,6 +67,32 @@ table {
     margin-top: 6px;
 }
 
+/*
+    Doctor's signature stamp, repeated on every page at a fixed spot on
+    the physical letterhead paper: 11.5cm from the true left edge, 5.65cm
+    from the true bottom edge. DomPDF measures position:fixed elements
+    from the page's margin/content box, not the true page edge, so the
+    offsets below subtract out this page's own @page margins (same
+    negative-offset trick used for the header/footer images in
+    apps-pathology-report-pdf-whatsapp.blade.php) to land back at the
+    true physical position regardless of margin-left/margin-bottom.
+*/
+.doctor-signature-wrap {
+    position: fixed;
+    bottom: -0.35cm; /* -(margin-bottom 6cm - 5.65cm) */
+    left: 10.44cm;  /* 11.5cm - margin-left (40px = 1.06cm) */
+    width: 7.5cm;
+}
+
+/* It's a raster image, not text, so font-weight can't bold it -- this
+   stacks several copies of the same image with a tiny offset in each
+   direction to fake a thicker/bolder stroke (same trick browsers use
+   to fake-bold a font with no bold variant available). */
+.doctor-signature-image {
+    position: absolute;
+    width: 100%;
+}
+
 .report-body table th,
 .report-body table td {
     border: 1px solid #000;
@@ -98,6 +124,14 @@ table {
 </head>
 
 <body>
+
+<div class="doctor-signature-wrap">
+    @foreach ([[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]] as [$dx, $dy])
+        <img class="doctor-signature-image"
+             style="left: {{ $dx }}mm; top: {{ $dy }}mm;"
+             src="{{ public_path('images/doctor_signature_pathology.png') }}">
+    @endforeach
+</div>
 
 <table class="patient-detail-table">
     <tr>

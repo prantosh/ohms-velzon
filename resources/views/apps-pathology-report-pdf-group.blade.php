@@ -70,6 +70,29 @@ table {
     right: 0;
 }
 
+/*
+    Doctor's signature stamp, repeated on every page at a fixed spot on
+    the physical letterhead paper: 11.5cm from the true left edge, 5.65cm
+    from the true bottom edge. Same negative-offset trick as
+    .patient-detail-fixed above, but relative to margin-bottom/
+    margin-left instead of margin-top.
+*/
+.doctor-signature-wrap {
+    position: fixed;
+    bottom: -0.35cm; /* -(margin-bottom 6cm - 5.65cm) */
+    left: 10.44cm;  /* 11.5cm - margin-left (40px = 1.06cm) */
+    width: 7.5cm;
+}
+
+/* It's a raster image, not text, so font-weight can't bold it -- this
+   stacks several copies of the same image with a tiny offset in each
+   direction to fake a thicker/bolder stroke (same trick browsers use
+   to fake-bold a font with no bold variant available). */
+.doctor-signature-image {
+    position: absolute;
+    width: 100%;
+}
+
 .patient-detail-table th,
 .patient-detail-table td {
     font-size: 9px;
@@ -161,6 +184,14 @@ table {
 </head>
 
 <body>
+
+<div class="doctor-signature-wrap">
+    @foreach ([[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]] as [$dx, $dy])
+        <img class="doctor-signature-image"
+             style="left: {{ $dx }}mm; top: {{ $dy }}mm;"
+             src="{{ public_path('images/doctor_signature_pathology.png') }}">
+    @endforeach
+</div>
 
 <div class="patient-detail-fixed">
     <table class="patient-detail-table">
