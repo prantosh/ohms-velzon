@@ -62,7 +62,7 @@ class DiagnosticResultStatusService
      * row per billed line with their own confirmed_at, unlike Pathology's
      * many-lines-per-finding bundling.
      *
-     * @return array{0: string, 1: int, 2: int, 3: int} [result_status, total_tests, results_entered, confirmed_count]
+     * @return array{0: string, 1: int, 2: int, 3: int} [result_status, total_tests, results_entered, confirmed_count] -- result_status is one of N/A, Pending, Partial, Confirmation Pending, Complete
      */
     public function resultStatusFor(Invoice $invoice): array
     {
@@ -113,9 +113,15 @@ class DiagnosticResultStatusService
             $confirmedCount += DB::table($table)->whereIn('invoice_detail_id', $ids)->whereNotNull('confirmed_at')->count();
         }
 
+        // Fully entered isn't the same as Complete -- a report whose text is
+        // all written but not yet signed off reads as "Confirmation Pending"
+        // instead, so staff don't mistake data-entry progress for a report
+        // that's actually finished and ready to print/deliver.
         $resultStatus = $resultsEntered <= 0
             ? 'Pending'
-            : ($resultsEntered >= $totalTests ? 'Complete' : 'Partial');
+            : ($resultsEntered < $totalTests
+                ? 'Partial'
+                : ($confirmedCount >= $totalTests ? 'Complete' : 'Confirmation Pending'));
 
         return [$resultStatus, $totalTests, $resultsEntered, $confirmedCount];
     }

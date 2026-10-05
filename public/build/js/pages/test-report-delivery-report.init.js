@@ -187,6 +187,7 @@ function inHouseStatusBadge(row) {
     let cls = {
         'Pending': 'bg-warning text-dark',
         'Partial': 'bg-info text-dark',
+        'Confirmation Pending': 'bg-primary',
         'Complete': 'bg-success',
     }[row.in_house_result_status] ?? 'bg-secondary';
 

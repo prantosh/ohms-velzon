@@ -68,6 +68,7 @@ function resultStatusBadge(row) {
     let cls = {
         'Pending': 'bg-warning text-dark',
         'Partial': 'bg-info text-dark',
+        'Confirmation Pending': 'bg-primary',
         'Complete': 'bg-success',
         'N/A': 'bg-secondary'
     }[row.result_status] ?? 'bg-secondary';
