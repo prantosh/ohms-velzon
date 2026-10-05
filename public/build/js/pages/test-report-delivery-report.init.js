@@ -1,5 +1,7 @@
 let currentPage = 1;
 let lastPage = 1;
+let undeliveredCurrentPage = 1;
+let undeliveredLastPage = 1;
 
 function escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -8,6 +10,10 @@ function escapeHtml(value) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+}
+
+function csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]').content;
 }
 
 function currentFilters() {
@@ -34,6 +40,12 @@ function updatePrintLink() {
     let params = new URLSearchParams(currentFilters());
     document.getElementById('printReportBtn').href = `/test-report-delivery-report/print?${params.toString()}`;
 }
+
+/*
+|--------------------------------------------------------------------------
+| DELIVERED TAB -- the append-only test_report_deliveries log
+|--------------------------------------------------------------------------
+*/
 
 async function loadReports(page = 1) {
 
@@ -62,7 +74,7 @@ async function loadReports(page = 1) {
     document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
 
     if (!result.data.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No delivery records found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No delivery records found.</td></tr>';
         return;
     }
 
@@ -70,7 +82,9 @@ async function loadReports(page = 1) {
         tbody.innerHTML += `
             <tr>
                 <td>${escapeHtml(row.invoice_no)}</td>
-                <td>${escapeHtml(row.patient_name ?? '-')}<br><small class="text-muted">${escapeHtml(row.patient_mobile_no ?? '')}</small></td>
+                <td>${escapeHtml(row.invoice_date_fmt)}</td>
+                <td>${escapeHtml(row.patient_name ?? '-')}</td>
+                <td>${escapeHtml(row.patient_mobile_no ?? '-')}</td>
                 <td>${escapeHtml(row.delivered_by_name)}</td>
                 <td>${escapeHtml(row.delivered_at_fmt)}</td>
                 <td>${paymentStatusBadge(row.payment_status)}</td>
@@ -109,9 +123,200 @@ document.getElementById('resetFiltersBtn').addEventListener('click', function ()
     setFlatpickrValue('toDateFilter', '');
     document.querySelector('#perPage').value = '15';
 
+    document.querySelectorAll('#dayRangeButtons button').forEach(b => b.classList.remove('active'));
+    document.querySelector('#dayRangeButtons button[data-days="all"]').classList.add('active');
+
     loadReports(1);
+});
+
+// Quick day-range shortcuts -- just fill in the same From/To Date fields
+// the manual pickers use, so a custom range still works afterwards and
+// the backend needs no separate "days" filter of its own.
+document.getElementById('dayRangeButtons').addEventListener('click', function (e) {
+
+    let btn = e.target.closest('button');
+    if (!btn) return;
+
+    document.querySelectorAll('#dayRangeButtons button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    let days = btn.dataset.days;
+
+    if (days === 'all') {
+        setFlatpickrValue('fromDateFilter', '');
+        setFlatpickrValue('toDateFilter', '');
+    } else {
+        let today = new Date();
+        let from = new Date();
+        from.setDate(today.getDate() - (parseInt(days, 10) - 1));
+
+        setFlatpickrValue('fromDateFilter', from.toISOString().substring(0, 10));
+        setFlatpickrValue('toDateFilter', today.toISOString().substring(0, 10));
+    }
+
+    loadReports(1);
+});
+
+/*
+|--------------------------------------------------------------------------
+| UNDELIVERED TAB -- reuses the Test Report Dashboard's own "Not
+| Delivered" listing and toggle-delivered action directly, rather than a
+| separate implementation, so the two screens can never disagree about
+| what counts as undelivered or how delivering it works.
+|--------------------------------------------------------------------------
+*/
+
+function resultStatusBadge(row) {
+
+    let cls = {
+        'Pending': 'bg-warning text-dark',
+        'Partial': 'bg-info text-dark',
+        'Complete': 'bg-success',
+        'N/A': 'bg-secondary'
+    }[row.result_status] ?? 'bg-secondary';
+
+    return `<span class="badge ${cls}">${row.result_status} (${row.results_entered}/${row.total_tests})</span>`;
+}
+
+async function loadUndeliveredReports(page = 1) {
+
+    undeliveredCurrentPage = page;
+
+    let params = new URLSearchParams({
+        page,
+        per_page: document.querySelector('#undeliveredPerPage').value,
+        search: document.querySelector('#undeliveredSearchInput').value.trim(),
+        delivery_status: 'Pending',
+    });
+
+    const response = await fetch(`/test-report-dashboard/list?${params.toString()}`, {
+        headers: { 'Accept': 'application/json' }
+    });
+
+    const result = await response.json();
+
+    let tbody = document.querySelector('#undeliveredTableBody');
+    tbody.innerHTML = '';
+
+    if (!result.status) return;
+
+    undeliveredLastPage = result.pagination.last_page;
+
+    document.querySelector('#undeliveredPageNumber').innerText = `Page ${result.pagination.current_page}`;
+    document.querySelector('#undelivered-pagination-info').innerText = `Total Records : ${result.pagination.total}`;
+    document.querySelector('#undeliveredCount').innerText = result.pagination.total;
+
+    if (!result.data.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No undelivered reports found.</td></tr>';
+        return;
+    }
+
+    result.data.forEach(row => {
+
+        let blockDeliver = row.result_status === 'Pending';
+
+        tbody.innerHTML += `
+            <tr>
+                <td>${escapeHtml(row.invoice_no)}</td>
+                <td>${escapeHtml(row.invoice_date ?? '-')}</td>
+                <td>${escapeHtml(row.patient_name ?? '-')}</td>
+                <td>${escapeHtml(row.patient_mobile_no ?? '-')}</td>
+                <td>${escapeHtml(row.invoice_category === 'PATHOLOGY' ? 'Pathology' : 'Non-Pathology')}</td>
+                <td>${resultStatusBadge(row)}</td>
+                <td>${paymentStatusBadge(row.payment_status)}</td>
+                <td class="text-end">${row.due_amount.toFixed(2)}</td>
+                <td>
+                    <button class="btn btn-sm btn-soft-primary deliver-btn"
+                            data-id="${row.id}"
+                            data-payment-status="${row.payment_status}"
+                            data-due-amount="${row.due_amount}"
+                            title="${blockDeliver ? 'No test results entered yet' : 'Mark as Delivered'}"
+                            ${blockDeliver ? 'disabled' : ''}>
+                        <i class="ri-checkbox-circle-line"></i>
+                        Deliver
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+document.getElementById('undeliveredPrevPage').addEventListener('click', function () {
+    if (undeliveredCurrentPage > 1) loadUndeliveredReports(undeliveredCurrentPage - 1);
+});
+
+document.getElementById('undeliveredNextPage').addEventListener('click', function () {
+    if (undeliveredCurrentPage < undeliveredLastPage) loadUndeliveredReports(undeliveredCurrentPage + 1);
+});
+
+document.getElementById('undeliveredPerPage').addEventListener('change', () => loadUndeliveredReports(1));
+
+let undeliveredSearchDebounce = null;
+document.getElementById('undeliveredSearchInput').addEventListener('input', function () {
+    clearTimeout(undeliveredSearchDebounce);
+    undeliveredSearchDebounce = setTimeout(() => loadUndeliveredReports(1), 400);
+});
+
+document.getElementById('undeliveredResetFiltersBtn').addEventListener('click', function () {
+
+    document.querySelector('#undeliveredSearchInput').value = '';
+    document.querySelector('#undeliveredPerPage').value = '15';
+
+    loadUndeliveredReports(1);
+});
+
+// Same confirm/post/response-handling as the Deliver action on the Test
+// Report Dashboard itself (test-report-dashboard.init.js) -- intentionally
+// identical since this reuses that exact endpoint.
+document.getElementById('undeliveredTableBody').addEventListener('click', function (e) {
+
+    let deliverBtn = e.target.closest('.deliver-btn');
+    if (!deliverBtn || deliverBtn.disabled) return;
+
+    let id = deliverBtn.dataset.id;
+    let paymentStatus = deliverBtn.dataset.paymentStatus;
+    let dueAmount = parseFloat(deliverBtn.dataset.dueAmount || '0');
+
+    let confirmPromise = (paymentStatus === 'Partial')
+        ? Swal.fire({
+            icon: 'warning',
+            title: 'Payment is Partial',
+            html: `This invoice still has a due amount of <b>&#8377;${dueAmount.toFixed(2)}</b>.<br>Are you sure you want to mark the report as delivered?`,
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Mark as Delivered',
+            confirmButtonColor: '#f7b84b',
+        })
+        : Swal.fire({
+            icon: 'question',
+            title: 'Mark this report as delivered?',
+            showCancelButton: true,
+            confirmButtonText: 'Yes',
+        });
+
+    confirmPromise.then(async function (confirmResult) {
+
+        if (!confirmResult.isConfirmed) return;
+
+        const response = await fetch(`/test-report-dashboard/toggle-delivered/${id}`, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken() }
+        });
+
+        const result = await response.json();
+
+        if (!result.status) {
+            Swal.fire({ icon: 'error', title: 'Error', text: result.message ?? 'Unable to update delivery status.' });
+            return;
+        }
+
+        Swal.fire({ icon: 'success', title: 'Delivered', timer: 1200, showConfirmButton: false });
+
+        loadUndeliveredReports(undeliveredCurrentPage);
+        loadReports(currentPage);
+    });
 });
 
 document.addEventListener('DOMContentLoaded', function () {
     loadReports(1);
+    loadUndeliveredReports(1);
 });

@@ -80,7 +80,7 @@ class TestReportDeliveryReportController extends Controller
 
     private function filteredQuery(Request $request)
     {
-        $query = TestReportDelivery::query()->with('deliveredByUser');
+        $query = TestReportDelivery::query()->with(['deliveredByUser', 'invoice']);
 
         if ($request->filled('user_id') && $request->user_id !== 'ALL') {
             $query->where('delivered_by', $request->user_id);
@@ -119,6 +119,9 @@ class TestReportDeliveryReportController extends Controller
             'invoice_no' => $row->invoice_no,
             'patient_name' => $row->patient_name,
             'patient_mobile_no' => $row->patient_mobile_no,
+            'invoice_date_fmt' => optional($row->invoice)->invoice_date
+                ? Carbon::parse($row->invoice->invoice_date)->format('d-m-Y')
+                : '-',
             'total_amount' => (float) $row->total_amount,
             'paid_amount' => (float) $row->paid_amount,
             'due_amount' => (float) $row->due_amount,
