@@ -442,6 +442,17 @@
                     Save
                 </button>
 
+                <!-- Confirms/locks just THIS one report, independent of the
+                     rest of its test group (pathology-report.confirm-finding)
+                     -- for items that come back sooner than the rest of the
+                     group. Sits alongside "Confirm Group" above; either path
+                     works, and WhatsApp still only fires once every report
+                     on the whole invoice is confirmed. -->
+                <button type="button" class="btn btn-warning pathology-confirm-btn">
+                    <i class="ri-shield-check-line"></i>
+                    Confirm
+                </button>
+
                 <a href="javascript:void(0)" class="btn btn-info pathology-print-btn" style="display:none;" target="_blank">
                     <i class="ri-printer-line"></i>
                     Print Report

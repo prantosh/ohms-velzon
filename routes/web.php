@@ -2863,6 +2863,15 @@ Route::middleware(['auth'])->prefix('pathology-report')->group(function () {
         [PathologyReportController::class, 'confirm']
     )->name('pathology-report.confirm');
 
+    // Confirms/locks ONE report (one finding) independent of the rest of
+    // its test group -- for items that finish at different turnaround
+    // times (e.g. a 1-day test vs. a 3-day test in the same Biochemistry
+    // group). Sits alongside the group-batch confirm above.
+    Route::post(
+        '/confirm-finding/{id}',
+        [PathologyReportController::class, 'confirmFinding']
+    )->name('pathology-report.confirm-finding');
+
     Route::get(
         '/print/{id}',
         [PathologyReportController::class, 'printReport']

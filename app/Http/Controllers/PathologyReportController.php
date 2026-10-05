@@ -623,6 +623,64 @@ class PathologyReportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | CONFIRM -- ONE REPORT (ONE FINDING) AT A TIME
+    |--------------------------------------------------------------------------
+    | Some tests in a group turn around in a day, others take several days
+    | (e.g. Biochemistry's Urea vs. a culture-dependent test) -- staff need
+    | to lock and hand over whichever report is ready now without waiting
+    | on the rest of the group. This sits alongside confirm() (the group
+    | batch action) rather than replacing it; either path can set
+    | confirmed_at on a finding, and isInvoicePathologyFullyConfirmed()
+    | below doesn't care which one did it -- WhatsApp still only fires once
+    | every Pathology line on the whole invoice is confirmed, exactly as
+    | before.
+    */
+
+    public function confirmFinding($id, AuditService $auditService, WatiService $wati)
+    {
+        $finding = PathologyReportFinding::findOrFail($id);
+
+        if ($finding->confirmed_at) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This report is already confirmed.'
+            ]);
+        }
+
+        if (empty($finding->content)) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Cannot confirm -- enter report content first.'
+            ]);
+        }
+
+        $finding->update([
+            'confirmed_by' => Auth::id(),
+            'confirmed_at' => now(),
+        ]);
+
+        $auditService->logAction(self::MODULE_CODE, $finding, 'CONFIRM', 'Pathology report confirmed and locked (individual item confirm)');
+
+        $whatsappStatus = $this->isInvoicePathologyFullyConfirmed($finding->invoice_no)
+            ? $this->autoSendInvoiceWhatsapp($finding->invoice_no, $wati, $auditService)
+            : 'pending_other_reports';
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Report confirmed.',
+            'data' => [
+                'confirmed_finding_id' => $finding->id,
+                'confirmed_at' => now()->format('d-m-Y H:i'),
+                'whatsapp_status' => $whatsappStatus,
+                'whatsapp_sent_at' => $whatsappStatus === 'sent' ? now()->format('d-m-Y H:i') : null,
+            ]
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | PDF PRINT
     |--------------------------------------------------------------------------
     */

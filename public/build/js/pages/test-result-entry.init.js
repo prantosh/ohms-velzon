@@ -539,6 +539,7 @@ function lockPathologyCard(cardEl, findingId) {
 
     cardEl.querySelector('.pathology-confirmed-badge').style.display = 'inline-block';
     cardEl.querySelector('.pathology-save-btn').style.display = 'none';
+    cardEl.querySelector('.pathology-confirm-btn').style.display = 'none';
 
     let printBtn = cardEl.querySelector('.pathology-print-btn');
     printBtn.href = `/pathology-report/print/${findingId}`;
@@ -792,6 +793,91 @@ async function confirmPathologyGroup(groupBtn) {
     }
 }
 
+// Confirms/locks just ONE report, independent of the rest of its test
+// group -- for items that come back sooner than the rest of the group
+// (pathology-report.confirm-finding). Mirrors confirmPathologyGroup()
+// above (auto-save first, then lock + refresh the shared group/invoice
+// buttons and WhatsApp banner), just scoped to a single card.
+async function confirmPathologyFinding(confirmBtn) {
+
+    let card = confirmBtn.closest('.pathology-finding-card');
+
+    let confirmResult = await Swal.fire({
+        icon: 'warning',
+        title: 'Confirm this report?',
+        text: 'This locks this report -- it can no longer be edited.',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, Confirm & Lock'
+    });
+
+    if (!confirmResult.isConfirmed) {
+        return;
+    }
+
+    confirmBtn.disabled = true;
+
+    const saveResult = await savePathologyCard(card);
+
+    if (!saveResult.status) {
+
+        confirmBtn.disabled = false;
+
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: saveResult.message ?? (saveResult.errors ? Object.values(saveResult.errors).flat().join(', ') : 'Unable to save this report.')
+        });
+
+        return;
+    }
+
+    const { result } = await fetchJson(`/pathology-report/confirm-finding/${card.dataset.findingId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken()
+        }
+    });
+
+    confirmBtn.disabled = false;
+
+    if (result.status) {
+
+        lockPathologyCard(card, card.dataset.findingId);
+        refreshPathologyGroupButtons();
+
+        const waStatus = result.data ? result.data.whatsapp_status : null;
+
+        if (waStatus === 'sent') {
+            pathologyState.pathology_whatsapp = { sent: true, sent_at: result.data.whatsapp_sent_at };
+        }
+
+        renderPathologyWhatsappBanner();
+
+        const waMessages = {
+            sent: 'Confirmed -- all reports on this invoice are now confirmed, so the combined report has been sent to the patient via WhatsApp.',
+            already_sent: 'Confirmed. (WhatsApp for this invoice was already sent earlier.)',
+            skipped: 'Confirmed. Automatic WhatsApp sending is currently switched off.',
+            failed: 'Confirmed, but sending the WhatsApp message failed -- use Send Now once ready.',
+            pending_other_reports: 'Confirmed. WhatsApp will be sent once every Pathology test on this invoice is confirmed.'
+        };
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Confirmed',
+            text: waMessages[waStatus] || result.message
+        });
+
+    } else {
+
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: result.message
+        });
+    }
+}
+
 document.addEventListener('click', async function (e) {
 
     let saveBtn = e.target.closest('.pathology-save-btn');
@@ -819,6 +905,13 @@ document.addEventListener('click', async function (e) {
 
     if (confirmGroupBtn) {
         await confirmPathologyGroup(confirmGroupBtn);
+        return;
+    }
+
+    let confirmFindingBtn = e.target.closest('.pathology-confirm-btn');
+
+    if (confirmFindingBtn) {
+        await confirmPathologyFinding(confirmFindingBtn);
     }
 });
 
