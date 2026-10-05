@@ -36,6 +36,16 @@ function paymentStatusBadge(status) {
     return `<span class="badge ${cls}">${status}</span>`;
 }
 
+function typeLabelBadge(typeLabel) {
+    let cls = {
+        'In-House': 'bg-secondary-subtle text-secondary',
+        'Outsourced (Received)': 'bg-info-subtle text-info',
+        'Outsourced (Delivered)': 'bg-success-subtle text-success',
+    }[typeLabel] ?? 'bg-secondary-subtle text-secondary';
+
+    return `<span class="badge ${cls}">${escapeHtml(typeLabel)}</span>`;
+}
+
 function updatePrintLink() {
     let params = new URLSearchParams(currentFilters());
     document.getElementById('printReportBtn').href = `/test-report-delivery-report/print?${params.toString()}`;
@@ -74,7 +84,7 @@ async function loadReports(page = 1) {
     document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
 
     if (!result.data.length) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No delivery records found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">No delivery records found.</td></tr>';
         return;
     }
 
@@ -85,6 +95,7 @@ async function loadReports(page = 1) {
                 <td>${escapeHtml(row.invoice_date_fmt)}</td>
                 <td>${escapeHtml(row.patient_name ?? '-')}</td>
                 <td>${escapeHtml(row.patient_mobile_no ?? '-')}</td>
+                <td>${typeLabelBadge(row.type_label)}</td>
                 <td>${escapeHtml(row.delivered_by_name)}</td>
                 <td>${escapeHtml(row.delivered_at_fmt)}</td>
                 <td>${paymentStatusBadge(row.payment_status)}</td>
@@ -159,23 +170,45 @@ document.getElementById('dayRangeButtons').addEventListener('click', function (e
 
 /*
 |--------------------------------------------------------------------------
-| UNDELIVERED TAB -- reuses the Test Report Dashboard's own "Not
-| Delivered" listing and toggle-delivered action directly, rather than a
-| separate implementation, so the two screens can never disagree about
-| what counts as undelivered or how delivering it works.
+| UNDELIVERED TAB -- invoices still owing an in-house and/or outsourced
+| delivery. In-house and outsourced are tracked and delivered
+| independently, since a mixed invoice (common) can have one side done
+| while the other is still pending. Outsourced goes through an extra
+| "Received from Lab" step before it can be marked delivered.
 |--------------------------------------------------------------------------
 */
 
-function resultStatusBadge(row) {
+function inHouseStatusBadge(row) {
+
+    if (row.in_house_total_tests === 0) {
+        return '<span class="badge bg-secondary">N/A</span>';
+    }
 
     let cls = {
         'Pending': 'bg-warning text-dark',
         'Partial': 'bg-info text-dark',
         'Complete': 'bg-success',
-        'N/A': 'bg-secondary'
-    }[row.result_status] ?? 'bg-secondary';
+    }[row.in_house_result_status] ?? 'bg-secondary';
 
-    return `<span class="badge ${cls}">${row.result_status} (${row.results_entered}/${row.total_tests})</span>`;
+    let deliveredBadge = row.in_house_delivered
+        ? ' <span class="badge bg-success-subtle text-success">Delivered</span>'
+        : '';
+
+    return `<span class="badge ${cls}">${row.in_house_result_status} (${row.in_house_results_entered}/${row.in_house_total_tests})</span>${deliveredBadge}`;
+}
+
+function outsourcedStatusBadge(row) {
+
+    let cls = {
+        'N/A': 'bg-secondary',
+        'Pending': 'bg-warning text-dark',
+        'Received': 'bg-info text-dark',
+        'Delivered': 'bg-success',
+    }[row.outsourced_status] ?? 'bg-secondary';
+
+    let countSuffix = row.outsourced_total_tests > 0 ? ` (${row.outsourced_total_tests})` : '';
+
+    return `<span class="badge ${cls}">${row.outsourced_status}${countSuffix}</span>`;
 }
 
 async function loadUndeliveredReports(page = 1) {
@@ -186,10 +219,9 @@ async function loadUndeliveredReports(page = 1) {
         page,
         per_page: document.querySelector('#undeliveredPerPage').value,
         search: document.querySelector('#undeliveredSearchInput').value.trim(),
-        delivery_status: 'Pending',
     });
 
-    const response = await fetch(`/test-report-dashboard/list?${params.toString()}`, {
+    const response = await fetch(`/test-report-delivery-report/undelivered?${params.toString()}`, {
         headers: { 'Accept': 'application/json' }
     });
 
@@ -213,7 +245,45 @@ async function loadUndeliveredReports(page = 1) {
 
     result.data.forEach(row => {
 
-        let blockDeliver = row.result_status === 'Pending';
+        let actions = '';
+
+        if (row.in_house_total_tests > 0 && !row.in_house_delivered) {
+
+            let blockDeliver = row.in_house_result_status === 'Pending';
+
+            actions += `
+                <button class="btn btn-sm btn-soft-primary deliver-in-house-btn mb-1"
+                        data-id="${row.id}"
+                        data-payment-status="${row.payment_status}"
+                        data-due-amount="${row.due_amount}"
+                        title="${blockDeliver ? 'No test results entered yet' : 'Mark in-house report as delivered'}"
+                        ${blockDeliver ? 'disabled' : ''}>
+                    <i class="ri-checkbox-circle-line"></i>
+                    Deliver In-House
+                </button>
+            `;
+        }
+
+        if (row.outsourced_status === 'Pending') {
+            actions += `
+                <button class="btn btn-sm btn-soft-info receive-outsourced-btn mb-1" data-id="${row.id}"
+                        title="Mark outsourced report as received from the lab">
+                    <i class="ri-download-2-line"></i>
+                    Receive Outsourced
+                </button>
+            `;
+        } else if (row.outsourced_status === 'Received') {
+            actions += `
+                <button class="btn btn-sm btn-soft-primary deliver-outsourced-btn mb-1"
+                        data-id="${row.id}"
+                        data-payment-status="${row.payment_status}"
+                        data-due-amount="${row.due_amount}"
+                        title="Mark outsourced report as delivered to patient">
+                    <i class="ri-checkbox-circle-line"></i>
+                    Deliver Outsourced
+                </button>
+            `;
+        }
 
         tbody.innerHTML += `
             <tr>
@@ -221,21 +291,11 @@ async function loadUndeliveredReports(page = 1) {
                 <td>${escapeHtml(row.invoice_date ?? '-')}</td>
                 <td>${escapeHtml(row.patient_name ?? '-')}</td>
                 <td>${escapeHtml(row.patient_mobile_no ?? '-')}</td>
-                <td>${escapeHtml(row.invoice_category === 'PATHOLOGY' ? 'Pathology' : 'Non-Pathology')}</td>
-                <td>${resultStatusBadge(row)}</td>
                 <td>${paymentStatusBadge(row.payment_status)}</td>
                 <td class="text-end">${row.due_amount.toFixed(2)}</td>
-                <td>
-                    <button class="btn btn-sm btn-soft-primary deliver-btn"
-                            data-id="${row.id}"
-                            data-payment-status="${row.payment_status}"
-                            data-due-amount="${row.due_amount}"
-                            title="${blockDeliver ? 'No test results entered yet' : 'Mark as Delivered'}"
-                            ${blockDeliver ? 'disabled' : ''}>
-                        <i class="ri-checkbox-circle-line"></i>
-                        Deliver
-                    </button>
-                </td>
+                <td>${inHouseStatusBadge(row)}</td>
+                <td>${outsourcedStatusBadge(row)}</td>
+                <td class="text-nowrap">${actions || '-'}</td>
             </tr>
         `;
     });
@@ -265,19 +325,18 @@ document.getElementById('undeliveredResetFiltersBtn').addEventListener('click', 
     loadUndeliveredReports(1);
 });
 
-// Same confirm/post/response-handling as the Deliver action on the Test
-// Report Dashboard itself (test-report-dashboard.init.js) -- intentionally
-// identical since this reuses that exact endpoint.
-document.getElementById('undeliveredTableBody').addEventListener('click', function (e) {
+async function postAction(url) {
 
-    let deliverBtn = e.target.closest('.deliver-btn');
-    if (!deliverBtn || deliverBtn.disabled) return;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': csrfToken() }
+    });
 
-    let id = deliverBtn.dataset.id;
-    let paymentStatus = deliverBtn.dataset.paymentStatus;
-    let dueAmount = parseFloat(deliverBtn.dataset.dueAmount || '0');
+    return response.json();
+}
 
-    let confirmPromise = (paymentStatus === 'Partial')
+function confirmDeliver(title, paymentStatus, dueAmount) {
+    return (paymentStatus === 'Partial')
         ? Swal.fire({
             icon: 'warning',
             title: 'Payment is Partial',
@@ -288,32 +347,97 @@ document.getElementById('undeliveredTableBody').addEventListener('click', functi
         })
         : Swal.fire({
             icon: 'question',
-            title: 'Mark this report as delivered?',
+            title: title,
             showCancelButton: true,
             confirmButtonText: 'Yes',
         });
+}
 
-    confirmPromise.then(async function (confirmResult) {
+document.getElementById('undeliveredTableBody').addEventListener('click', function (e) {
 
-        if (!confirmResult.isConfirmed) return;
+    let inHouseBtn = e.target.closest('.deliver-in-house-btn');
+    if (inHouseBtn && !inHouseBtn.disabled) {
 
-        const response = await fetch(`/test-report-dashboard/toggle-delivered/${id}`, {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': csrfToken() }
+        let id = inHouseBtn.dataset.id;
+        let paymentStatus = inHouseBtn.dataset.paymentStatus;
+        let dueAmount = parseFloat(inHouseBtn.dataset.dueAmount || '0');
+
+        confirmDeliver('Mark the in-house report as delivered?', paymentStatus, dueAmount).then(async function (confirmResult) {
+
+            if (!confirmResult.isConfirmed) return;
+
+            const result = await postAction(`/test-report-dashboard/toggle-delivered/${id}`);
+
+            if (!result.status) {
+                Swal.fire({ icon: 'error', title: 'Error', text: result.message ?? 'Unable to update delivery status.' });
+                return;
+            }
+
+            Swal.fire({ icon: 'success', title: 'Delivered', timer: 1200, showConfirmButton: false });
+
+            loadUndeliveredReports(undeliveredCurrentPage);
+            loadReports(currentPage);
         });
 
-        const result = await response.json();
+        return;
+    }
 
-        if (!result.status) {
-            Swal.fire({ icon: 'error', title: 'Error', text: result.message ?? 'Unable to update delivery status.' });
-            return;
-        }
+    let receiveBtn = e.target.closest('.receive-outsourced-btn');
+    if (receiveBtn && !receiveBtn.disabled) {
 
-        Swal.fire({ icon: 'success', title: 'Delivered', timer: 1200, showConfirmButton: false });
+        let id = receiveBtn.dataset.id;
 
-        loadUndeliveredReports(undeliveredCurrentPage);
-        loadReports(currentPage);
-    });
+        Swal.fire({
+            icon: 'question',
+            title: 'Mark outsourced report as received from the lab?',
+            showCancelButton: true,
+            confirmButtonText: 'Yes',
+        }).then(async function (confirmResult) {
+
+            if (!confirmResult.isConfirmed) return;
+
+            const result = await postAction(`/test-report-delivery-report/mark-outsourced-received/${id}`);
+
+            if (!result.status) {
+                Swal.fire({ icon: 'error', title: 'Error', text: result.message ?? 'Unable to update status.' });
+                return;
+            }
+
+            Swal.fire({ icon: 'success', title: 'Received', timer: 1200, showConfirmButton: false });
+
+            loadUndeliveredReports(undeliveredCurrentPage);
+            loadReports(currentPage);
+        });
+
+        return;
+    }
+
+    let deliverOutsourcedBtn = e.target.closest('.deliver-outsourced-btn');
+    if (deliverOutsourcedBtn && !deliverOutsourcedBtn.disabled) {
+
+        let id = deliverOutsourcedBtn.dataset.id;
+        let paymentStatus = deliverOutsourcedBtn.dataset.paymentStatus;
+        let dueAmount = parseFloat(deliverOutsourcedBtn.dataset.dueAmount || '0');
+
+        confirmDeliver('Mark the outsourced report as delivered to the patient?', paymentStatus, dueAmount).then(async function (confirmResult) {
+
+            if (!confirmResult.isConfirmed) return;
+
+            const result = await postAction(`/test-report-delivery-report/mark-outsourced-delivered/${id}`);
+
+            if (!result.status) {
+                Swal.fire({ icon: 'error', title: 'Error', text: result.message ?? 'Unable to update status.' });
+                return;
+            }
+
+            Swal.fire({ icon: 'success', title: 'Delivered', timer: 1200, showConfirmButton: false });
+
+            loadUndeliveredReports(undeliveredCurrentPage);
+            loadReports(currentPage);
+        });
+
+        return;
+    }
 });
 
 document.addEventListener('DOMContentLoaded', function () {

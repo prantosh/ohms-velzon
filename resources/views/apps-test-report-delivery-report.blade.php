@@ -147,6 +147,7 @@
                                         <th>Invoice Date</th>
                                         <th>Patient</th>
                                         <th>Mobile Number</th>
+                                        <th>Type</th>
                                         <th>Delivered By</th>
                                         <th>Delivered At</th>
                                         <th>Payment Status</th>
@@ -200,8 +201,10 @@
 
                         <div class="alert alert-warning">
                             <i class="ri-error-warning-line"></i>
-                            Diagnostic invoices whose report has not been marked as delivered yet, oldest first.
-                            Delivering here uses the exact same action as the Test Report Dashboard.
+                            Diagnostic invoices still owing an in-house and/or outsourced report delivery, oldest first.
+                            In-house and outsourced tests on the same invoice are tracked and delivered independently.
+                            Outsourced reports go through an extra "Received from Lab" step before they can be
+                            marked delivered, since receiving and delivering may be done by different staff.
                         </div>
 
                         <div class="row g-2 align-items-end mb-2">
@@ -242,11 +245,11 @@
                                         <th>Invoice Date</th>
                                         <th>Patient</th>
                                         <th>Mobile Number</th>
-                                        <th>Category</th>
-                                        <th>Result Status</th>
                                         <th>Payment Status</th>
                                         <th class="text-end">Due</th>
-                                        <th>Action</th>
+                                        <th>In-House Status</th>
+                                        <th>Outsourced Status</th>
+                                        <th>Actions</th>
                                     </tr>
 
                                 </thead>

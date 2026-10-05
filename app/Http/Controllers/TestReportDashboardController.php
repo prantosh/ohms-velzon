@@ -7,6 +7,7 @@ use App\Models\Patient;
 use App\Models\TestReportConfirmation;
 use App\Models\TestReportDelivery;
 use App\Services\AuditService;
+use App\Services\DiagnosticResultStatusService;
 use App\Services\PatientIdentityGuard;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -18,16 +19,25 @@ use Illuminate\Support\Facades\DB;
  * Distinct from DiagnosticTestReportController, which is a narrower
  * single-invoice search+print-by-group utility -- this is the "all
  * reports, with status and quick actions" overview.
+ *
+ * Delivery tracking/actions live on the Test Report Delivery Log
+ * dashboard instead (TestReportDeliveryReportController) -- this screen
+ * only shows report-preparation progress (result status, confirmed,
+ * print/WhatsApp). toggleDelivered() below is kept here (it owns
+ * invoices.report_delivered_at) and is called from the Delivery Log's
+ * Undelivered tab, not from this dashboard's own UI.
  */
 class TestReportDashboardController extends Controller
 {
     private const MODULE_CODE = 'DIAGNOSTIC_TEST_REPORT';
 
     private PatientIdentityGuard $identityGuard;
+    private DiagnosticResultStatusService $statusService;
 
-    public function __construct(PatientIdentityGuard $identityGuard)
+    public function __construct(PatientIdentityGuard $identityGuard, DiagnosticResultStatusService $statusService)
     {
         $this->identityGuard = $identityGuard;
+        $this->statusService = $statusService;
     }
 
     public function index()
@@ -78,35 +88,7 @@ class TestReportDashboardController extends Controller
             }
         }
 
-        // Counts for the Delivered / Not Delivered tab badges, taken before
-        // the delivery_status filter itself narrows the query so both tabs
-        // always show accurate totals regardless of which tab is active.
-        $counts = [
-            'delivered' => (clone $query)->whereNotNull('report_delivered_at')->count(),
-            'not_delivered' => (clone $query)->whereNull('report_delivered_at')->count(),
-        ];
-
-        $isNotDeliveredTab = $request->delivery_status === 'Pending';
-
-        if ($request->filled('delivery_status')) {
-
-            if ($request->delivery_status === 'Delivered') {
-                $query->whereNotNull('report_delivered_at');
-            } else {
-                $query->whereNull('report_delivered_at');
-            }
-        }
-
-        // Not Delivered tab surfaces the oldest pending reports first so
-        // staff clear the backlog in order; Delivered keeps the normal
-        // most-recent-first view.
-        if ($isNotDeliveredTab) {
-            $query->orderBy('invoice_date')->orderBy('id');
-        } else {
-            $query->orderByDesc('invoice_date')->orderByDesc('id');
-        }
-
-        $invoices = $query->paginate($perPage);
+        $invoices = $query->orderByDesc('invoice_date')->orderByDesc('id')->paginate($perPage);
 
         $rows = $invoices->getCollection()->map(function ($invoice) {
             return $this->toRow($invoice);
@@ -131,13 +113,13 @@ class TestReportDashboardController extends Controller
                 'last_page' => $invoices->lastPage(),
                 'total' => $invoices->total(),
             ],
-            'counts' => $counts,
         ]);
     }
 
     /*
     |--------------------------------------------------------------------------
-    | REPORT DELIVERED TOGGLE
+    | REPORT DELIVERED TOGGLE (in-house) -- called from the Test Report
+    | Delivery Log's Undelivered tab, not from this dashboard's own UI.
     |--------------------------------------------------------------------------
     */
 
@@ -166,7 +148,7 @@ class TestReportDashboardController extends Controller
             ]);
         }
 
-        [$resultStatus] = $this->resultStatusFor($invoice);
+        [$resultStatus] = $this->statusService->resultStatusFor($invoice);
 
         if ($resultStatus === 'Pending') {
 
@@ -196,6 +178,7 @@ class TestReportDashboardController extends Controller
             'due_amount' => $invoice->due_amount,
             'delivered_by' => Auth::id(),
             'delivered_at' => $deliveredAt,
+            'is_outsourced' => false,
         ]);
 
         $auditService->logAction(
@@ -285,152 +268,9 @@ class TestReportDashboardController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    /**
-     * Pathology's report entry moved from a structured analyte grid
-     * (test_result_entries, one legacy per-invoice TestReportConfirmation)
-     * to per-line-bundle narrative reports (pathology_report_findings /
-     * pathology_report_finding_items, one confirmation per report -- see
-     * PathologyReportController). An invoice confirmed under the OLD system
-     * before this rollout still reads as fully Complete/confirmed here (no
-     * data migration) since its TestReportConfirmation row still exists;
-     * everything else is computed from the new tables.
-     *
-     * Covers every narrative report module, not just Pathology -- USG
-     * (usg_report_findings), Cardiology (cardiology_report_findings) and
-     * everything else (non_pathology_report_findings) each keep exactly one
-     * row per billed line with their own confirmed_at, unlike Pathology's
-     * many-lines-per-finding bundling. Before this, an invoice made up
-     * entirely of USG/Cardiology/Non-Pathology items always fell through to
-     * "N/A (0/0)" here (qualifying lines were hardcoded to
-     * test_parameter_required='YES', which is true only for Pathology's
-     * PAT001) regardless of whether its report had actually been
-     * written/confirmed -- which also meant toggleDelivered() never
-     * actually blocked delivering an unreported USG/Cardiology/Non-Pathology
-     * invoice.
-     *
-     * @return array{0: string, 1: int, 2: int, 3: int} [result_status, total_tests, results_entered, confirmed_count]
-     */
-    /**
-     * A package's own billed line (e.g. "LIPID PROFILE", is_package=1) is a
-     * pricing label, not a measurable test -- it's never claimable on the
-     * report screen (PathologyReportController excludes it the same way),
-     * so counting it as a test needing a result left every package invoice
-     * permanently one short and stuck on "Partial" even once fully
-     * confirmed. is_outsourced=1 lines are likewise never reported
-     * in-house (PathologyReportController excludes those too).
-     */
-    private function qualifyingLinesQuery(Invoice $invoice)
-    {
-        return DB::table('invoice_details as d')
-            ->join('invoice_item_details as iid', function ($join) {
-                $join->on('iid.item_code', '=', 'd.item_code')
-                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
-            })
-            ->where('d.invoice_no', $invoice->invoice_no)
-            ->where('iid.is_package', 0)
-            ->where('iid.is_outsourced', 0);
-    }
-
-    private function resultStatusFor(Invoice $invoice): array
-    {
-        $lines = $this->qualifyingLinesQuery($invoice)->get(['d.id as invoice_detail_id', 'd.item_code']);
-
-        $totalTests = $lines->count();
-
-        if ($totalTests === 0) {
-            return ['N/A', 0, 0, 0];
-        }
-
-        if (TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
-            return ['Complete', $totalTests, $totalTests, $totalTests];
-        }
-
-        $pathologyIds = $lines->where('item_code', 'PAT001')->pluck('invoice_detail_id');
-
-        $resultsEntered = 0;
-        $confirmedCount = 0;
-
-        if ($pathologyIds->isNotEmpty()) {
-
-            $resultsEntered += DB::table('pathology_report_finding_items')
-                ->whereIn('invoice_detail_id', $pathologyIds)
-                ->count();
-
-            $confirmedCount += DB::table('pathology_report_finding_items as pfi')
-                ->join('pathology_report_findings as pf', 'pf.id', '=', 'pfi.pathology_report_finding_id')
-                ->whereIn('pfi.invoice_detail_id', $pathologyIds)
-                ->whereNotNull('pf.confirmed_at')
-                ->count();
-        }
-
-        // USG/Cardiology/everything-else each keep exactly one finding row
-        // per billed line (unlike Pathology's bundling) -- "entered" is
-        // just "a row exists for this line", "confirmed" adds confirmed_at.
-        foreach ([
-            'usg_report_findings' => $lines->where('item_code', 'USG001')->pluck('invoice_detail_id'),
-            'cardiology_report_findings' => $lines->where('item_code', 'CRD001')->pluck('invoice_detail_id'),
-            'non_pathology_report_findings' => $lines->whereNotIn('item_code', ['PAT001', 'USG001', 'CRD001'])->pluck('invoice_detail_id'),
-        ] as $table => $ids) {
-
-            if ($ids->isEmpty()) {
-                continue;
-            }
-
-            $resultsEntered += DB::table($table)->whereIn('invoice_detail_id', $ids)->count();
-            $confirmedCount += DB::table($table)->whereIn('invoice_detail_id', $ids)->whereNotNull('confirmed_at')->count();
-        }
-
-        $resultStatus = $resultsEntered <= 0
-            ? 'Pending'
-            : ($resultsEntered >= $totalTests ? 'Complete' : 'Partial');
-
-        return [$resultStatus, $totalTests, $resultsEntered, $confirmedCount];
-    }
-
-    /**
-     * Which standalone page actually owns this invoice's report(s) --
-     * Pathology and generic Non-Pathology items live inside the shared
-     * Test Result Entry modal, but USG (usg-report.index) and Cardiology
-     * (cardiology-report.index) are each their OWN separate page with their
-     * own confirm/print routes, not reachable through Test Result Entry at
-     * all. The dashboard's Print/WhatsApp buttons use this to send staff to
-     * the right place instead of the legacy single-PDF route, which only
-     * understands the old whole-invoice TestReportConfirmation and 403s
-     * ("must be confirmed") on anything confirmed through these newer
-     * per-line modules. An invoice mixing USG/Cardiology/other items on one
-     * invoice (rare, but real) has no single right destination -- falls
-     * back to the Test Result Entry modal, same as plain Non-Pathology.
-     */
-    private function printRouteFor(Invoice $invoice): string
-    {
-        if ($invoice->invoice_category === 'PATHOLOGY') {
-            return 'pathology';
-        }
-
-        $itemCodes = $this->qualifyingLinesQuery($invoice)->pluck('d.item_code')->unique();
-
-        // No qualifying line at all -- e.g. an invoice confirmed entirely
-        // under the old pre-narrative system, with nothing in any of the
-        // new per-line tables to route to. Only the legacy whole-invoice
-        // PDF route has anything to show for it.
-        if ($itemCodes->isEmpty()) {
-            return 'legacy';
-        }
-
-        if ($itemCodes->count() === 1 && $itemCodes->first() === 'USG001') {
-            return 'usg';
-        }
-
-        if ($itemCodes->count() === 1 && $itemCodes->first() === 'CRD001') {
-            return 'cardiology';
-        }
-
-        return 'non_pathology';
-    }
-
     private function toRow(Invoice $invoice): array
     {
-        [$resultStatus, $totalTests, $resultsEntered, $confirmedCount] = $this->resultStatusFor($invoice);
+        [$resultStatus, $totalTests, $resultsEntered, $confirmedCount] = $this->statusService->resultStatusFor($invoice);
 
         // Fully confirmed only when every qualifying line's own report is
         // confirmed (or the invoice carries the legacy per-invoice
@@ -451,7 +291,7 @@ class TestReportDashboardController extends Controller
             'patient_name' => $invoice->patient_name,
             'patient_mobile_no' => $invoice->patient_mobile_no,
             'invoice_category' => $invoice->invoice_category,
-            'print_route' => $this->printRouteFor($invoice),
+            'print_route' => $this->statusService->printRouteFor($invoice),
             'total_tests' => $totalTests,
             'results_entered' => $resultsEntered,
             'result_status' => $resultStatus,
@@ -461,9 +301,6 @@ class TestReportDashboardController extends Controller
             'paid_amount' => (float) $invoice->paid_amount,
             'due_amount' => (float) $invoice->due_amount,
             'whatsapp_status' => $invoice->whatsapp_status,
-            'report_delivered_at' => $invoice->report_delivered_at
-                ? Carbon::parse($invoice->report_delivered_at)->format('d-m-Y h:i A')
-                : null,
         ];
     }
 }

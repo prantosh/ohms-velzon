@@ -2,21 +2,41 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Invoice;
 use App\Models\TestReportDelivery;
 use App\Models\User;
+use App\Services\AuditService;
+use App\Services\DiagnosticResultStatusService;
+use App\Services\PatientIdentityGuard;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 /**
- * Report over test_report_deliveries -- the append-only log of every
- * "mark as delivered" action recorded by TestReportDashboardController.
- * One invoice can appear more than once here if it was delivered,
- * unmarked, then re-delivered.
+ * Delivered tab: report over test_report_deliveries -- the append-only log
+ * of every "mark as delivered"/"mark as received" action. One invoice can
+ * appear more than once if it was delivered, unmarked, then re-delivered,
+ * or because in-house and outsourced each log their own stages separately.
+ *
+ * Undelivered tab: every diagnostic invoice still owing EITHER an in-house
+ * or an outsourced report delivery (or both) -- this is where delivery
+ * ACTIONS now live, not on the Test Report Dashboard.
  */
 class TestReportDeliveryReportController extends Controller
 {
+    private const MODULE_CODE = 'DIAGNOSTIC_TEST_REPORT';
     private const STAFF_ROLES = ['Admin', 'Supervisor', 'Employee'];
+
+    private DiagnosticResultStatusService $statusService;
+    private PatientIdentityGuard $identityGuard;
+
+    public function __construct(DiagnosticResultStatusService $statusService, PatientIdentityGuard $identityGuard)
+    {
+        $this->statusService = $statusService;
+        $this->identityGuard = $identityGuard;
+    }
 
     public function index()
     {
@@ -24,6 +44,12 @@ class TestReportDeliveryReportController extends Controller
 
         return view('apps-test-report-delivery-report', compact('users'));
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DELIVERED TAB -- the append-only log
+    |--------------------------------------------------------------------------
+    */
 
     public function list(Request $request)
     {
@@ -114,6 +140,10 @@ class TestReportDeliveryReportController extends Controller
             ? 'Paid'
             : ($row->paid_amount <= 0 ? 'Due' : 'Partial');
 
+        $typeLabel = !$row->is_outsourced
+            ? 'In-House'
+            : ($row->stage === 'received' ? 'Outsourced (Received)' : 'Outsourced (Delivered)');
+
         return [
             'id' => $row->id,
             'invoice_no' => $row->invoice_no,
@@ -126,8 +156,222 @@ class TestReportDeliveryReportController extends Controller
             'paid_amount' => (float) $row->paid_amount,
             'due_amount' => (float) $row->due_amount,
             'payment_status' => $paymentStatus,
+            'type_label' => $typeLabel,
             'delivered_by_name' => optional($row->deliveredByUser)->name ?? '-',
             'delivered_at_fmt' => $row->delivered_at ? $row->delivered_at->format('d-m-Y h:i A') : '-',
         ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | UNDELIVERED TAB -- invoices still owing an in-house and/or outsourced
+    | delivery. This is where the Deliver/Receive actions now live.
+    |--------------------------------------------------------------------------
+    */
+
+    public function undelivered(Request $request)
+    {
+        $perPage = (int) $request->get('per_page', 15);
+
+        $query = Invoice::where('invoice_type', 'DIAGNOSTIC')
+            ->where(function ($q) {
+                $q->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y');
+            });
+
+        if ($request->filled('search')) {
+
+            $search = trim($request->search);
+
+            $query->where(function ($q) use ($search) {
+                $q->where('invoice_no', 'like', "%{$search}%")
+                    ->orWhere('patient_name', 'like', "%{$search}%")
+                    ->orWhere('patient_mobile_no', 'like', "%{$search}%");
+            });
+        }
+
+        // Still owes a delivery on at least one front: has in-house lines
+        // and isn't in-house-delivered yet, OR has outsourced lines and
+        // isn't outsourced-delivered yet. An invoice whose in-house side is
+        // done but has no outsourced lines at all (or vice versa) must NOT
+        // keep reappearing here forever just because the other column is
+        // permanently N/A -- each half of the OR is gated by its own
+        // EXISTS so a not-applicable side never counts as "still pending".
+        $query->where(function ($q) {
+
+            $q->where(function ($inHouse) {
+                $inHouse->whereNull('report_delivered_at')
+                    ->whereExists(function ($sub) {
+                        $sub->selectRaw('1')
+                            ->from('invoice_details as d')
+                            ->join('invoice_item_details as iid', function ($join) {
+                                $join->on('iid.item_code', '=', 'd.item_code')
+                                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+                            })
+                            ->whereColumn('d.invoice_no', 'invoices.invoice_no')
+                            ->where('iid.is_package', 0)
+                            ->where('iid.is_outsourced', 0);
+                    });
+            })->orWhere(function ($outsourced) {
+                $outsourced->whereNull('outsourced_report_delivered_at')
+                    ->whereExists(function ($sub) {
+                        $sub->selectRaw('1')
+                            ->from('invoice_details as d')
+                            ->join('invoice_item_details as iid', function ($join) {
+                                $join->on('iid.item_code', '=', 'd.item_code')
+                                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+                            })
+                            ->whereColumn('d.invoice_no', 'invoices.invoice_no')
+                            ->where('iid.is_package', 0)
+                            ->where('iid.is_outsourced', 1);
+                    });
+            });
+        });
+
+        // Oldest invoice first, same reasoning as the old Not Delivered tab
+        // -- clears the backlog in order.
+        $invoices = $query->orderBy('invoice_date')->orderBy('id')->paginate($perPage);
+
+        $rows = $invoices->getCollection()->map(function ($invoice) {
+            return $this->toUndeliveredRow($invoice);
+        });
+
+        $protectedUsers = $this->identityGuard->protectedUsersForMobiles($rows->pluck('patient_mobile_no'));
+
+        $rows = $rows->map(function ($row) use ($protectedUsers) {
+            $row['can_edit_patient_name'] = !$this->identityGuard->isProtected(
+                $row['patient_mobile_no'],
+                $row['patient_name'],
+                $protectedUsers
+            );
+            return $row;
+        });
+
+        return response()->json([
+            'status' => true,
+            'data' => $rows,
+            'pagination' => [
+                'current_page' => $invoices->currentPage(),
+                'last_page' => $invoices->lastPage(),
+                'total' => $invoices->total(),
+            ],
+        ]);
+    }
+
+    private function toUndeliveredRow(Invoice $invoice): array
+    {
+        [$inHouseStatus, $inHouseTotal, $inHouseEntered] = $this->statusService->resultStatusFor($invoice);
+        [$outsourcedStatus, $outsourcedTotal] = $this->statusService->outsourcedStatusFor($invoice);
+
+        $paymentStatus = $invoice->due_amount <= 0
+            ? 'Paid'
+            : ($invoice->paid_amount <= 0 ? 'Due' : 'Partial');
+
+        return [
+            'id' => $invoice->id,
+            'invoice_no' => $invoice->invoice_no,
+            'invoice_date' => $invoice->invoice_date
+                ? Carbon::parse($invoice->invoice_date)->format('d-m-Y')
+                : null,
+            'patient_name' => $invoice->patient_name,
+            'patient_mobile_no' => $invoice->patient_mobile_no,
+            'payment_status' => $paymentStatus,
+            'due_amount' => (float) $invoice->due_amount,
+
+            'in_house_result_status' => $inHouseStatus,
+            'in_house_total_tests' => $inHouseTotal,
+            'in_house_results_entered' => $inHouseEntered,
+            'in_house_delivered' => (bool) $invoice->report_delivered_at,
+
+            'outsourced_status' => $outsourcedStatus,
+            'outsourced_total_tests' => $outsourcedTotal,
+        ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | OUTSOURCED ACTIONS -- Received (from the outside lab) and Delivered
+    | (to the patient) are tracked as two independent timestamps/users,
+    | since the same person doesn't always do both.
+    |--------------------------------------------------------------------------
+    */
+
+    public function markOutsourcedReceived($id, AuditService $auditService)
+    {
+        $invoice = Invoice::where('invoice_type', 'DIAGNOSTIC')->findOrFail($id);
+
+        [, $outsourcedTotal] = $this->statusService->outsourcedStatusFor($invoice);
+
+        if ($outsourcedTotal === 0) {
+            return response()->json(['status' => false, 'message' => 'This invoice has no outsourced tests.'], 422);
+        }
+
+        if ($invoice->outsourced_report_received_at) {
+            return response()->json(['status' => false, 'message' => 'Already marked as received.'], 422);
+        }
+
+        $invoice->update([
+            'outsourced_report_received_at' => now(),
+            'outsourced_report_received_by' => Auth::id(),
+        ]);
+
+        TestReportDelivery::create([
+            'invoice_id' => $invoice->id,
+            'invoice_no' => $invoice->invoice_no,
+            'patient_name' => $invoice->patient_name,
+            'patient_mobile_no' => $invoice->patient_mobile_no,
+            'total_amount' => $invoice->total_amount,
+            'paid_amount' => $invoice->paid_amount,
+            'due_amount' => $invoice->due_amount,
+            'delivered_by' => Auth::id(),
+            'delivered_at' => now(),
+            'is_outsourced' => true,
+            'stage' => 'received',
+        ]);
+
+        $auditService->logAction(self::MODULE_CODE, $invoice, 'CUSTOM', 'Outsourced report marked as received from lab');
+
+        return response()->json(['status' => true, 'message' => 'Marked as received from lab.']);
+    }
+
+    public function markOutsourcedDelivered($id, AuditService $auditService)
+    {
+        $invoice = Invoice::where('invoice_type', 'DIAGNOSTIC')->findOrFail($id);
+
+        [, $outsourcedTotal] = $this->statusService->outsourcedStatusFor($invoice);
+
+        if ($outsourcedTotal === 0) {
+            return response()->json(['status' => false, 'message' => 'This invoice has no outsourced tests.'], 422);
+        }
+
+        if (!$invoice->outsourced_report_received_at) {
+            return response()->json(['status' => false, 'message' => 'Cannot deliver -- not yet marked as received from the lab.'], 422);
+        }
+
+        if ($invoice->outsourced_report_delivered_at) {
+            return response()->json(['status' => false, 'message' => 'Already marked as delivered.'], 422);
+        }
+
+        $invoice->update([
+            'outsourced_report_delivered_at' => now(),
+            'outsourced_report_delivered_by' => Auth::id(),
+        ]);
+
+        TestReportDelivery::create([
+            'invoice_id' => $invoice->id,
+            'invoice_no' => $invoice->invoice_no,
+            'patient_name' => $invoice->patient_name,
+            'patient_mobile_no' => $invoice->patient_mobile_no,
+            'total_amount' => $invoice->total_amount,
+            'paid_amount' => $invoice->paid_amount,
+            'due_amount' => $invoice->due_amount,
+            'delivered_by' => Auth::id(),
+            'delivered_at' => now(),
+            'is_outsourced' => true,
+            'stage' => 'delivered',
+        ]);
+
+        $auditService->logAction(self::MODULE_CODE, $invoice, 'CUSTOM', 'Outsourced report marked as delivered to patient');
+
+        return response()->json(['status' => true, 'message' => 'Marked as delivered to patient.']);
     }
 }

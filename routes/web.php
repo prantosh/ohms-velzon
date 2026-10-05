@@ -889,6 +889,12 @@ Route::middleware(['auth'])
 
         Route::get('/print', 'print')->name('print');
 
+        Route::get('/undelivered', 'undelivered')->name('undelivered');
+
+        Route::post('/mark-outsourced-received/{id}', 'markOutsourcedReceived')->name('mark-outsourced-received');
+
+        Route::post('/mark-outsourced-delivered/{id}', 'markOutsourcedDelivered')->name('mark-outsourced-delivered');
+
     });
 
 /*

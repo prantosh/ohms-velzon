@@ -18,6 +18,8 @@ class TestReportDelivery extends Model
         'due_amount',
         'delivered_by',
         'delivered_at',
+        'is_outsourced',
+        'stage',
     ];
 
     protected $casts = [
@@ -25,6 +27,7 @@ class TestReportDelivery extends Model
         'total_amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'due_amount' => 'decimal:2',
+        'is_outsourced' => 'boolean',
     ];
 
     public function invoice()

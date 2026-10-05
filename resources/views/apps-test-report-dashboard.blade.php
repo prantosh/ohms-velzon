@@ -92,22 +92,6 @@
 
                 </div>
 
-                <ul class="nav nav-tabs mb-3" id="deliveryStatusTabs">
-
-                    <li class="nav-item">
-                        <a class="nav-link active" href="javascript:void(0)" data-delivery-status="Pending">
-                            Not Delivered <span class="badge bg-warning-subtle text-warning ms-1" id="notDeliveredCount">0</span>
-                        </a>
-                    </li>
-
-                    <li class="nav-item">
-                        <a class="nav-link" href="javascript:void(0)" data-delivery-status="Delivered">
-                            Delivered <span class="badge bg-success-subtle text-success ms-1" id="deliveredCount">0</span>
-                        </a>
-                    </li>
-
-                </ul>
-
                 <div class="table-responsive">
 
                     <table class="table table-bordered align-middle" id="reportTable">
@@ -124,7 +108,6 @@
                                 <th>Payment Status</th>
                                 <th class="text-end">Paid</th>
                                 <th class="text-end">Due</th>
-                                <th>Report Delivered</th>
                                 <th>Actions</th>
                             </tr>
 

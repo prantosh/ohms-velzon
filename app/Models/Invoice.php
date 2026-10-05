@@ -73,6 +73,11 @@ class Invoice extends Model
         'report_delivered_at',
         'report_delivered_by',
 
+        'outsourced_report_received_at',
+        'outsourced_report_received_by',
+        'outsourced_report_delivered_at',
+        'outsourced_report_delivered_by',
+
         'low_advance_reason',
     ];
 }

@@ -1,6 +1,5 @@
 let currentPage = 1;
 let lastPage = 1;
-let currentDeliveryStatus = 'Pending';
 
 function escapeHtml(value) {
     if (value === null || value === undefined) return '';
@@ -51,7 +50,6 @@ function currentFilters() {
         search: document.querySelector('#searchInput').value.trim(),
         invoice_category: document.querySelector('#categoryFilter').value,
         payment_status: document.querySelector('#paymentStatusFilter').value,
-        delivery_status: currentDeliveryStatus,
         from_date: document.querySelector('#fromDateFilter').value,
         to_date: document.querySelector('#toDateFilter').value,
     };
@@ -91,12 +89,6 @@ function paymentStatusBadge(status) {
     return `<span class="badge ${cls}">${status}</span>`;
 }
 
-function deliveredCell(row) {
-    return row.report_delivered_at
-        ? `<span class="badge bg-success-subtle text-success" title="${row.report_delivered_at}">Delivered</span>`
-        : `<span class="badge bg-secondary-subtle text-secondary">Not Delivered</span>`;
-}
-
 async function loadReports(page = 1) {
 
     currentPage = page;
@@ -121,13 +113,8 @@ async function loadReports(page = 1) {
     document.querySelector('#pageNumber').innerText = `Page ${result.pagination.current_page}`;
     document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
 
-    if (result.counts) {
-        document.querySelector('#notDeliveredCount').innerText = result.counts.not_delivered;
-        document.querySelector('#deliveredCount').innerText = result.counts.delivered;
-    }
-
     if (!result.data.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">No diagnostic test report invoices found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No diagnostic test report invoices found.</td></tr>';
         return;
     }
 
@@ -176,20 +163,6 @@ async function loadReports(page = 1) {
             `;
         }
 
-        let blockDeliver = row.result_status === 'Pending' && !row.report_delivered_at;
-
-        actions += `
-            <button class="btn btn-sm ${row.report_delivered_at ? 'btn-soft-secondary' : 'btn-soft-primary'} toggle-delivered-btn"
-                    data-id="${row.id}"
-                    data-delivered="${row.report_delivered_at ? '1' : '0'}"
-                    data-payment-status="${row.payment_status}"
-                    data-due-amount="${row.due_amount}"
-                    title="${blockDeliver ? 'No test results entered yet' : (row.report_delivered_at ? 'Mark as Not Delivered' : 'Mark as Delivered')}"
-                    ${blockDeliver ? 'disabled' : ''}>
-                <i class="ri-${row.report_delivered_at ? 'close-circle-line' : 'checkbox-circle-line'}"></i>
-            </button>
-        `;
-
         tbody.innerHTML += `
             <tr>
                 <td>${row.invoice_no}</td>
@@ -201,7 +174,6 @@ async function loadReports(page = 1) {
                 <td>${paymentStatusBadge(row.payment_status)}</td>
                 <td class="text-end">${row.paid_amount.toFixed(2)}</td>
                 <td class="text-end">${row.due_amount.toFixed(2)}</td>
-                <td>${deliveredCell(row)}</td>
                 <td class="text-nowrap">${actions}</td>
             </tr>
         `;
@@ -236,23 +208,6 @@ document.getElementById('resetFiltersBtn').addEventListener('click', function ()
     setFlatpickrValue('fromDateFilter', '');
     setFlatpickrValue('toDateFilter', '');
     document.querySelector('#perPage').value = '15';
-
-    loadReports(1);
-});
-
-document.getElementById('deliveryStatusTabs').addEventListener('click', function (e) {
-
-    let tab = e.target.closest('.nav-link');
-    if (!tab) return;
-
-    e.preventDefault();
-
-    if (tab.classList.contains('active')) return;
-
-    document.querySelectorAll('#deliveryStatusTabs .nav-link').forEach(el => el.classList.remove('active'));
-    tab.classList.add('active');
-
-    currentDeliveryStatus = tab.dataset.deliveryStatus;
 
     loadReports(1);
 });
@@ -365,52 +320,6 @@ document.getElementById('reportTableBody').addEventListener('click', async funct
         Swal.fire({ icon: 'success', title: 'Updated', text: 'Patient name has been updated.', timer: 1500, showConfirmButton: false });
 
         loadReports(currentPage);
-
-        return;
-    }
-
-    let toggleBtn = e.target.closest('.toggle-delivered-btn');
-    if (toggleBtn && !toggleBtn.disabled) {
-
-        let id = toggleBtn.dataset.id;
-        let currentlyDelivered = toggleBtn.dataset.delivered === '1';
-        let paymentStatus = toggleBtn.dataset.paymentStatus;
-        let dueAmount = parseFloat(toggleBtn.dataset.dueAmount || '0');
-
-        let confirmPromise = (!currentlyDelivered && paymentStatus === 'Partial')
-            ? Swal.fire({
-                icon: 'warning',
-                title: 'Payment is Partial',
-                html: `This invoice still has a due amount of <b>&#8377;${dueAmount.toFixed(2)}</b>.<br>Are you sure you want to mark the report as delivered?`,
-                showCancelButton: true,
-                confirmButtonText: 'Yes, Mark as Delivered',
-                confirmButtonColor: '#f7b84b',
-            })
-            : Swal.fire({
-                icon: 'question',
-                title: currentlyDelivered ? 'Mark as not delivered?' : 'Mark this report as delivered?',
-                showCancelButton: true,
-                confirmButtonText: 'Yes',
-            });
-
-        confirmPromise.then(async function (confirmResult) {
-
-            if (!confirmResult.isConfirmed) return;
-
-            const response = await fetch(`/test-report-dashboard/toggle-delivered/${id}`, {
-                method: 'POST',
-                headers: { 'X-CSRF-TOKEN': csrfToken() }
-            });
-
-            const result = await response.json();
-
-            if (!result.status) {
-                Swal.fire({ icon: 'error', title: 'Error', text: result.message ?? 'Unable to update delivery status.' });
-                return;
-            }
-
-            loadReports(currentPage);
-        });
 
         return;
     }

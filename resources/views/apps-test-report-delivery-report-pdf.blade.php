@@ -130,6 +130,7 @@ function fmtMoney27($v)
     <th>Invoice No</th>
     <th>Invoice Date</th>
     <th>Patient</th>
+    <th>Type</th>
     <th>Delivered By</th>
     <th>Delivered At</th>
     <th>Payment Status</th>
@@ -146,6 +147,7 @@ function fmtMoney27($v)
     <td>{{ $row['invoice_no'] }}</td>
     <td>{{ $row['invoice_date_fmt'] }}</td>
     <td>{{ $row['patient_name'] }} {{ $row['patient_mobile_no'] ? '(' . $row['patient_mobile_no'] . ')' : '' }}</td>
+    <td>{{ $row['type_label'] }}</td>
     <td>{{ $row['delivered_by_name'] }}</td>
     <td>{{ $row['delivered_at_fmt'] }}</td>
     <td class="text-center">{{ $row['payment_status'] }}</td>
@@ -155,7 +157,7 @@ function fmtMoney27($v)
 </tr>
 @empty
 <tr>
-    <td colspan="9" class="text-center">No delivery records found.</td>
+    <td colspan="10" class="text-center">No delivery records found.</td>
 </tr>
 @endforelse
 
