@@ -246,7 +246,7 @@ table td {
     <tr class="no-border-row">
         <td colspan="3">
             <span class="label-blue">Referred By :</span>
-            {{ optional($doctor)->doctor_name }}
+            {{ $invoice->referred_doctor }}
         </td>
         <td colspan="2">
             <span class="label-blue">Test Date :</span>
