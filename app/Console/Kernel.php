@@ -21,12 +21,13 @@ class Kernel extends ConsoleKernel
         // `php <app-root>/artisan schedule:run` firing every minute for this
         // to actually run on production (no other scheduled task exists yet,
         // so that cron entry likely still needs to be added there).
-        // Prune runs only onSuccess() so a backup failure can never lead to
-        // deleting originals that didn't actually get backed up that week --
-        // pruneOriginals() also independently re-checks this per file.
-        $schedule->command('invoices:backup')->weekly()->onSuccess(function () {
-            $this->call('invoices:prune');
-        });
+        // Checked daily; the command itself only acts on the 3-day grid
+        // anchored at 06/10/2026 (archives the oldest 3 of the 6 days held)
+        // -- so a missed day or month boundary can't skew the rhythm like a cron
+        // day-of-month step would. Originals are deleted only after the
+        // archive is verified. invoices:backup / invoices:prune stay
+        // available for manual use.
+        $schedule->command('invoices:archive')->dailyAt('02:00');
 
         // See CashInHandService -- cash_in_hand is a running balance that
         // only moves via actual transactions during the day; this is the

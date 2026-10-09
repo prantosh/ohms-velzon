@@ -102,6 +102,7 @@ table {
 }
 
 .study-title {
+    font-size: 18px;
     text-align: center;
     margin-top: 12px;
 }
