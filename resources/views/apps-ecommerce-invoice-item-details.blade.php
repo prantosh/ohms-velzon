@@ -287,6 +287,10 @@ width="100%">
     </th>
 
     <th rowspan="2" class="text-center align-middle">
+        Report Not<br>Required
+    </th>
+
+    <th rowspan="2" class="text-center align-middle">
         Status
     </th>
 
@@ -534,6 +538,21 @@ width="100%">
 
                     </div>
 
+                </div>
+
+                <!-- Row 2d: Report Not Required -->
+
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="form-check">
+                            <input type="checkbox"
+                                   id="is_report_not_required"
+                                   class="form-check-input">
+                            <label class="form-check-label" for="is_report_not_required">
+                                Report Not Required (no report is generated for this item)
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Row 3 -->

@@ -6,6 +6,7 @@ use App\Models\Invoice;
 use App\Models\TestGroupMaster;
 use App\Models\TestReportConfirmation;
 use App\Services\AuditService;
+use App\Support\PdfPageNumbers;
 use App\Services\TestReportRowBuilder;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -152,6 +153,8 @@ class DiagnosticTestReportController extends Controller
             'groupName' => $groupName,
             'additionalContent' => $additionalContent
         ]);
+
+        PdfPageNumbers::add($pdf);
 
         $auditService->logAction(
             self::MODULE_CODE,

@@ -30,12 +30,11 @@ class UserController extends Controller
     private const USER_MANAGEMENT_ROLES = ['Admin', 'Supervisor'];
 
     /**
-     * Only these two roles are eligible for the diagnostic-test family
-     * discount (see MembershipFeeController::searchMember(), which already
-     * treats Member and Supervisor as the same tier) -- family_member_1/2/3
-     * are only ever persisted for users in one of these roles.
+    * These roles are eligible for diagnostic-test discounts. Family
+    * members can be recorded for each eligible account and are matched by
+    * DiagnosticInvoiceController when checking patient discount eligibility.
      */
-    private const MEMBER_TIER_ROLES = ['Member', 'Supervisor'];
+    private const MEMBER_TIER_ROLES = ['Member', 'Supervisor', 'Employee'];
 
     /**
      * Blocks any role outside USER_MANAGEMENT_ROLES from reaching the

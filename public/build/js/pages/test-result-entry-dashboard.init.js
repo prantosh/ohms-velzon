@@ -2,15 +2,15 @@
 
 /*
 |--------------------------------------------------------------------------
-| TEST RESULT ENTRY DASHBOARD
+| PATHOLOGY TEST RESULT ENTRY DASHBOARD
 |--------------------------------------------------------------------------
-| Lists diagnostic invoices (Pathology / Non-Pathology tabs) with a date
-| range filter and search, and drives the entry modal (searchInvoice() /
-| #invoiceNoInput etc. are defined in test-result-entry.init.js, loaded
-| before this file on the same page).
+| Lists Pathology diagnostic invoices with a date range filter and search,
+| and drives the entry modal (searchInvoice() / #invoiceNoInput etc. are
+| defined in test-result-entry.init.js, loaded before this file on the same
+| page). Non-Pathology (X-Ray, Dental, etc.) has its own separate dashboard
+| now -- see non-pathology-report.init.js.
 */
 
-let dashCategory = 'PATHOLOGY';
 let dashRange = '3';
 let dashSearch = '';
 let dashPage = 1;
@@ -80,7 +80,7 @@ async function loadDashboard(page = 1) {
     dashPage = page;
 
     let params = new URLSearchParams({
-        invoice_category: dashCategory,
+        invoice_category: 'PATHOLOGY',
         range: dashRange,
         page: dashPage
     });
@@ -134,18 +134,6 @@ async function loadDashboard(page = 1) {
 | FILTER EVENTS
 |--------------------------------------------------------------------------
 */
-
-document.querySelectorAll('#categoryTabs .nav-link').forEach(function (tab) {
-
-    tab.addEventListener('click', function () {
-
-        document.querySelectorAll('#categoryTabs .nav-link').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-
-        dashCategory = tab.dataset.category;
-        loadDashboard(1);
-    });
-});
 
 document.querySelectorAll('#rangeButtons [data-range]').forEach(function (btn) {
 
@@ -216,30 +204,14 @@ document.getElementById('resultEntryModal').addEventListener('hidden.bs.modal', 
 });
 
 // Deep link from the Test Report Dashboard's Print/WhatsApp actions on a
-// Pathology or Non-Pathology row (test-report-dashboard.init.js) -- an
-// invoice can now have several independently printable reports, so that
-// screen sends staff here to pick/print/send the right one from the modal
-// instead of trying to do it in one dashboard-wide action. The category
-// param matters: searchInvoice() reads the dashCategory global (not the
-// invoice's own category) to decide whether to search Pathology or
-// Non-Pathology, and that global otherwise stays at its 'PATHOLOGY'
-// default on a fresh page load -- without this, a Non-Pathology invoice
-// would silently search the wrong (empty) tab.
-let deepLinkParams = new URLSearchParams(location.search);
-let deepLinkInvoiceNo = deepLinkParams.get('open');
+// Pathology row (test-report-dashboard.init.js) -- an invoice can have
+// several independently printable reports, so that screen sends staff here
+// to pick/print/send the right one from the modal instead of trying to do
+// it in one dashboard-wide action. Non-Pathology invoices deep-link to
+// their own page now (non-pathology-report.init.js).
+let deepLinkInvoiceNo = new URLSearchParams(location.search).get('open');
 
 if (deepLinkInvoiceNo) {
-
-    let deepLinkCategory = deepLinkParams.get('category');
-
-    if (deepLinkCategory) {
-
-        dashCategory = deepLinkCategory;
-
-        document.querySelectorAll('#categoryTabs .nav-link').forEach(function (tab) {
-            tab.classList.toggle('active', tab.dataset.category === deepLinkCategory);
-        });
-    }
 
     let modalEl = document.getElementById('resultEntryModal');
     let modal = bootstrap.Modal.getOrCreateInstance(modalEl);

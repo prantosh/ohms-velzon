@@ -6,6 +6,9 @@ use App\Models\CardiologyReportFinding;
 use App\Models\Invoice;
 use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
+use App\Services\ReportWhatsappDueGate;
+use App\Support\PdfPageNumbers;
+use App\Services\PdfPasswordProtectionService;
 use App\Services\HtmlSanitizerService;
 use App\Services\WatiService;
 use App\Support\CardiologyReportFields;
@@ -65,7 +68,8 @@ class CardiologyReportController extends Controller
                     })
                     ->whereColumn('invoice_details.invoice_no', 'invoices.invoice_no')
                     ->whereIn('invoice_details.item_code_sub', CardiologyReportFields::ITEM_CODE_SUBS)
-                    ->where('invoice_item_details.is_outsourced', 0);
+                    ->where('invoice_item_details.is_outsourced', 0)
+                    ->where('invoice_item_details.is_report_not_required', 0);
             });
 
         $range = $request->get('range', '3');
@@ -182,6 +186,7 @@ class CardiologyReportController extends Controller
             ->where('d.invoice_no', $invoice->invoice_no)
             ->whereIn('d.item_code_sub', CardiologyReportFields::ITEM_CODE_SUBS)
             ->where('iid.is_outsourced', 0)
+            ->where('iid.is_report_not_required', 0)
             ->orderBy('d.line_no')
             ->get(array_merge(
                 ['d.id as invoice_detail_id', 'd.item_code_sub', 'd.item_description', 'doc.doctor_name', 'f.id as finding_id', 'f.confirmed_at'],
@@ -345,6 +350,8 @@ class CardiologyReportController extends Controller
             compact('finding', 'invoice', 'doctor')
         );
 
+        PdfPageNumbers::add($pdf);
+
         return $pdf->stream('cardiology-report-preview.pdf');
     }
 
@@ -408,7 +415,9 @@ class CardiologyReportController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'Cardiology report confirmed.',
+            'message' => $whatsappStatus === 'held_due'
+                ? 'Cardiology report confirmed. WhatsApp is on hold until the pending payment is cleared.'
+                : 'Cardiology report confirmed.',
             'data' => [
                 'id' => $finding->id,
                 'confirmed_at' => $finding->confirmed_at->format('d-m-Y H:i'),
@@ -439,6 +448,8 @@ class CardiologyReportController extends Controller
             compact('finding', 'invoice', 'doctor')
         );
 
+        PdfPageNumbers::add($pdf);
+
         $auditService->logAction(
             self::MODULE_CODE,
             $finding,
@@ -465,6 +476,11 @@ class CardiologyReportController extends Controller
                 'status' => false,
                 'message' => 'Cardiology report must be confirmed before sending.'
             ]);
+        }
+
+        if ($blocked = ReportWhatsappDueGate::manualBlockMessage($finding->invoice_no)) {
+
+            return response()->json(['status' => false, 'message' => $blocked]);
         }
 
         $sent = $this->sendReportWhatsapp($finding, $wati, $auditService);
@@ -494,11 +510,20 @@ class CardiologyReportController extends Controller
                 compact('finding', 'invoice', 'doctor')
             );
 
+            PdfPageNumbers::add($pdf);
+
             $fileName = $this->safeFileName($finding);
 
             $pdfPath = public_path('invoices/' . $fileName);
 
-            $pdf->save($pdfPath);
+            $password = PdfPasswordProtectionService::passwordForMobile($invoice->patient_mobile_no);
+
+            file_put_contents(
+                $pdfPath,
+                $password
+                    ? PdfPasswordProtectionService::protect($pdf->output(), $password)
+                    : $pdf->output()
+            );
 
             $pdfUrl = asset('invoices/' . $fileName);
 
@@ -508,7 +533,7 @@ class CardiologyReportController extends Controller
                 config('services.wati.cardiology_report_broadcast_name'),
                 [
                     ['name' => '1', 'value' => $invoice->patient_name],
-                    ['name' => '2', 'value' => $invoice->invoice_no],
+                    ['name' => '2', 'value' => PdfPasswordProtectionService::invoiceNoWithHint($invoice->invoice_no, (bool) $password)],
                     ['name' => '3', 'value' => $pdfUrl],
                 ]
             );
@@ -533,7 +558,7 @@ class CardiologyReportController extends Controller
                     self::MODULE_CODE,
                     $finding,
                     'WHATSAPP',
-                    'Cardiology report sent via WhatsApp'
+                    'Cardiology report sent via WhatsApp' . ($password ? ' (password-protected)' : ' (unprotected: no valid mobile number)')
                 );
             }
 
@@ -560,7 +585,30 @@ class CardiologyReportController extends Controller
             return 'skipped';
         }
 
+        [$invoice] = $this->loadReportContext($finding);
+
+        if ((float) $invoice->due_amount > 0) {
+            ReportWhatsappDueGate::hold('CARDIOLOGY_REPORT', $invoice, $finding->id);
+            return 'held_due';
+        }
+
         return $this->sendReportWhatsapp($finding, $wati, $auditService) ? 'sent' : 'failed';
+    }
+
+    /**
+     * Sends reports whose automatic WhatsApp was held for a payment due,
+     * once the invoice is fully paid (see ReportWhatsappDueGate).
+     */
+    public function releaseHeldWhatsapp(string $invoiceNo): void
+    {
+        foreach (ReportWhatsappDueGate::takeHeld($invoiceNo, 'CARDIOLOGY_REPORT') as $findingId) {
+
+            $finding = $findingId ? CardiologyReportFinding::find($findingId) : null;
+
+            if ($finding && $finding->confirmed_at) {
+                $this->sendReportWhatsapp($finding, app(WatiService::class), app(AuditService::class));
+            }
+        }
     }
 
     /**

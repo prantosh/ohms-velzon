@@ -18,6 +18,9 @@ use App\Models\TestResultEntry;
 use App\Models\TestResultExtraValue;
 use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
+use App\Services\ReportWhatsappDueGate;
+use App\Support\PdfPageNumbers;
+use App\Services\PdfPasswordProtectionService;
 use App\Services\TestReportRowBuilder;
 use App\Services\WatiService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -74,78 +77,32 @@ class TestResultEntryController extends Controller
     {
         $perPage = (int) $request->get('per_page', 15);
 
-        $invoiceCategory = $request->get('invoice_category', 'PATHOLOGY');
-
         $query = Invoice::where('invoice_type', 'DIAGNOSTIC')
-            ->where('invoice_category', $invoiceCategory)
+            ->where('invoice_category', 'PATHOLOGY')
             ->where(function ($q) {
                 $q->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y');
             });
 
-        if ($invoiceCategory === 'NON_PATHOLOGY') {
+        // An invoice needs at least one PAT001 (or whichever item_codes are
+        // test_parameter_required) line that isn't outsourced, otherwise
+        // there is nothing to report on here. Non-Pathology (X-Ray, Dental,
+        // Vaccination, ECG, etc.) has its own separate dashboard now -- see
+        // NonPathologyReportController.
+        $pathologyQualifyingItemCodes = InvoiceItemMaster::where('test_parameter_required', 'YES')
+            ->pluck('item_code');
 
-            // USG shares the NON_PATHOLOGY category with every other
-            // non-pathology test, but has its own separate reporting
-            // dashboard (UsgReportController) -- an invoice whose only
-            // Non-Pathology lines are USG has nothing to do on this screen
-            // and is excluded. Mirrors NonPathologyReportController's own
-            // qualifying-set definition. An invoice that mixes USG with
-            // other tests (e.g. USG + X-Ray) still belongs here for its
-            // non-USG lines; NonPathologyReportController::search() already
-            // filters those cards down to the non-USG lines only.
-            //
-            // Cardiology (CRD001) is split the same way, but at the
-            // item_code_sub level instead of the whole item_code: its 6
-            // real Echo sub-items (CardiologyReportFields::ITEM_CODE_SUBS)
-            // have their own dedicated /cardiology-report screen, while its
-            // other sub-items (ECG, Holter, ABPM, Sleep Study) belong here.
-            // Without this second exclusion, a pure-Echo invoice showed up
-            // here as an actionable "Not Confirmed" row, but opening it
-            // found nothing to enter -- NonPathologyReportController::search()
-            // already excludes those same Echo sub-items from its cards, so
-            // the row was a dead end.
-            //
-            // Outsourced tests (physically performed and reported by an
-            // outside agency) are excluded the same way -- an invoice
-            // needs at least one qualifying, non-outsourced, non-USG,
-            // non-Echo line to belong on this tab.
-            $nonUsgQualifyingItemCodes = InvoiceItemMaster::where('test_parameter_required', '!=', 'YES')
-                ->whereNotIn('item_code', ['USG001', 'DOC001'])
-                ->pluck('item_code');
-
-            $query->whereExists(function ($sub) use ($nonUsgQualifyingItemCodes) {
-                $sub->selectRaw('1')
-                    ->from('invoice_details')
-                    ->join('invoice_item_details', function ($join) {
-                        $join->on('invoice_item_details.item_code', '=', 'invoice_details.item_code')
-                            ->on('invoice_item_details.item_code_sub', '=', 'invoice_details.item_code_sub');
-                    })
-                    ->whereColumn('invoice_details.invoice_no', 'invoices.invoice_no')
-                    ->whereIn('invoice_details.item_code', $nonUsgQualifyingItemCodes)
-                    ->whereNotIn('invoice_details.item_code_sub', \App\Support\CardiologyReportFields::ITEM_CODE_SUBS)
-                    ->where('invoice_item_details.is_outsourced', 0);
-            });
-
-        } else {
-
-            // Pathology: an invoice needs at least one PAT001 (or whichever
-            // item_codes are test_parameter_required) line that isn't
-            // outsourced, otherwise there is nothing to report on here.
-            $pathologyQualifyingItemCodes = InvoiceItemMaster::where('test_parameter_required', 'YES')
-                ->pluck('item_code');
-
-            $query->whereExists(function ($sub) use ($pathologyQualifyingItemCodes) {
-                $sub->selectRaw('1')
-                    ->from('invoice_details')
-                    ->join('invoice_item_details', function ($join) {
-                        $join->on('invoice_item_details.item_code', '=', 'invoice_details.item_code')
-                            ->on('invoice_item_details.item_code_sub', '=', 'invoice_details.item_code_sub');
-                    })
-                    ->whereColumn('invoice_details.invoice_no', 'invoices.invoice_no')
-                    ->whereIn('invoice_details.item_code', $pathologyQualifyingItemCodes)
-                    ->where('invoice_item_details.is_outsourced', 0);
-            });
-        }
+        $query->whereExists(function ($sub) use ($pathologyQualifyingItemCodes) {
+            $sub->selectRaw('1')
+                ->from('invoice_details')
+                ->join('invoice_item_details', function ($join) {
+                    $join->on('invoice_item_details.item_code', '=', 'invoice_details.item_code')
+                        ->on('invoice_item_details.item_code_sub', '=', 'invoice_details.item_code_sub');
+                })
+                ->whereColumn('invoice_details.invoice_no', 'invoices.invoice_no')
+                ->whereIn('invoice_details.item_code', $pathologyQualifyingItemCodes)
+                ->where('invoice_item_details.is_outsourced', 0)
+                ->where('invoice_item_details.is_report_not_required', 0);
+        });
 
         $range = $request->get('range', '3');
 
@@ -238,7 +195,8 @@ class TestResultEntryController extends Controller
             ->where('d.invoice_no', $invoice->invoice_no)
             ->whereIn('d.item_code', $qualifyingItemCodes)
             ->where('iid.is_package', 0)
-            ->where('iid.is_outsourced', 0);
+            ->where('iid.is_outsourced', 0)
+            ->where('iid.is_report_not_required', 0);
     }
 
     private function resultStatusFor(Invoice $invoice, array $qualifyingItemCodes): array
@@ -816,6 +774,8 @@ class TestResultEntryController extends Controller
             compact('invoice', 'tests')
         );
 
+        PdfPageNumbers::add($pdf);
+
         $auditService->logAction(
             self::MODULE_CODE,
             $invoice,
@@ -850,6 +810,11 @@ class TestResultEntryController extends Controller
             ]);
         }
 
+        if ($blocked = ReportWhatsappDueGate::manualBlockMessage($invoice->invoice_no)) {
+
+            return response()->json(['status' => false, 'message' => $blocked]);
+        }
+
         $sent = $this->sendReportWhatsapp($invoice, $rowBuilder, $wati, $auditService);
 
         return response()->json([
@@ -881,12 +846,21 @@ class TestResultEntryController extends Controller
                 compact('invoice', 'tests')
             );
 
+            PdfPageNumbers::add($pdf);
+
             $fileName = str_replace('/', '_', $invoice->invoice_no)
                 . '-report.pdf';
 
             $pdfPath = public_path('invoices/' . $fileName);
 
-            $pdf->save($pdfPath);
+            $password = PdfPasswordProtectionService::passwordForMobile($invoice->patient_mobile_no);
+
+            file_put_contents(
+                $pdfPath,
+                $password
+                    ? PdfPasswordProtectionService::protect($pdf->output(), $password)
+                    : $pdf->output()
+            );
 
             $pdfUrl = asset('invoices/' . $fileName);
 
@@ -897,7 +871,7 @@ class TestResultEntryController extends Controller
                 [
                     ['name' => '1', 'value' => $pdfUrl],
                     ['name' => '2', 'value' => $invoice->patient_name],
-                    ['name' => '3', 'value' => $invoice->invoice_no],
+                    ['name' => '3', 'value' => PdfPasswordProtectionService::invoiceNoWithHint($invoice->invoice_no, (bool) $password)],
                 ]
             );
 
@@ -921,7 +895,7 @@ class TestResultEntryController extends Controller
                     self::MODULE_CODE,
                     $invoice,
                     'WHATSAPP',
-                    'Test report sent via WhatsApp'
+                    'Test report sent via WhatsApp' . ($password ? ' (password-protected)' : ' (unprotected: no valid mobile number)')
                 );
             }
 
@@ -951,8 +925,30 @@ class TestResultEntryController extends Controller
             return 'skipped';
         }
 
+        if ((float) $invoice->due_amount > 0) {
+            ReportWhatsappDueGate::hold('TEST_REPORT', $invoice);
+            return 'held_due';
+        }
+
         return $this->sendReportWhatsapp($invoice, $rowBuilder, $wati, $auditService)
             ? 'sent'
             : 'failed';
+    }
+
+    /**
+     * Sends the test report whose automatic WhatsApp was held for a
+     * payment due, once the invoice is fully paid (see ReportWhatsappDueGate).
+     */
+    public function releaseHeldWhatsapp(string $invoiceNo): void
+    {
+        if (!ReportWhatsappDueGate::takeHeld($invoiceNo, 'TEST_REPORT')) {
+            return;
+        }
+
+        $invoice = Invoice::where('invoice_no', $invoiceNo)->first();
+
+        if ($invoice && TestReportConfirmation::where('invoice_no', $invoiceNo)->exists()) {
+            $this->sendReportWhatsapp($invoice, app(TestReportRowBuilder::class), app(WatiService::class), app(AuditService::class));
+        }
     }
 }

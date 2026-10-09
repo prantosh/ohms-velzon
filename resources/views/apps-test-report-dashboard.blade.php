@@ -64,13 +64,27 @@
                     </div>
 
                     <div class="col-md-2">
-                        <label class="form-label mb-1">From Date</label>
-                        <input type="text" id="fromDateFilter" class="form-control form-control-sm flatpickr">
+                        <label class="form-label mb-1">Result Status</label>
+                        <select id="resultStatusFilter" class="form-select form-select-sm">
+                            <option value="">All</option>
+                            <option value="N/A">N/A</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Partial">Partial</option>
+                            <option value="Confirmation Pending">Confirmation Pending</option>
+                            <option value="Complete">Complete</option>
+                        </select>
                     </div>
 
                     <div class="col-md-2">
-                        <label class="form-label mb-1">To Date</label>
-                        <input type="text" id="toDateFilter" class="form-control form-control-sm flatpickr">
+                        <label class="form-label mb-1">Date Range</label>
+                        <select id="rangeFilter" class="form-select form-select-sm">
+                            <option value="3" selected>Last 3 days</option>
+                            <option value="5">Last 5 days</option>
+                            <option value="7">Last 7 days</option>
+                            <option value="15">Last 15 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="all">All</option>
+                        </select>
                     </div>
 
                     <div class="col-md-2">

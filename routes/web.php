@@ -2753,10 +2753,19 @@ Route::middleware(['auth'])->prefix('cardiology-report')->group(function () {
 });
 
 // Narrative-report module for every Non-Pathology category that has no
-// structured parameter grid, except USG (own module above). No index/list
-// routes -- reached only through Test Result Entry's existing Non-Pathology
-// tab; see NonPathologyReportController's class doc-comment.
+// structured parameter grid, except USG (own module above). Has its own
+// standalone dashboard, same pattern as usg-report/cardiology-report below.
 Route::middleware(['auth'])->prefix('non-pathology-report')->group(function () {
+
+    Route::get(
+        '/',
+        [NonPathologyReportController::class, 'index']
+    )->name('non-pathology-report.index');
+
+    Route::get(
+        '/list',
+        [NonPathologyReportController::class, 'list']
+    )->name('non-pathology-report.list');
 
     Route::post(
         '/search',
@@ -2870,6 +2879,18 @@ Route::middleware(['auth'])->prefix('pathology-report-template')->group(function
         [PathologyReportTemplateController::class, 'destroy']
     );
 
+});
+
+Route::middleware(['auth'])->prefix('temporary')->group(function () {
+    Route::get(
+        '/seed-glucose-fbs-ppbs-template',
+        [PathologyReportTemplateController::class, 'showGlucoseFbsPpbsSeedForm']
+    )->name('temporary.seed-glucose-fbs-ppbs-template.form');
+
+    Route::post(
+        '/seed-glucose-fbs-ppbs-template',
+        [PathologyReportTemplateController::class, 'seedGlucoseFbsPpbsTemplate']
+    )->name('temporary.seed-glucose-fbs-ppbs-template.run');
 });
 
 // Narrative, template-driven Pathology report entry -- reached only through

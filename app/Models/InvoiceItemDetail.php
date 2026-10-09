@@ -17,6 +17,7 @@ class InvoiceItemDetail extends Model
         'item_description_sub',
         'is_package',
         'is_outsourced',
+        'is_report_not_required',
         'rate',
 
         'discount_percent',
@@ -45,6 +46,8 @@ class InvoiceItemDetail extends Model
     ];
 
     protected $casts = [
+
+        'is_report_not_required' => 'boolean',
 
         'rate' => 'decimal:2',
 

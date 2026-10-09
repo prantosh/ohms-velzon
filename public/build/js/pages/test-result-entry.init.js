@@ -135,10 +135,6 @@ async function searchInvoice() {
     document.querySelector('#invoiceNotFoundMsg').style.display = 'none';
     document.querySelector('#noQualifyingMsg').style.display = 'none';
 
-    destroyAllNonPathEditors();
-    document.querySelector('#nonPathologyReportsWrap').innerHTML = '';
-    document.querySelector('#nonPathologyReportsWrap').style.display = 'none';
-
     destroyAllPathologyEditors();
     document.querySelector('#pathologyReportsWrap').innerHTML = '';
     document.querySelector('#pathologyReportsWrap').style.display = 'none';
@@ -149,11 +145,7 @@ async function searchInvoice() {
         return;
     }
 
-    if (typeof dashCategory !== 'undefined' && dashCategory === 'NON_PATHOLOGY') {
-        await loadNonPathologyReports(invoiceNo);
-    } else {
-        await loadPathologyReports(invoiceNo);
-    }
+    await loadPathologyReports(invoiceNo);
 }
 
 /*
@@ -469,7 +461,13 @@ function refreshPathologyStartPicker(pane, g) {
 
     g.available_templates.forEach(t => {
 
-        let itemNames = t.item_code_subs.map(code => {
+        let remainingItemCodes = t.item_code_subs.filter(code =>
+            g.unclaimed_items.some(i => i.item_code_sub === code)
+        );
+
+        if (!remainingItemCodes.length) return;
+
+        let itemNames = remainingItemCodes.map(code => {
             let item = g.unclaimed_items.find(i => i.item_code_sub === code);
             return item ? item.item_description : code;
         }).join(', ');
@@ -478,6 +476,30 @@ function refreshPathologyStartPicker(pane, g) {
         option.value = 'template:' + t.id;
         option.textContent = `Template: ${t.title} (${itemNames})`;
         picker.appendChild(option);
+
+        // Offer a derived single-item choice only when no dedicated
+        // single-item template already exists for that test. This keeps
+        // multi-test panels usable across separate dates without showing
+        // duplicate choices beside their dedicated templates.
+        remainingItemCodes.forEach(code => {
+            let item = g.unclaimed_items.find(i => i.item_code_sub === code);
+            if (!item) return;
+
+            let hasDedicatedTemplate = g.available_templates.some(other =>
+                String(other.id) !== String(t.id)
+                    && other.item_code_subs.filter(otherCode =>
+                        g.unclaimed_items.some(openItem => openItem.item_code_sub === otherCode)
+                    ).length === 1
+                    && other.item_code_subs.includes(code)
+            );
+
+            if (hasDedicatedTemplate) return;
+
+            let singleItemOption = document.createElement('option');
+            singleItemOption.value = `template-item:${t.id}:${code}`;
+            singleItemOption.textContent = `Template: ${t.title} — Single test: ${item.item_description}`;
+            picker.appendChild(singleItemOption);
+        });
     });
 
     g.unclaimed_items.forEach(item => {
@@ -573,9 +595,9 @@ document.addEventListener('change', async function (e) {
     let invoiceNo = document.querySelector('#invoiceInfoWrap').dataset.invoiceNo;
     let cardReady = null;
 
-    let [kind, idValue] = picker.value.split(':');
+    let [kind, idValue, itemCodeSub] = picker.value.split(':');
 
-    if (kind === 'template') {
+    if (kind === 'template' || kind === 'template-item') {
 
         let tpl = g.available_templates.find(t => String(t.id) === idValue);
 
@@ -584,7 +606,12 @@ document.addEventListener('change', async function (e) {
             return;
         }
 
-        let items = tpl.item_code_subs
+        let remainingItemCodes = tpl.item_code_subs.filter(code =>
+            g.unclaimed_items.some(i => i.item_code_sub === code)
+                && (kind !== 'template-item' || code === itemCodeSub)
+        );
+
+        let items = remainingItemCodes
             .map(code => g.unclaimed_items.find(i => i.item_code_sub === code))
             .filter(Boolean);
 
@@ -597,7 +624,7 @@ document.addEventListener('change', async function (e) {
             items: items
         }, invoiceNo);
 
-        g.unclaimed_items = g.unclaimed_items.filter(i => !tpl.item_code_subs.includes(i.item_code_sub));
+        g.unclaimed_items = g.unclaimed_items.filter(i => !remainingItemCodes.includes(i.item_code_sub));
 
     } else if (kind === 'blank') {
 
@@ -621,7 +648,7 @@ document.addEventListener('change', async function (e) {
     }
 
     g.available_templates = g.available_templates.filter(t =>
-        t.item_code_subs.every(code => g.unclaimed_items.some(i => i.item_code_sub === code))
+        t.item_code_subs.some(code => g.unclaimed_items.some(i => i.item_code_sub === code))
     );
 
     refreshPathologyStartPicker(pane, g);
@@ -774,7 +801,8 @@ async function confirmPathologyGroup(groupBtn) {
             already_sent: 'Confirmed. (WhatsApp for this invoice was already sent earlier.)',
             skipped: 'Confirmed. Automatic WhatsApp sending is currently switched off.',
             failed: 'Confirmed, but sending the WhatsApp message failed -- use Send Now once ready.',
-            pending_other_reports: 'Confirmed. WhatsApp will be sent once every Pathology test on this invoice is confirmed.'
+            pending_other_reports: 'Confirmed. WhatsApp will be sent once every Pathology test on this invoice is confirmed.',
+            held_due: 'Confirmed. WhatsApp is on hold until the pending payment on this invoice is cleared; it will then be sent automatically.'
         };
 
         Swal.fire({
@@ -859,7 +887,8 @@ async function confirmPathologyFinding(confirmBtn) {
             already_sent: 'Confirmed. (WhatsApp for this invoice was already sent earlier.)',
             skipped: 'Confirmed. Automatic WhatsApp sending is currently switched off.',
             failed: 'Confirmed, but sending the WhatsApp message failed -- use Send Now once ready.',
-            pending_other_reports: 'Confirmed. WhatsApp will be sent once every Pathology test on this invoice is confirmed.'
+            pending_other_reports: 'Confirmed. WhatsApp will be sent once every Pathology test on this invoice is confirmed.',
+            held_due: 'Confirmed. WhatsApp is on hold until the pending payment on this invoice is cleared; it will then be sent automatically.'
         };
 
         Swal.fire({
@@ -972,323 +1001,3 @@ document.addEventListener('click', function (e) {
     }
 });
 
-/*
-|--------------------------------------------------------------------------
-| NON-PATHOLOGY NARRATIVE REPORTS -- one independently completable/
-| confirmable/printable Clinical History/Findings/Impression card per
-| billed line, for every Non-Pathology category with no parameter grid.
-| Mirrors usg-report.init.js's card handling (USG solved this same problem
-| for itself already and keeps its own separate module).
-|--------------------------------------------------------------------------
-*/
-
-let nonPathEditors = new Map();
-
-function destroyAllNonPathEditors() {
-    nonPathEditors.forEach(fields => {
-        fields.clinical_history.destroy();
-        fields.findings.destroy();
-        fields.impression.destroy();
-    });
-    nonPathEditors.clear();
-}
-
-async function loadNonPathologyReports(invoiceNo) {
-
-    const { result } = await fetchJson('/non-pathology-report/search', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken()
-        },
-        body: JSON.stringify({ invoice_no: invoiceNo })
-    });
-
-    if (!result.status) {
-        document.querySelector('#invoiceNotFoundMsg').style.display = 'block';
-        return;
-    }
-
-    renderInvoiceInfo(result.invoice);
-
-    let wrap = document.querySelector('#nonPathologyReportsWrap');
-    wrap.style.display = 'block';
-
-    if (!result.lines.length) {
-
-        document.querySelector('#noQualifyingMsg').style.display = 'block';
-        return;
-    }
-
-    let template = document.getElementById('nonPathReportCardTemplate');
-
-    for (const line of result.lines) {
-
-        let frag = template.content.cloneNode(true);
-        let root = frag.querySelector('.nonpath-report-card');
-
-        root.dataset.invoiceDetailId = line.invoice_detail_id;
-        root.dataset.findingId = line.finding_id ?? '';
-
-        root.querySelector('.nonpath-item-description').innerText = line.item_description ?? '';
-        root.querySelector('.nonpath-item-code-sub').innerText = line.item_code_sub ? `(${line.item_code_sub})` : '';
-        root.querySelector('.nonpath-doctor-name').innerText = line.doctor_name ?? '-';
-
-        wrap.appendChild(frag);
-
-        let clinicalHistoryEditor = bindTabIndent(await ClassicEditor.create(root.querySelector('.nonpath-clinical-history'), RICH_EDITOR_CONFIG));
-        let findingsEditor = bindTabIndent(await ClassicEditor.create(root.querySelector('.nonpath-findings'), RICH_EDITOR_CONFIG));
-        let impressionEditor = bindTabIndent(await ClassicEditor.create(root.querySelector('.nonpath-impression'), RICH_EDITOR_CONFIG));
-
-        nonPathEditors.set(root, {
-            clinical_history: clinicalHistoryEditor,
-            findings: findingsEditor,
-            impression: impressionEditor
-        });
-
-        clinicalHistoryEditor.setData(toEditorHtml(line.clinical_history ?? ''));
-        findingsEditor.setData(toEditorHtml(line.findings ?? ''));
-        impressionEditor.setData(toEditorHtml(line.impression ?? ''));
-
-        if (line.confirmed_at || isReadOnlyView) {
-            lockNonPathCard(root, line.finding_id);
-        }
-
-        if (line.item_code_sub) {
-            loadNonPathTemplatesForPicker(root.querySelector('.nonpath-template-picker'), line.item_code_sub);
-        }
-    }
-}
-
-function lockNonPathCard(root, findingId) {
-
-    let editors = nonPathEditors.get(root);
-
-    if (editors) {
-        editors.clinical_history.enableReadOnlyMode('nonpath-locked');
-        editors.findings.enableReadOnlyMode('nonpath-locked');
-        editors.impression.enableReadOnlyMode('nonpath-locked');
-    }
-
-    root.querySelector('.nonpath-template-picker-wrap').style.display = 'none';
-    root.querySelector('.nonpath-confirmed-badge').style.display = 'inline-block';
-    root.querySelector('.nonpath-save-btn').style.display = 'none';
-    root.querySelector('.nonpath-confirm-btn').style.display = 'none';
-
-    if (!findingId) return;
-
-    let printBtn = root.querySelector('.nonpath-print-btn');
-    printBtn.href = `/non-pathology-report/print/${findingId}`;
-    printBtn.style.display = 'inline-block';
-
-    root.querySelector('.nonpath-whatsapp-btn').style.display = 'inline-block';
-}
-
-function loadNonPathTemplatesForPicker(picker, itemCodeSub) {
-
-    fetch(`/non-pathology-report-template/for-test/${itemCodeSub}`)
-        .then(r => r.json())
-        .then(result => {
-
-            if (!result.status || !result.data.length) return;
-
-            picker.nonPathTemplates = {};
-
-            result.data.forEach(tpl => {
-
-                picker.nonPathTemplates[tpl.id] = tpl;
-
-                let option = document.createElement('option');
-                option.value = tpl.id;
-                option.textContent = tpl.title;
-                picker.appendChild(option);
-            });
-        })
-        .catch(() => {});
-}
-
-document.addEventListener('change', async function (e) {
-
-    let picker = e.target.closest('.nonpath-template-picker');
-
-    if (!picker || !picker.value) return;
-
-    let template = (picker.nonPathTemplates || {})[picker.value];
-
-    if (!template) {
-        picker.value = '';
-        return;
-    }
-
-    let root = picker.closest('.nonpath-report-card');
-    let editors = nonPathEditors.get(root);
-
-    if (!editors) {
-        picker.value = '';
-        return;
-    }
-
-    let hasExisting = editors.clinical_history.getData().trim()
-        || editors.findings.getData().trim()
-        || editors.impression.getData().trim();
-
-    if (hasExisting) {
-
-        let confirmResult = await Swal.fire({
-            icon: 'warning',
-            title: 'Replace current content?',
-            text: 'This will replace the current Clinical History, Findings, and Impression with the selected template.',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, Replace'
-        });
-
-        if (!confirmResult.isConfirmed) {
-            picker.value = '';
-            return;
-        }
-    }
-
-    editors.clinical_history.setData(toEditorHtml(template.clinical_history ?? ''));
-    editors.findings.setData(toEditorHtml(template.findings ?? ''));
-    editors.impression.setData(toEditorHtml(template.impression ?? ''));
-
-    picker.value = '';
-});
-
-document.addEventListener('click', async function (e) {
-
-    let saveBtn = e.target.closest('.nonpath-save-btn');
-    if (saveBtn) {
-
-        let root = saveBtn.closest('.nonpath-report-card');
-        let editors = nonPathEditors.get(root);
-
-        saveBtn.disabled = true;
-
-        const { result } = await fetchJson('/non-pathology-report/save', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken()
-            },
-            body: JSON.stringify({
-                invoice_detail_id: root.dataset.invoiceDetailId,
-                clinical_history: editors.clinical_history.getData(),
-                findings: editors.findings.getData(),
-                impression: editors.impression.getData()
-            })
-        });
-
-        saveBtn.disabled = false;
-
-        if (result.status && result.data && result.data.id) {
-            root.dataset.findingId = result.data.id;
-        }
-
-        Swal.fire({
-            icon: result.status ? 'success' : 'error',
-            title: result.status ? 'Saved' : 'Error',
-            text: result.message ?? (result.errors ? Object.values(result.errors).flat().join(', ') : ''),
-            timer: result.status ? 1200 : undefined,
-            showConfirmButton: !result.status
-        });
-
-        return;
-    }
-
-    let confirmBtn = e.target.closest('.nonpath-confirm-btn');
-    if (confirmBtn) {
-
-        let root = confirmBtn.closest('.nonpath-report-card');
-
-        if (!root.dataset.findingId) {
-
-            Swal.fire({
-                icon: 'warning',
-                title: 'Save First',
-                text: 'Please save the report before confirming it.'
-            });
-
-            return;
-        }
-
-        let confirmResult = await Swal.fire({
-            icon: 'warning',
-            title: 'Confirm this report?',
-            text: 'Once confirmed, it can no longer be edited.',
-            showCancelButton: true,
-            confirmButtonText: 'Yes, Confirm & Lock'
-        });
-
-        if (!confirmResult.isConfirmed) {
-            return;
-        }
-
-        confirmBtn.disabled = true;
-
-        const { result } = await fetchJson('/non-pathology-report/confirm', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrfToken()
-            },
-            body: JSON.stringify({ invoice_detail_id: root.dataset.invoiceDetailId })
-        });
-
-        confirmBtn.disabled = false;
-
-        if (result.status) {
-
-            lockNonPathCard(root, root.dataset.findingId);
-
-            Swal.fire({
-                icon: 'success',
-                title: 'Confirmed',
-                text: result.message
-            });
-
-        } else {
-
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: result.message
-            });
-        }
-
-        return;
-    }
-
-    let whatsappBtn = e.target.closest('.nonpath-whatsapp-btn');
-    if (whatsappBtn) {
-
-        let root = whatsappBtn.closest('.nonpath-report-card');
-        let findingId = root.dataset.findingId;
-
-        whatsappBtn.disabled = true;
-
-        Swal.fire({
-            title: 'Please wait...',
-            text: 'We are sending WhatsApp message',
-            allowOutsideClick: false,
-            allowEscapeKey: false,
-            showConfirmButton: false,
-            didOpen: function () {
-                Swal.showLoading();
-            }
-        });
-
-        const { result } = await fetchJson(`/non-pathology-report/send-whatsapp/${findingId}`, {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': csrfToken() }
-        });
-
-        whatsappBtn.disabled = false;
-
-        Swal.fire({
-            icon: result.status ? 'success' : 'error',
-            title: result.status ? 'Sent' : 'Error',
-            text: result.message
-        });
-    }
-});

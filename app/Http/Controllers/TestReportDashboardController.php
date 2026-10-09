@@ -52,6 +52,25 @@ class TestReportDashboardController extends Controller
         $query = Invoice::where('invoice_type', 'DIAGNOSTIC')
             ->where(function ($q) {
                 $q->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y');
+            })
+            ->whereExists(function ($sub) {
+                $sub->selectRaw('1')
+                    ->from('invoice_details as d')
+                    ->join('invoice_item_details as iid', function ($join) {
+                        $join->on('iid.item_code', '=', 'd.item_code')
+                            ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+                    })
+                    ->whereColumn('d.invoice_no', 'invoices.invoice_no')
+                    ->where(function ($reportable) {
+                        $reportable->where('iid.is_package', 0)
+                            ->orWhereExists(function ($finding) {
+                                $finding->selectRaw('1')
+                                    ->from('pathology_report_finding_items as pfi')
+                                    ->whereColumn('pfi.invoice_detail_id', 'd.id')
+                                    ->where('d.item_code', 'PAT001');
+                            });
+                    })
+                    ->where('iid.is_report_not_required', 0);
             });
 
         if ($request->filled('search')) {
@@ -69,12 +88,15 @@ class TestReportDashboardController extends Controller
             $query->where('invoice_category', $request->invoice_category);
         }
 
-        if ($request->filled('from_date')) {
-            $query->whereDate('invoice_date', '>=', $request->from_date);
-        }
+        $range = $request->get('range', '3');
+        $rangeDays = ['3' => 3, '5' => 5, '7' => 7, '15' => 15, '30' => 30];
 
-        if ($request->filled('to_date')) {
-            $query->whereDate('invoice_date', '<=', $request->to_date);
+        if (isset($rangeDays[$range])) {
+            $query->whereDate(
+                'invoice_date',
+                '>=',
+                now()->subDays($rangeDays[$range] - 1)->toDateString()
+            );
         }
 
         if ($request->filled('payment_status')) {
@@ -88,11 +110,31 @@ class TestReportDashboardController extends Controller
             }
         }
 
-        $invoices = $query->orderByDesc('invoice_date')->orderByDesc('id')->paginate($perPage);
+        if ($request->filled('result_status')) {
+            // Result status is assembled from several report modules, so it
+            // cannot be filtered reliably in SQL before the status service
+            // has calculated each invoice's row.
+            $allRows = $query->orderByDesc('invoice_date')->orderByDesc('id')
+                ->get()
+                ->map(fn ($invoice) => $this->toRow($invoice))
+                ->filter(fn ($row) => $row['result_status'] === $request->result_status)
+                ->values();
 
-        $rows = $invoices->getCollection()->map(function ($invoice) {
-            return $this->toRow($invoice);
-        });
+            $total = $allRows->count();
+            $page = max(1, (int) $request->get('page', 1));
+            $rows = $allRows->forPage($page, $perPage)->values();
+            $lastPage = max(1, (int) ceil($total / max(1, $perPage)));
+        } else {
+            $invoices = $query->orderByDesc('invoice_date')->orderByDesc('id')->paginate($perPage);
+
+            $rows = $invoices->getCollection()->map(function ($invoice) {
+                return $this->toRow($invoice);
+            });
+
+            $total = $invoices->total();
+            $page = $invoices->currentPage();
+            $lastPage = $invoices->lastPage();
+        }
 
         $protectedUsers = $this->identityGuard->protectedUsersForMobiles($rows->pluck('patient_mobile_no'));
 
@@ -109,9 +151,9 @@ class TestReportDashboardController extends Controller
             'status' => true,
             'data' => $rows,
             'pagination' => [
-                'current_page' => $invoices->currentPage(),
-                'last_page' => $invoices->lastPage(),
-                'total' => $invoices->total(),
+                'current_page' => $page,
+                'last_page' => $lastPage,
+                'total' => $total,
             ],
         ]);
     }

@@ -188,6 +188,8 @@ async function loadDetail() {
         'SENT': 'bg-success',
         'FAILED': 'bg-danger',
         'SKIPPED': 'bg-secondary',
+        'HELD_DUE': 'bg-warning',
+        'RELEASED': 'bg-info',
     };
 
     let tbody = document.getElementById('detailTableBody');

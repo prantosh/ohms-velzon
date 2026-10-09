@@ -15,6 +15,8 @@
         "laravel/ui": "^4.2",
         "maatwebsite/excel": "^3.1",
         "resend/resend-php": "^1.7",
+        "setasign/fpdi": "^2.6",
+        "tecnickcom/tcpdf": "^6.9",
         "yajra/laravel-datatables-oracle": "^13.1"
     },
     "require-dev": {

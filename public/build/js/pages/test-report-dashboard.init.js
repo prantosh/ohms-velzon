@@ -14,32 +14,25 @@ function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]').content;
 }
 
-// Where a given invoice's report(s) actually live -- USG and Cardiology
-// are each their OWN standalone page (not reachable through Test Result
-// Entry), so routing by print_route (computed server-side from the
-// invoice's actual item codes) instead of a blanket category check avoids
-// sending staff to a page that 403s with "must be confirmed" even though
-// the report genuinely is confirmed, just through a different module's
-// own confirmed_at. Plain Non-Pathology items still fall back to the
-// shared Test Result Entry modal's Non-Pathology tab (?category= tells it
-// which tab to search in, since a fresh page load otherwise defaults to
-// Pathology).
+// Where a given invoice's report(s) actually live -- Pathology, USG,
+// Cardiology and Non-Pathology (Rest Test Result Entry) are each their OWN
+// standalone page now, so routing by print_route (computed server-side from
+// the invoice's actual item codes) instead of a blanket category check
+// avoids sending staff to a page that 403s with "must be confirmed" even
+// though the report genuinely is confirmed, just through a different
+// module's own confirmed_at.
 function printRouteUrl(printRoute, invoiceNo) {
 
     let base = {
         pathology: '/test-result-entry',
         usg: '/usg-report',
         cardiology: '/cardiology-report',
-        non_pathology: '/test-result-entry',
+        non_pathology: '/non-pathology-report',
     }[printRoute];
 
     if (!base) return null;
 
     let params = new URLSearchParams({ open: invoiceNo });
-
-    if (printRoute === 'non_pathology') {
-        params.set('category', 'NON_PATHOLOGY');
-    }
 
     return `${base}?${params.toString()}`;
 }
@@ -50,8 +43,8 @@ function currentFilters() {
         search: document.querySelector('#searchInput').value.trim(),
         invoice_category: document.querySelector('#categoryFilter').value,
         payment_status: document.querySelector('#paymentStatusFilter').value,
-        from_date: document.querySelector('#fromDateFilter').value,
-        to_date: document.querySelector('#toDateFilter').value,
+        result_status: document.querySelector('#resultStatusFilter').value,
+        range: document.querySelector('#rangeFilter').value,
     };
 }
 
@@ -192,8 +185,8 @@ document.getElementById('nextPage').addEventListener('click', function () {
 document.getElementById('perPage').addEventListener('change', () => loadReports(1));
 document.getElementById('categoryFilter').addEventListener('change', () => loadReports(1));
 document.getElementById('paymentStatusFilter').addEventListener('change', () => loadReports(1));
-document.getElementById('fromDateFilter').addEventListener('change', () => loadReports(1));
-document.getElementById('toDateFilter').addEventListener('change', () => loadReports(1));
+document.getElementById('resultStatusFilter').addEventListener('change', () => loadReports(1));
+document.getElementById('rangeFilter').addEventListener('change', () => loadReports(1));
 
 let searchDebounce = null;
 document.getElementById('searchInput').addEventListener('input', function () {
@@ -206,8 +199,8 @@ document.getElementById('resetFiltersBtn').addEventListener('click', function ()
     document.querySelector('#searchInput').value = '';
     document.querySelector('#categoryFilter').value = '';
     document.querySelector('#paymentStatusFilter').value = '';
-    setFlatpickrValue('fromDateFilter', '');
-    setFlatpickrValue('toDateFilter', '');
+    document.querySelector('#resultStatusFilter').value = '';
+    document.querySelector('#rangeFilter').value = '3';
     document.querySelector('#perPage').value = '15';
 
     loadReports(1);

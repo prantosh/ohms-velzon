@@ -102,6 +102,14 @@ class InvoiceItemDetailController extends Controller
 
             })
 
+            ->addColumn('is_report_not_required_label', function ($row) {
+
+                return $row->is_report_not_required
+                    ? '<span class="badge bg-secondary">Report Not Required</span>'
+                    : '';
+
+            })
+
             ->addColumn('action', function ($row) {
 
                 return '
@@ -126,6 +134,7 @@ class InvoiceItemDetailController extends Controller
                 'status',
                 'is_package_label',
                 'is_outsourced_label',
+                'is_report_not_required_label',
                 'action'
             ])
 
@@ -234,6 +243,8 @@ class InvoiceItemDetailController extends Controller
 
             'is_outsourced' => 'nullable|boolean',
 
+            'is_report_not_required' => 'nullable|boolean',
+
             'components' => 'nullable|array',
 
             'components.*' => 'exists:invoice_item_details,id',
@@ -289,6 +300,8 @@ class InvoiceItemDetailController extends Controller
                 'is_package' => $isPackage,
 
                 'is_outsourced' => $request->boolean('is_outsourced'),
+
+                'is_report_not_required' => $request->boolean('is_report_not_required'),
 
                 'rate' => $request->rate,
 
@@ -396,6 +409,8 @@ class InvoiceItemDetailController extends Controller
 
                 'is_outsourced' => 'nullable|boolean',
 
+                'is_report_not_required' => 'nullable|boolean',
+
                 'components' => 'nullable|array',
 
                 'components.*' => 'exists:invoice_item_details,id',
@@ -428,6 +443,8 @@ class InvoiceItemDetailController extends Controller
             'is_package' => $isPackage,
 
             'is_outsourced' => $request->boolean('is_outsourced'),
+
+            'is_report_not_required' => $request->boolean('is_report_not_required'),
 
             'rate' => $request->rate,
 

@@ -30,8 +30,17 @@ class DiagnosticResultStatusService
                     ->on('iid.item_code_sub', '=', 'd.item_code_sub');
             })
             ->where('d.invoice_no', $invoice->invoice_no)
-            ->where('iid.is_package', 0)
-            ->where('iid.is_outsourced', 0);
+            ->where(function ($query) {
+                $query->where('iid.is_package', 0)
+                    ->orWhereExists(function ($finding) {
+                        $finding->selectRaw('1')
+                            ->from('pathology_report_finding_items as pfi')
+                            ->whereColumn('pfi.invoice_detail_id', 'd.id')
+                            ->where('d.item_code', 'PAT001');
+                    });
+            })
+            ->where('iid.is_outsourced', 0)
+            ->where('iid.is_report_not_required', 0);
     }
 
     public function outsourcedLinesQuery(Invoice $invoice)
@@ -43,7 +52,8 @@ class DiagnosticResultStatusService
             })
             ->where('d.invoice_no', $invoice->invoice_no)
             ->where('iid.is_package', 0)
-            ->where('iid.is_outsourced', 1);
+            ->where('iid.is_outsourced', 1)
+            ->where('iid.is_report_not_required', 0);
     }
 
     /**

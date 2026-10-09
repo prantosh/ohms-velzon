@@ -208,8 +208,17 @@ class TestReportDeliveryReportController extends Controller
                                     ->on('iid.item_code_sub', '=', 'd.item_code_sub');
                             })
                             ->whereColumn('d.invoice_no', 'invoices.invoice_no')
-                            ->where('iid.is_package', 0)
-                            ->where('iid.is_outsourced', 0);
+                            ->where(function ($reportable) {
+                                $reportable->where('iid.is_package', 0)
+                                    ->orWhereExists(function ($finding) {
+                                        $finding->selectRaw('1')
+                                            ->from('pathology_report_finding_items as pfi')
+                                            ->whereColumn('pfi.invoice_detail_id', 'd.id')
+                                            ->where('d.item_code', 'PAT001');
+                                    });
+                            })
+                            ->where('iid.is_outsourced', 0)
+                            ->where('iid.is_report_not_required', 0);
                     });
             })->orWhere(function ($outsourced) {
                 $outsourced->whereNull('outsourced_report_delivered_at')
@@ -222,7 +231,8 @@ class TestReportDeliveryReportController extends Controller
                             })
                             ->whereColumn('d.invoice_no', 'invoices.invoice_no')
                             ->where('iid.is_package', 0)
-                            ->where('iid.is_outsourced', 1);
+                            ->where('iid.is_outsourced', 1)
+                            ->where('iid.is_report_not_required', 0);
                     });
             });
         });

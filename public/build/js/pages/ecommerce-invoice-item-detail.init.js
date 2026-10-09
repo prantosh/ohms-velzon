@@ -258,6 +258,13 @@ function initialiseDataTable() {
             },
 
             {
+                data: 'is_report_not_required_label',
+                name: 'invoice_item_details.is_report_not_required',
+                searchable: false,
+                className: 'text-center'
+            },
+
+            {
                 data: 'status',
                 name: 'invoice_item_details.status',
                 searchable: false
@@ -300,6 +307,8 @@ function clearForm() {
     $('#is_package').prop('checked', false);
 
     $('#is_outsourced').prop('checked', false);
+
+    $('#is_report_not_required').prop('checked', false);
 
     $('#componentsWrap').hide();
 
@@ -410,6 +419,18 @@ $('#is_package').change(function () {
 
 });
 
+$('#is_outsourced').change(function () {
+    if ($(this).is(':checked')) {
+        $('#is_report_not_required').prop('checked', false);
+    }
+});
+
+$('#is_report_not_required').change(function () {
+    if ($(this).is(':checked')) {
+        $('#is_outsourced').prop('checked', false);
+    }
+});
+
 function editRecord() {
 
     editId = $(this).data('id');
@@ -434,6 +455,8 @@ function editRecord() {
             $('#is_package').prop('checked', !!(response.is_package * 1));
 
             $('#is_outsourced').prop('checked', !!(response.is_outsourced * 1));
+
+            $('#is_report_not_required').prop('checked', !!(response.is_report_not_required * 1));
 
             if ($('#is_package').is(':checked')) {
 
@@ -585,6 +608,8 @@ function saveRecord() {
             is_package: $('#is_package').is(':checked') ? 1 : 0,
 
             is_outsourced: $('#is_outsourced').is(':checked') ? 1 : 0,
+
+            is_report_not_required: $('#is_report_not_required').is(':checked') ? 1 : 0,
 
             components: $('#is_package').is(':checked') ? ($('#components').val() || []) : [],
 

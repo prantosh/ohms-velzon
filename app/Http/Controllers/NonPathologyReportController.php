@@ -7,6 +7,9 @@ use App\Models\InvoiceItemMaster;
 use App\Models\NonPathologyReportFinding;
 use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
+use App\Services\ReportWhatsappDueGate;
+use App\Support\PdfPageNumbers;
+use App\Services\PdfPasswordProtectionService;
 use App\Services\HtmlSanitizerService;
 use App\Services\WatiService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -26,10 +29,10 @@ use Illuminate\Support\Facades\Validator;
  * confirmation table; confirmed_by/confirmed_at live directly on
  * non_pathology_report_findings.
  *
- * Has no index()/list() -- this module has no standalone dashboard. It is
- * only reached through Test Result Entry's existing Non-Pathology tab
- * (TestResultEntryController::search() / test-result-entry.init.js), which
- * calls into search()/store()/confirm()/printReport()/sendWhatsapp() below.
+ * Has its own standalone dashboard (index()/list() below), same pattern as
+ * UsgReportController/CardiologyReportController -- previously this was
+ * only reachable through Test Result Entry's Non-Pathology tab, which has
+ * since been removed now that this has its own page.
  */
 class NonPathologyReportController extends Controller
 {
@@ -41,6 +44,142 @@ class NonPathologyReportController extends Controller
             ->whereNotIn('item_code', ['USG001', 'DOC001'])
             ->pluck('item_code')
             ->toArray();
+    }
+
+    public function index()
+    {
+        return view('apps-non-pathology-report');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DASHBOARD LIST
+    |--------------------------------------------------------------------------
+    */
+
+    private const RANGE_DAYS = [
+        '1' => 1,
+        '3' => 3,
+        '7' => 7,
+        '30' => 30,
+    ];
+
+    /**
+     * Same qualifying-line definition as search()/store() above (every
+     * Non-Pathology item_code except USG, minus Cardiology's own 6 Echo
+     * sub-items, minus outsourced lines) -- an invoice needs at least one
+     * such line to belong on this dashboard.
+     */
+    public function list(Request $request)
+    {
+        $perPage = (int) $request->get('per_page', 15);
+
+        $qualifyingItemCodes = $this->qualifyingItemCodes();
+
+        $query = Invoice::where('invoice_type', 'DIAGNOSTIC')
+            ->where(function ($q) {
+                $q->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y');
+            })
+            ->whereExists(function ($sub) use ($qualifyingItemCodes) {
+                $sub->selectRaw('1')
+                    ->from('invoice_details')
+                    ->join('invoice_item_details', function ($join) {
+                        $join->on('invoice_item_details.item_code', '=', 'invoice_details.item_code')
+                            ->on('invoice_item_details.item_code_sub', '=', 'invoice_details.item_code_sub');
+                    })
+                    ->whereColumn('invoice_details.invoice_no', 'invoices.invoice_no')
+                    ->whereIn('invoice_details.item_code', $qualifyingItemCodes)
+                    ->whereNotIn('invoice_details.item_code_sub', \App\Support\CardiologyReportFields::ITEM_CODE_SUBS)
+                    ->where('invoice_item_details.is_outsourced', 0)
+                    ->where('invoice_item_details.is_report_not_required', 0);
+            });
+
+        $range = $request->get('range', '3');
+
+        if ($range !== 'all' && isset(self::RANGE_DAYS[$range])) {
+            $query->whereDate('invoice_date', '>=', now()->subDays(self::RANGE_DAYS[$range] - 1)->toDateString());
+        }
+
+        if ($request->filled('search')) {
+
+            $search = trim($request->search);
+
+            $query->where(function ($q) use ($search) {
+                $q->where('invoice_no', 'like', "%{$search}%")
+                    ->orWhere('patient_name', 'like', "%{$search}%")
+                    ->orWhere('patient_mobile_no', 'like', "%{$search}%");
+            });
+        }
+
+        $invoices = $query->orderByDesc('invoice_date')
+            ->orderByDesc('id')
+            ->paginate($perPage);
+
+        $rows = $invoices->getCollection()->map(fn ($invoice) => $this->toDashboardRow($invoice, $qualifyingItemCodes));
+
+        return response()->json([
+            'status' => true,
+            'data' => $rows,
+            'pagination' => [
+                'current_page' => $invoices->currentPage(),
+                'last_page' => $invoices->lastPage(),
+                'total' => $invoices->total(),
+            ]
+        ]);
+    }
+
+    private function toDashboardRow(Invoice $invoice, array $qualifyingItemCodes): array
+    {
+        $lines = DB::table('invoice_details as d')
+            ->join('invoice_item_details as iid', function ($join) {
+                $join->on('iid.item_code', '=', 'd.item_code')
+                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+            })
+            ->where('d.invoice_no', $invoice->invoice_no)
+            ->whereIn('d.item_code', $qualifyingItemCodes)
+            ->whereNotIn('d.item_code_sub', \App\Support\CardiologyReportFields::ITEM_CODE_SUBS)
+            ->where('iid.is_outsourced', 0)
+            ->where('iid.is_report_not_required', 0)
+            ->get(['d.id as invoice_detail_id', 'd.item_code', 'd.item_description']);
+
+        $totalTests = $lines->count();
+
+        $confirmedTests = DB::table('non_pathology_report_findings')
+            ->whereIn('invoice_detail_id', $lines->pluck('invoice_detail_id'))
+            ->whereNotNull('confirmed_at')
+            ->count();
+
+        $resultStatus = $confirmedTests <= 0
+            ? 'Pending'
+            : ($confirmedTests >= $totalTests ? 'Complete' : 'Partial');
+
+        // Spans several item_code families on one invoice (X-Ray, Dental,
+        // Vaccination, Misc, etc.), unlike USG/Cardiology's single family --
+        // shown so staff can tell at a glance what this row actually is.
+        $testCategoryNames = InvoiceItemMaster::whereIn('item_code', $lines->pluck('item_code')->unique())
+            ->pluck('item_name', 'item_code');
+
+        $testCategory = $lines->pluck('item_code')->unique()
+            ->map(fn ($code) => $testCategoryNames->get($code, $code))
+            ->implode(', ');
+
+        return [
+            'id' => $invoice->id,
+            'invoice_no' => $invoice->invoice_no,
+            'invoice_date' => $invoice->invoice_date
+                ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y')
+                : null,
+            'patient_name' => $invoice->patient_name,
+            'patient_age' => $invoice->patient_age,
+            'patient_gender' => $invoice->patient_gender,
+            'patient_mobile_no' => $invoice->patient_mobile_no,
+            'referred_doctor' => $invoice->referred_doctor,
+            'test_category' => $testCategory,
+            'test_description' => $lines->pluck('item_description')->implode(', '),
+            'total_tests' => $totalTests,
+            'confirmed_tests' => $confirmedTests,
+            'result_status' => $resultStatus,
+        ];
     }
 
     /*
@@ -93,6 +232,7 @@ class NonPathologyReportController extends Controller
             // untouched and keep using this generic system.
             ->whereNotIn('d.item_code_sub', \App\Support\CardiologyReportFields::ITEM_CODE_SUBS)
             ->where('iid.is_outsourced', 0)
+            ->where('iid.is_report_not_required', 0)
             ->orderBy('d.line_no')
             ->get([
                 'd.id as invoice_detail_id',
@@ -270,7 +410,7 @@ class NonPathologyReportController extends Controller
 
         return response()->json([
             'status' => true,
-            'message' => 'Report confirmed.',
+            'message' => (($whatsappStatus ?? null) === 'held_due') ? 'Report confirmed. WhatsApp is on hold until the pending payment is cleared.' : 'Report confirmed.',
             'data' => [
                 'id' => $finding->id,
                 'confirmed_at' => $finding->confirmed_at->format('d-m-Y H:i'),
@@ -301,6 +441,8 @@ class NonPathologyReportController extends Controller
             compact('finding', 'invoice', 'doctor')
         );
 
+        PdfPageNumbers::add($pdf, 20, 'center');
+
         $auditService->logAction(
             self::MODULE_CODE,
             $finding,
@@ -327,6 +469,11 @@ class NonPathologyReportController extends Controller
                 'status' => false,
                 'message' => 'Report must be confirmed before sending.'
             ]);
+        }
+
+        if ($blocked = ReportWhatsappDueGate::manualBlockMessage($finding->invoice_no)) {
+
+            return response()->json(['status' => false, 'message' => $blocked]);
         }
 
         $sent = $this->sendReportWhatsapp($finding, $wati, $auditService);
@@ -356,11 +503,20 @@ class NonPathologyReportController extends Controller
                 compact('finding', 'invoice', 'doctor')
             );
 
+            PdfPageNumbers::add($pdf, 20, 'center');
+
             $fileName = $this->safeFileName($finding);
 
             $pdfPath = public_path('invoices/' . $fileName);
 
-            $pdf->save($pdfPath);
+            $password = PdfPasswordProtectionService::passwordForMobile($invoice->patient_mobile_no);
+
+            file_put_contents(
+                $pdfPath,
+                $password
+                    ? PdfPasswordProtectionService::protect($pdf->output(), $password)
+                    : $pdf->output()
+            );
 
             $pdfUrl = asset('invoices/' . $fileName);
 
@@ -378,7 +534,7 @@ class NonPathologyReportController extends Controller
                 [
                     ['name' => '1', 'value' => $invoice->patient_name],
                     ['name' => '2', 'value' => $finding->item_description],
-                    ['name' => '3', 'value' => $invoice->invoice_no],
+                    ['name' => '3', 'value' => PdfPasswordProtectionService::invoiceNoWithHint($invoice->invoice_no, (bool) $password)],
                     ['name' => '4', 'value' => $pdfUrl],
                 ]
             );
@@ -403,7 +559,7 @@ class NonPathologyReportController extends Controller
                     self::MODULE_CODE,
                     $finding,
                     'WHATSAPP',
-                    'Non-Pathology report sent via WhatsApp'
+                    'Non-Pathology report sent via WhatsApp' . ($password ? ' (password-protected)' : ' (unprotected: no valid mobile number)')
                 );
             }
 
@@ -430,7 +586,30 @@ class NonPathologyReportController extends Controller
             return 'skipped';
         }
 
+        [$invoice] = $this->loadReportContext($finding);
+
+        if ((float) $invoice->due_amount > 0) {
+            ReportWhatsappDueGate::hold('NON_PATHOLOGY_REPORT', $invoice, $finding->id);
+            return 'held_due';
+        }
+
         return $this->sendReportWhatsapp($finding, $wati, $auditService) ? 'sent' : 'failed';
+    }
+
+    /**
+     * Sends reports whose automatic WhatsApp was held for a payment due,
+     * once the invoice is fully paid (see ReportWhatsappDueGate).
+     */
+    public function releaseHeldWhatsapp(string $invoiceNo): void
+    {
+        foreach (ReportWhatsappDueGate::takeHeld($invoiceNo, 'NON_PATHOLOGY_REPORT') as $findingId) {
+
+            $finding = $findingId ? NonPathologyReportFinding::find($findingId) : null;
+
+            if ($finding && $finding->confirmed_at) {
+                $this->sendReportWhatsapp($finding, app(WatiService::class), app(AuditService::class));
+            }
+        }
     }
 
     /**

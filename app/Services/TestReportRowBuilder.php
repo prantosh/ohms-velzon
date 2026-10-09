@@ -55,7 +55,7 @@ class TestReportRowBuilder
             // Physically performed and reported by an outside agency --
             // this system has no report to produce for it, so it's skipped
             // entirely rather than shown as an empty/unusable row.
-            if ($itemDetail && $itemDetail->is_outsourced) {
+            if ($itemDetail && ($itemDetail->is_outsourced || $itemDetail->is_report_not_required)) {
                 continue;
             }
 

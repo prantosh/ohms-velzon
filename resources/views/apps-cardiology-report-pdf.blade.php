@@ -201,7 +201,7 @@ table td {
         <th width="12%">Invoice No</th>
         <td width="18%">{{ $invoice->invoice_no }}</td>
 
-        <th width="7%">Date</th>
+        <th width="7%">Invoice Date</th>
         <td width="10%">{{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</td>
     </tr>
     <tr class="no-border-row">
@@ -210,7 +210,7 @@ table td {
             {{ $invoice->referred_doctor }}
         </td>
         <td colspan="2">
-            <span class="label-blue">Test Date :</span>
+            <span class="label-blue">Test Done on :</span>
             {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
         </td>
         <td colspan="3">

@@ -9,7 +9,10 @@ use App\Models\PathologyReportTemplate;
 use App\Models\TestReportConfirmation;
 use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
+use App\Services\ReportWhatsappDueGate;
+use App\Support\PdfPageNumbers;
 use App\Services\HtmlSanitizerService;
+use App\Services\PdfPasswordProtectionService;
 use App\Services\WatiService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -40,6 +43,11 @@ class PathologyReportController extends Controller
     private const MODULE_CODE = 'PATHOLOGY_REPORT';
     private const ITEM_CODE = 'PAT001';
     private const UNGROUPED_LABEL = 'Ungrouped / General';
+
+    public static function remainingTemplateItems(array $templateItemCodeSubs, array $openItemCodeSubs): array
+    {
+        return array_values(array_unique(array_intersect($templateItemCodeSubs, $openItemCodeSubs)));
+    }
 
     /*
     |--------------------------------------------------------------------------
@@ -100,6 +108,7 @@ class PathologyReportController extends Controller
             ->where('d.invoice_no', $invoice->invoice_no)
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
+            ->where('iid.is_report_not_required', 0)
             // A package's own billed line (e.g. "LIPID PROFILE") is a
             // pricing label, not a measurable test -- it has no result of
             // its own (mirrors TestReportRowBuilder's identical exclusion
@@ -109,7 +118,14 @@ class PathologyReportController extends Controller
             // exactly like any other item -- no special handling needed
             // for them beyond excluding the package's own non-reportable
             // row here.
-            ->where('iid.is_package', 0)
+            // New reports belong to package components, not the package's
+            // pricing row. Keep a package row only when an older report is
+            // already linked to it so existing confirmed reports remain
+            // visible after package rows were excluded from new reporting.
+            ->where(function ($q) {
+                $q->where('iid.is_package', 0)
+                    ->orWhereNotNull('pfi.pathology_report_finding_id');
+            })
             ->orderBy('d.line_no')
             ->get([
                 'd.id as invoice_detail_id',
@@ -173,13 +189,16 @@ class PathologyReportController extends Controller
                 ->orderBy('title')
                 ->get();
 
-            // Available only if EVERY item the template covers is among
-            // this invoice's still-open lines in this group -- this is
-            // what makes "pick a template -> its items are auto-selected"
-            // work with no separate manual item-selection step.
+            // A template can be used for a subset of the items it covers
+            // whenever at least one of those items is still open in this
+            // group. This makes panel-style templates like
+            // 'GLUCOSE (FBS & PPBS)' usable across different collection/
+            // delivery dates without blocking the later test from being
+            // created as a separate report.
             return $templates->filter(function ($template) use ($unclaimedItemCodeSubs) {
-                $covered = $template->items->pluck('item_code_sub');
-                return $covered->isNotEmpty() && $covered->diff($unclaimedItemCodeSubs)->isEmpty();
+                $covered = $template->items->pluck('item_code_sub')->values()->all();
+                $remaining = self::remainingTemplateItems($covered, $unclaimedItemCodeSubs->values()->all());
+                return !empty($remaining);
             })->values();
         });
 
@@ -386,6 +405,18 @@ class PathologyReportController extends Controller
                 ], 422);
             }
 
+            $requestedInvoiceNo = trim($request->invoice_no);
+
+            if ($lines->contains(fn ($line) => $line->invoice_no !== $requestedInvoiceNo)) {
+
+                DB::rollBack();
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Selected test lines must all belong to the requested invoice.'
+                ], 422);
+            }
+
             $alreadyClaimed = PathologyReportFindingItem::whereIn('invoice_detail_id', $invoiceDetailIds)->exists();
 
             if ($alreadyClaimed) {
@@ -398,7 +429,7 @@ class PathologyReportController extends Controller
                 ], 422);
             }
 
-            $invoiceNo = $lines->first()->invoice_no;
+            $invoiceNo = $requestedInvoiceNo;
 
             if (\App\Support\DiagnosticReportGuard::invoiceIsCancelled($invoiceNo)) {
 
@@ -508,6 +539,8 @@ class PathologyReportController extends Controller
             compact('finding', 'invoice', 'itemDescriptions')
         );
 
+        PdfPageNumbers::add($pdf);
+
         return $pdf->stream('pathology-report-preview.pdf');
     }
 
@@ -554,7 +587,11 @@ class PathologyReportController extends Controller
             ->where('d.invoice_no', $invoiceNo)
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
-            ->where('iid.is_package', 0)
+            ->where('iid.is_report_not_required', 0)
+            ->where(function ($q) {
+                $q->where('iid.is_package', 0)
+                    ->orWhereNotNull('pfi.pathology_report_finding_id');
+            })
             ->where(function ($q) use ($testGroupCode) {
                 $testGroupCode === null
                     ? $q->whereNull('iid.test_group_code')
@@ -701,6 +738,8 @@ class PathologyReportController extends Controller
             compact('finding', 'invoice', 'itemDescriptions')
         );
 
+        PdfPageNumbers::add($pdf);
+
         $auditService->logAction(self::MODULE_CODE, $finding, 'PRINT', 'Pathology report printed');
 
         return $pdf->stream($this->safeFileName($finding));
@@ -750,7 +789,11 @@ class PathologyReportController extends Controller
             ->where('d.invoice_no', $invoice->invoice_no)
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
-            ->where('iid.is_package', 0)
+            ->where('iid.is_report_not_required', 0)
+            ->where(function ($q) {
+                $q->where('iid.is_package', 0)
+                    ->orWhereNotNull('pfi.pathology_report_finding_id');
+            })
             ->where(function ($q) use ($testGroupCode) {
                 $testGroupCode === null
                     ? $q->whereNull('iid.test_group_code')
@@ -798,6 +841,8 @@ class PathologyReportController extends Controller
             'apps-pathology-report-pdf-group',
             compact('invoice', 'sections')
         );
+
+        PdfPageNumbers::add($pdf);
 
         $auditService->logAction(
             self::MODULE_CODE,
@@ -850,6 +895,11 @@ class PathologyReportController extends Controller
             ]);
         }
 
+        if ($blocked = ReportWhatsappDueGate::manualBlockMessage($invoiceNo)) {
+
+            return response()->json(['status' => false, 'message' => $blocked]);
+        }
+
         $sent = $this->sendCombinedInvoiceWhatsapp($invoiceNo, $wati, $auditService);
 
         return response()->json([
@@ -881,7 +931,11 @@ class PathologyReportController extends Controller
             ->where('d.invoice_no', $invoiceNo)
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
-            ->where('iid.is_package', 0)
+            ->where('iid.is_report_not_required', 0)
+            ->where(function ($q) {
+                $q->where('iid.is_package', 0)
+                    ->orWhereNotNull('pfi.pathology_report_finding_id');
+            })
             ->get(['d.id', 'pfi.pathology_report_finding_id', 'pf.confirmed_at']);
 
         if ($lines->isEmpty()) {
@@ -918,7 +972,29 @@ class PathologyReportController extends Controller
             return 'skipped';
         }
 
+        $invoice = Invoice::where('invoice_no', $invoiceNo)->first();
+
+        if ($invoice && (float) $invoice->due_amount > 0) {
+            ReportWhatsappDueGate::hold('PATHOLOGY_REPORT', $invoice);
+            return 'held_due';
+        }
+
         return $this->sendCombinedInvoiceWhatsapp($invoiceNo, $wati, $auditService) ? 'sent' : 'failed';
+    }
+
+    /**
+     * Sends the combined report whose automatic WhatsApp was held for a
+     * payment due, once the invoice is fully paid (see ReportWhatsappDueGate).
+     */
+    public function releaseHeldWhatsapp(string $invoiceNo): void
+    {
+        if (!ReportWhatsappDueGate::takeHeld($invoiceNo, 'PATHOLOGY_REPORT')) {
+            return;
+        }
+
+        if ($this->isInvoicePathologyFullyConfirmed($invoiceNo)) {
+            $this->sendCombinedInvoiceWhatsapp($invoiceNo, app(WatiService::class), app(AuditService::class));
+        }
     }
 
     /**
@@ -946,7 +1022,11 @@ class PathologyReportController extends Controller
             ->where('d.invoice_no', $invoiceNo)
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
-            ->where('iid.is_package', 0)
+            ->where('iid.is_report_not_required', 0)
+            ->where(function ($q) {
+                $q->where('iid.is_package', 0)
+                    ->orWhereNotNull('pfi.pathology_report_finding_id');
+            })
             ->get([
                 'd.id as invoice_detail_id',
                 'd.item_description',
@@ -1033,6 +1113,8 @@ class PathologyReportController extends Controller
             compact('invoice', 'sections')
         );
 
+        PdfPageNumbers::add($pdf);
+
         $auditService->logAction(self::MODULE_CODE, $invoice, 'PRINT_ALL', 'All Pathology reports printed for this invoice');
 
         $fileName = str_replace(['/', '\\'], '-', $invoiceNo) . '-pathology-report-all.pdf';
@@ -1053,11 +1135,20 @@ class PathologyReportController extends Controller
                 compact('invoice', 'sections')
             );
 
+            PdfPageNumbers::add($pdf);
+
             $fileName = str_replace(['/', '\\'], '-', $invoiceNo) . '-pathology-report.pdf';
 
             $pdfPath = public_path('invoices/' . $fileName);
 
-            $pdf->save($pdfPath);
+            $password = PdfPasswordProtectionService::passwordForMobile($invoice->patient_mobile_no);
+
+            file_put_contents(
+                $pdfPath,
+                $password
+                    ? PdfPasswordProtectionService::protect($pdf->output(), $password)
+                    : $pdf->output()
+            );
 
             $pdfUrl = asset('invoices/' . $fileName);
 
@@ -1072,7 +1163,7 @@ class PathologyReportController extends Controller
                 [
                     ['name' => '1', 'value' => $pdfUrl],
                     ['name' => '2', 'value' => $invoice->patient_name],
-                    ['name' => '3', 'value' => $invoice->invoice_no],
+                    ['name' => '3', 'value' => PdfPasswordProtectionService::invoiceNoWithHint($invoice->invoice_no, (bool) $password)],
                 ]
             );
 
@@ -1092,7 +1183,7 @@ class PathologyReportController extends Controller
 
             if ($sent) {
 
-                $auditService->logAction(self::MODULE_CODE, $invoice, 'WHATSAPP', 'Combined Pathology report sent via WhatsApp for entire invoice');
+                $auditService->logAction(self::MODULE_CODE, $invoice, 'WHATSAPP', 'Combined Pathology report sent via WhatsApp for entire invoice' . ($password ? ' (password-protected)' : ' (unprotected: no valid mobile number)'));
             }
 
             return $sent;

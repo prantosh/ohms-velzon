@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Invoice;
 use App\Models\InvoiceCancellationPermission;
+use App\Models\User;
 use Carbon\Carbon;
 
 /**
@@ -39,7 +40,12 @@ class InvoiceCancellationApproval
         // Checked before even the same-day shortcut below -- a report
         // already represents real diagnostic work, so it blocks
         // cancellation regardless of how recently the invoice was raised.
-        if (DiagnosticReportGuard::anyReportExists($invoice->invoice_no)) {
+        // Admin alone may override this (the same-day/permission rules
+        // below still apply to them like anyone else).
+        if (
+            DiagnosticReportGuard::anyReportExists($invoice->invoice_no)
+            && optional(User::find($currentUserId))->role !== 'Admin'
+        ) {
 
             return [
                 'allowed' => false,

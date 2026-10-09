@@ -58,8 +58,9 @@ class DiagnosticInvoiceController extends Controller
     }
 
     /**
-     * A patient qualifies for the member-tier discount if a Member/Supervisor
-     * user (MEMBER_TIER_ROLES convention, see UserController) shares the
+    * A patient qualifies for the member-tier discount if a Member,
+    * Supervisor, or Employee user (MEMBER_TIER_ROLES convention, see
+    * UserController) shares the
      * patient's mobile number and the patient's name matches either that
      * user's own name or one of their registered family members
      * (family_member_1/2/3 -- see the migration comment on that column).
@@ -73,7 +74,7 @@ class DiagnosticInvoiceController extends Controller
         }
 
         return User::where('mobile_no', trim($mobileNo))
-            ->whereIn('role', ['Member', 'Supervisor'])
+            ->whereIn('role', ['Member', 'Supervisor', 'Employee'])
             ->get()
             ->contains(function ($u) use ($normalizedName) {
                 return in_array($normalizedName, array_filter([
@@ -1229,7 +1230,7 @@ class DiagnosticInvoiceController extends Controller
         if ($isMember) {
 
             $messages[] =
-                'Patient is eligible for discount under Member category.';
+                'Patient is eligible for discount under Member / Employee category.';
         }
 
         return response()->json([
@@ -2271,6 +2272,11 @@ class DiagnosticInvoiceController extends Controller
             $this->autoSendInvoiceWhatsapp(
                 $invoice->id
             );
+
+            // Reports whose WhatsApp was held for this payment go out now
+            // that nothing is due (no-op while any due remains).
+            \App\Services\ReportWhatsappDueGate::releaseAll($invoice->invoice_no);
+
             return response()->json([
                 'status' => true,
                 'invoice_id' => $invoice->id,
@@ -2618,7 +2624,7 @@ class DiagnosticInvoiceController extends Controller
         if ($isMember) {
 
             $messages[] =
-                'Patient is eligible for discount under Member category.';
+                'Patient is eligible for discount under Member / Employee category.';
         }
 
         return response()->json([

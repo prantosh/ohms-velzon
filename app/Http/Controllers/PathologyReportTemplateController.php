@@ -180,6 +180,62 @@ class PathologyReportTemplateController extends Controller
         ]);
     }
 
+    public function showGlucoseFbsPpbsSeedForm()
+    {
+        return view('temporary-seed-glucose-fbs-ppbs');
+    }
+
+    public function seedGlucoseFbsPpbsTemplate()
+    {
+        abort_unless(Auth::check(), 403);
+
+        $title = 'GLUCOSE (FBS & PPBS)';
+        $testGroupCode = 3;
+        $itemCodeSubs = ['PAT160', 'PAT185'];
+
+        $existingItems = InvoiceItemDetail::whereIn('item_code_sub', $itemCodeSubs)
+            ->where('item_code', 'PAT001')
+            ->pluck('item_code_sub')
+            ->all();
+
+        if (count($existingItems) !== count(array_unique($itemCodeSubs))) {
+            abort(422, 'One or more required items are missing from invoice_item_details.');
+        }
+
+        $template = DB::transaction(function () use ($title, $testGroupCode, $itemCodeSubs) {
+            $template = PathologyReportTemplate::firstOrNew([
+                'title' => $title,
+                'test_group_code' => $testGroupCode,
+            ]);
+            $isNew = !$template->exists;
+            $template->content = "Fasting Blood Sugar (FBS): ______ mg/dl\nPost Prandial Blood Sugar (PPBS): ______ mg/dl";
+            $template->status = 'ACTIVE';
+            $template->created_by = $isNew ? Auth::id() : $template->created_by;
+            $template->updated_by = Auth::id();
+            $template->save();
+
+            $attached = $template->items()->pluck('item_code_sub')->all();
+
+            foreach ($itemCodeSubs as $itemCodeSub) {
+                if (!in_array($itemCodeSub, $attached, true)) {
+                    PathologyReportTemplateItem::create([
+                        'pathology_report_template_id' => $template->id,
+                        'item_code_sub' => $itemCodeSub,
+                    ]);
+                }
+            }
+
+            return $template;
+        });
+
+        return redirect()
+            ->route('temporary.seed-glucose-fbs-ppbs-template.form')
+            ->with('seed_result', [
+                'template_id' => $template->id,
+                'items' => $itemCodeSubs,
+            ]);
+    }
+
     private function validateTemplate(Request $request): array
     {
         $validator = Validator::make(

@@ -1180,7 +1180,7 @@ function applyStandardDiscount(mainRow, d1, d2, d3, d4) {
         }
 
         if (memberRate === standardDiscount) {
-            reasons.push('Member / Family Member');
+            reasons.push('Member / Employee / Family Member');
         }
     }
 

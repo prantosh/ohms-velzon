@@ -45,14 +45,14 @@ applyRoleOptionsForAddMode();
 
 /*
 |--------------------------------------------------------------------------
-| FAMILY MEMBER FIELDS -- only Member/Supervisor roles are eligible for the
-| diagnostic-test family discount, so the section is hidden and its inputs
+| FAMILY MEMBER FIELDS -- Member/Supervisor/Employee roles are eligible for
+| the diagnostic-test family discount, so the section is hidden and its inputs
 | cleared for every other role. Kept in sync with MEMBER_TIER_ROLES on the
 | backend (UserController).
 |--------------------------------------------------------------------------
 */
 
-const MEMBER_TIER_ROLES = ['Member', 'Supervisor'];
+const MEMBER_TIER_ROLES = ['Member', 'Supervisor', 'Employee'];
 
 function toggleFamilyMemberFields(role) {
 

@@ -50,6 +50,7 @@ return [
     'cardiology-report.index' => 'cardiology-report',
     'diagnostic-test-report.index' => 'diagnostic-test-report',
     'test-report-dashboard.index' => 'test-report-dashboard',
+    'non-pathology-report.index' => 'non-pathology-report',
     'diagnostic-test-additional-info.index' => 'diagnostic-test-additional-info',
     'equipment-category.index' => 'equipment-category',
     'equipment-rental.index' => 'equipment-rental',
