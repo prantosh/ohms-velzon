@@ -434,14 +434,7 @@ class NonPathologyReportController extends Controller
             abort(403, 'Report must be confirmed before printing.');
         }
 
-        [$invoice, , $doctor] = $this->loadReportContext($finding);
-
-        $pdf = Pdf::loadView(
-            'apps-non-pathology-report-pdf',
-            compact('finding', 'invoice', 'doctor')
-        );
-
-        PdfPageNumbers::add($pdf, 20, 'center');
+        $pdf = $this->buildFindingPdf($finding);
 
         $auditService->logAction(
             self::MODULE_CODE,
@@ -451,6 +444,24 @@ class NonPathologyReportController extends Controller
         );
 
         return $pdf->stream($this->safeFileName($finding));
+    }
+
+    /**
+     * The staff-print PDF of one finding, page-numbered -- shared with the
+     * Test Report Dashboard's "print selected items" (which merges several).
+     */
+    public function buildFindingPdf(NonPathologyReportFinding $finding)
+    {
+        [$invoice, , $doctor] = $this->loadReportContext($finding);
+
+        $pdf = Pdf::loadView(
+            'apps-non-pathology-report-pdf',
+            compact('finding', 'invoice', 'doctor')
+        );
+
+        PdfPageNumbers::add($pdf, 20, 'center');
+
+        return $pdf;
     }
 
     /*

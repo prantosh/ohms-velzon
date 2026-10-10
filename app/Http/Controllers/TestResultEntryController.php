@@ -767,14 +767,7 @@ class TestResultEntryController extends Controller
             abort(403, 'Test report must be confirmed before printing.');
         }
 
-        $tests = $rowBuilder->buildRows($invoice);
-
-        $pdf = Pdf::loadView(
-            'apps-test-result-entry-pdf',
-            compact('invoice', 'tests')
-        );
-
-        PdfPageNumbers::add($pdf);
+        $pdf = $this->buildInvoicePdf($invoice, $rowBuilder);
 
         $auditService->logAction(
             self::MODULE_CODE,
@@ -790,6 +783,25 @@ class TestResultEntryController extends Controller
         ) . '-report.pdf';
 
         return $pdf->stream($safeFileName);
+    }
+
+    /**
+     * The staff-print PDF of an invoice confirmed under the legacy
+     * whole-invoice system, page-numbered -- shared with the Test Report
+     * Dashboard's "print selected items".
+     */
+    public function buildInvoicePdf(Invoice $invoice, TestReportRowBuilder $rowBuilder)
+    {
+        $tests = $rowBuilder->buildRows($invoice);
+
+        $pdf = Pdf::loadView(
+            'apps-test-result-entry-pdf',
+            compact('invoice', 'tests')
+        );
+
+        PdfPageNumbers::add($pdf);
+
+        return $pdf;
     }
 
     /*

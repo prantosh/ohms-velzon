@@ -118,6 +118,7 @@ return [
     "testresultentry" => "Pathology Test Result Entry",
     "usgreport" => "USG Findings Entry",
     "cardiologyreport" => "Cardiology (Echo) Findings Entry",
+    "xrayreportupload" => "Upload X-Ray Report",
     "resttestresultentry" => "Rest Test Result Entry",
     "diagnostictestreport" => "Diagnostic Test Report",
     "testreportdashboard" => "Test Report Dashboard",

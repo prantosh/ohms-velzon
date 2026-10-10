@@ -397,6 +397,11 @@
                                         <a href="{{ route('cardiology-report.index') }}" class="nav-link">@lang('translation.cardiologyreport')</a>
                                         </li>
                             @endif
+                            @if(is_null($allowedPages) || in_array('xray-report-upload', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('xray-report-upload.index') }}" class="nav-link">@lang('translation.xrayreportupload')</a>
+                                        </li>
+                            @endif
                             @if(is_null($allowedPages) || in_array('non-pathology-report', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('non-pathology-report.index') }}" class="nav-link">@lang('translation.resttestresultentry')</a>

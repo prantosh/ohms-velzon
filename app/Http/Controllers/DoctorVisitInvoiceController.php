@@ -980,7 +980,7 @@ class DoctorVisitInvoiceController extends Controller
             'invoice_no' => $invoice->invoice_no,
             'mobile_no' => $invoice->patient_mobile_no,
             'patient_name' => $invoice->patient_name,
-            'message_type' => 'INVOICE',
+            'message_type' => 'DOCTOR_VISIT_INVOICE',
             'status' => $status,
             'response' => json_encode($response),
             'created_at' => now(),
@@ -1007,8 +1007,8 @@ class DoctorVisitInvoiceController extends Controller
      */
     private function autoSendInvoiceWhatsapp(Invoice $invoice): void
     {
-        if (!WhatsappAutoSendSetting::isEnabled('INVOICE')) {
-            WhatsappAutoSendSetting::logSkipped('INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+        if (!WhatsappAutoSendSetting::isEnabled('DOCTOR_VISIT_INVOICE')) {
+            WhatsappAutoSendSetting::logSkipped('DOCTOR_VISIT_INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
             return;
         }
 

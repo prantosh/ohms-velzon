@@ -2,13 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CardiologyReportFinding;
 use App\Models\Invoice;
+use App\Models\NonPathologyReportFinding;
+use App\Models\PathologyReportFinding;
 use App\Models\Patient;
 use App\Models\TestReportConfirmation;
 use App\Models\TestReportDelivery;
+use App\Models\UsgReportFinding;
+use App\Models\XrayReportUpload;
 use App\Services\AuditService;
 use App\Services\DiagnosticResultStatusService;
+use App\Services\InvoiceReportItemsService;
+use App\Services\InvoiceReportStatusRecorder;
 use App\Services\PatientIdentityGuard;
+use App\Services\TestReportRowBuilder;
+use App\Support\PdfMerger;
+use App\Support\ReportDeliveryScope;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -33,9 +43,14 @@ class TestReportDashboardController extends Controller
 
     private PatientIdentityGuard $identityGuard;
     private DiagnosticResultStatusService $statusService;
+    private InvoiceReportStatusRecorder $statusRecorder;
 
-    public function __construct(PatientIdentityGuard $identityGuard, DiagnosticResultStatusService $statusService)
-    {
+    public function __construct(
+        PatientIdentityGuard $identityGuard,
+        DiagnosticResultStatusService $statusService,
+        InvoiceReportStatusRecorder $statusRecorder
+    ) {
+        $this->statusRecorder = $statusRecorder;
         $this->identityGuard = $identityGuard;
         $this->statusService = $statusService;
     }
@@ -49,11 +64,24 @@ class TestReportDashboardController extends Controller
     {
         $perPage = (int) $request->get('per_page', 15);
 
+        // Defaults to Not Delivered when the param is absent; 'all' turns
+        // the delivery filter off. "Delivered" means owing no in-house or
+        // outsourced delivery -- the exact inverse of the Delivery Log's
+        // Undelivered tab (see ReportDeliveryScope).
+        $deliveryStatus = $request->get('delivery_status', 'not_delivered');
+
         $query = Invoice::where('invoice_type', 'DIAGNOSTIC')
             ->where(function ($q) {
                 $q->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y');
-            })
-            ->whereExists(function ($sub) {
+            });
+
+        // Only invoices with at least one reportable line. "Not Delivered"
+        // already implies it (an invoice can only owe a delivery through such
+        // a line), so repeating this correlated check there only made every
+        // page load roughly three times slower.
+        if ($deliveryStatus !== 'not_delivered') {
+
+            $query->whereExists(function ($sub) {
                 $sub->selectRaw('1')
                     ->from('invoice_details as d')
                     ->join('invoice_item_details as iid', function ($join) {
@@ -72,6 +100,7 @@ class TestReportDashboardController extends Controller
                     })
                     ->where('iid.is_report_not_required', 0);
             });
+        }
 
         if ($request->filled('search')) {
 
@@ -110,31 +139,32 @@ class TestReportDashboardController extends Controller
             }
         }
 
-        if ($request->filled('result_status')) {
-            // Result status is assembled from several report modules, so it
-            // cannot be filtered reliably in SQL before the status service
-            // has calculated each invoice's row.
-            $allRows = $query->orderByDesc('invoice_date')->orderByDesc('id')
-                ->get()
-                ->map(fn ($invoice) => $this->toRow($invoice))
-                ->filter(fn ($row) => $row['result_status'] === $request->result_status)
-                ->values();
-
-            $total = $allRows->count();
-            $page = max(1, (int) $request->get('page', 1));
-            $rows = $allRows->forPage($page, $perPage)->values();
-            $lastPage = max(1, (int) ceil($total / max(1, $perPage)));
-        } else {
-            $invoices = $query->orderByDesc('invoice_date')->orderByDesc('id')->paginate($perPage);
-
-            $rows = $invoices->getCollection()->map(function ($invoice) {
-                return $this->toRow($invoice);
-            });
-
-            $total = $invoices->total();
-            $page = $invoices->currentPage();
-            $lastPage = $invoices->lastPage();
+        if ($deliveryStatus === 'not_delivered') {
+            ReportDeliveryScope::owesDelivery($query);
+        } elseif ($deliveryStatus === 'delivered') {
+            ReportDeliveryScope::owesDelivery($query, true);
         }
+
+        if ($request->filled('result_status')) {
+            // The status is stored on the invoice (see InvoiceReportStatusRecorder),
+            // so this is a plain indexed filter. Any invoice in the filtered set
+            // that has no stored status yet (new, invalidated, or never
+            // backfilled) is computed and saved first so it can't be missed --
+            // a no-op once everything is stored.
+            $this->statusRecorder->fillMissing($query);
+
+            $query->where('report_status', $request->result_status);
+        }
+
+        $invoices = $query->orderByDesc('invoice_date')->orderByDesc('id')->paginate($perPage);
+
+        $rows = $invoices->getCollection()->map(function ($invoice) {
+            return $this->toRow($invoice);
+        });
+
+        $total = $invoices->total();
+        $page = $invoices->currentPage();
+        $lastPage = $invoices->lastPage();
 
         $protectedUsers = $this->identityGuard->protectedUsersForMobiles($rows->pluck('patient_mobile_no'));
 
@@ -156,6 +186,154 @@ class TestReportDashboardController extends Controller
                 'total' => $total,
             ],
         ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PRINT MODAL -- per-item report status, and printing only the items the
+    | user ticked (confirmed ones only; enforced here, not just in the UI)
+    |--------------------------------------------------------------------------
+    */
+
+    public function items($id, InvoiceReportItemsService $itemsService)
+    {
+        $invoice = Invoice::where('invoice_type', 'DIAGNOSTIC')->findOrFail($id);
+
+        $items = $itemsService->forInvoice($invoice);
+
+        // Same status the dashboard column shows, so the window explains it.
+        [$resultStatus, $totalTests, $resultsEntered, $confirmedCount] = $this->statusRecorder->statusFor($invoice);
+
+        return response()->json([
+            'status' => true,
+            'invoice' => [
+                'id' => $invoice->id,
+                'invoice_no' => $invoice->invoice_no,
+                'patient_name' => $invoice->patient_name,
+            ],
+            'summary' => [
+                'result_status' => $resultStatus,
+                'total' => $totalTests,
+                'prepared' => $resultsEntered,
+                'confirmed' => $confirmedCount,
+            ],
+            'items' => $items,
+        ]);
+    }
+
+    public function printSelected(Request $request, InvoiceReportItemsService $itemsService, AuditService $auditService)
+    {
+        $request->validate([
+            'invoice_id' => 'required|integer',
+            'detail_ids' => 'required|array|min:1',
+            'detail_ids.*' => 'integer',
+        ]);
+
+        $invoice = Invoice::where('invoice_type', 'DIAGNOSTIC')->findOrFail($request->invoice_id);
+
+        $selected = collect($request->detail_ids)->map(fn ($v) => (int) $v)->all();
+
+        // Billing order, and only what was actually ticked.
+        $items = collect($itemsService->forInvoice($invoice))
+            ->filter(fn ($item) => in_array($item['invoice_detail_id'], $selected, true))
+            ->values();
+
+        if ($items->count() !== count(array_unique($selected))) {
+            abort(422, 'One or more selected items do not belong to this invoice.');
+        }
+
+        $notReady = $items->first(fn ($item) => !$item['can_print']);
+
+        if ($notReady) {
+            abort(422, 'The report for "' . $notReady['item_description'] . '" is not confirmed yet, so it cannot be printed.');
+        }
+
+        // One document per underlying report -- a Pathology report can cover
+        // several billed items, so ticking two of them prints it once.
+        $documents = [];
+
+        // Several Pathology reports print as ONE sectioned document -- tests
+        // of the same group run on continuously and the page only breaks
+        // when the test group changes (the "print all" layout) -- instead of
+        // one separate document, and so one new page, per report. A single
+        // Pathology report keeps its normal standalone layout. It sits where
+        // the first Pathology item was in billing order.
+        $pathologyFindingIds = $items->where('kind', InvoiceReportItemsService::KIND_PATHOLOGY)
+            ->pluck('finding_id')->unique()->values()->all();
+
+        foreach ($items as $item) {
+
+            if ($item['kind'] === InvoiceReportItemsService::KIND_PATHOLOGY && count($pathologyFindingIds) > 1) {
+
+                $documents['pathology'] ??= app(PathologyReportController::class)
+                    ->buildSectionedPdf($invoice, $pathologyFindingIds)->output();
+
+                continue;
+            }
+
+            $key = $item['kind'] . ':' . ($item['finding_id'] ?? 'invoice');
+
+            if (isset($documents[$key])) {
+                continue;
+            }
+
+            $documents[$key] = $this->renderItemPdf($invoice, $item);
+        }
+
+        try {
+
+            $pdf = PdfMerger::merge(array_values($documents));
+
+        } catch (\Throwable $e) {
+
+            \Log::warning('Selected reports merge failed for ' . $invoice->invoice_no . ': ' . $e->getMessage());
+
+            abort(422, 'These reports could not be combined into one PDF (an uploaded PDF is in a format that cannot be merged). Print them one at a time instead.');
+        }
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $invoice,
+            'PRINT',
+            'Selected reports printed: ' . $items->pluck('item_description')->implode(', ')
+        );
+
+        $fileName = str_replace(['/', '\\'], '-', $invoice->invoice_no) . '-selected-reports.pdf';
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $fileName . '"',
+        ]);
+    }
+
+    private function renderItemPdf(Invoice $invoice, array $item): string
+    {
+        switch ($item['kind']) {
+
+            case InvoiceReportItemsService::KIND_PATHOLOGY:
+                return app(PathologyReportController::class)
+                    ->buildFindingPdf(PathologyReportFinding::findOrFail($item['finding_id']))->output();
+
+            case InvoiceReportItemsService::KIND_USG:
+                return app(UsgReportController::class)
+                    ->buildFindingPdf(UsgReportFinding::findOrFail($item['finding_id']))->output();
+
+            case InvoiceReportItemsService::KIND_CARDIOLOGY:
+                return app(CardiologyReportController::class)
+                    ->buildFindingPdf(CardiologyReportFinding::findOrFail($item['finding_id']))->output();
+
+            case InvoiceReportItemsService::KIND_NON_PATHOLOGY:
+                return app(NonPathologyReportController::class)
+                    ->buildFindingPdf(NonPathologyReportFinding::findOrFail($item['finding_id']))->output();
+
+            case InvoiceReportItemsService::KIND_XRAY_UPLOAD:
+                $upload = XrayReportUpload::where('invoice_no', $invoice->invoice_no)->firstOrFail();
+                return file_get_contents($upload->path());
+
+            default: // legacy whole-invoice report
+                return app(TestResultEntryController::class)
+                    ->buildInvoicePdf($invoice, app(TestReportRowBuilder::class))->output();
+        }
     }
 
     /*
@@ -190,7 +368,7 @@ class TestReportDashboardController extends Controller
             ]);
         }
 
-        [$resultStatus] = $this->statusService->resultStatusFor($invoice);
+        [$resultStatus] = $this->statusRecorder->statusFor($invoice);
 
         if ($resultStatus === 'Pending') {
 
@@ -312,13 +490,14 @@ class TestReportDashboardController extends Controller
 
     private function toRow(Invoice $invoice): array
     {
-        [$resultStatus, $totalTests, $resultsEntered, $confirmedCount] = $this->statusService->resultStatusFor($invoice);
+        [$resultStatus, $totalTests, $resultsEntered, $confirmedCount] = $this->statusRecorder->statusFor($invoice);
 
         // Fully confirmed only when every qualifying line's own report is
-        // confirmed (or the invoice carries the legacy per-invoice
-        // confirmation from before this rollout).
-        $confirmed = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()
-            || ($totalTests > 0 && $confirmedCount >= $totalTests);
+        // confirmed. The legacy per-invoice confirmation (from before this
+        // rollout) already reads as every line confirmed in the stored counts;
+        // it only needs its own lookup for an invoice with no qualifying line.
+        $confirmed = ($totalTests > 0 && $confirmedCount >= $totalTests)
+            || ($totalTests === 0 && TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists());
 
         $paymentStatus = $invoice->due_amount <= 0
             ? 'Paid'
@@ -338,11 +517,13 @@ class TestReportDashboardController extends Controller
             'results_entered' => $resultsEntered,
             'result_status' => $resultStatus,
             'confirmed' => $confirmed,
+            'confirmed_count' => $confirmedCount,
             'payment_status' => $paymentStatus,
             'total_amount' => (float) $invoice->total_amount,
             'paid_amount' => (float) $invoice->paid_amount,
             'due_amount' => (float) $invoice->due_amount,
             'whatsapp_status' => $invoice->whatsapp_status,
+            'xray_report_url' => XrayReportUpload::viewUrlFor($invoice),
         ];
     }
 }

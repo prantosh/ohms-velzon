@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BackupLog;
+use App\Models\XrayReportUpload;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\File;
 use ZipArchive;
@@ -160,6 +161,10 @@ class InvoicesBackupService
         $cutoff = $lastArchivedDay->copy()->endOfDay()->timestamp;
 
         $files = collect(File::files($sourceDir))
+            // Uploaded X-Ray report PDFs are the live copy the dashboards
+            // link to, not a throwaway side effect of a WhatsApp send --
+            // never archive them away or those links would 404.
+            ->reject(fn ($file) => str_ends_with($file->getFilename(), XrayReportUpload::FILE_SUFFIX))
             ->filter(fn ($file) => $file->getMTime() <= $cutoff)
             ->sortBy(fn ($file) => $file->getMTime())
             ->values();
@@ -309,6 +314,11 @@ class InvoicesBackupService
         foreach (File::files($sourceDir) as $file) {
 
             if ($file->getMTime() > $cutoff) {
+                continue;
+            }
+
+            // Uploaded X-Ray reports are live files, never pruned.
+            if (str_ends_with($file->getFilename(), XrayReportUpload::FILE_SUFFIX)) {
                 continue;
             }
 

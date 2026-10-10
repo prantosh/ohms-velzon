@@ -96,6 +96,13 @@ table td {
     margin-bottom: 2px;
 }
 
+/* Impression is the key conclusion of a USG report -- same blue as the
+   other sub-headings, but underlined (and written in capitals in the
+   markup below) so it stands out. */
+.report-section-heading.impression-heading {
+    text-decoration: underline;
+}
+
 .report-section-body {
     min-height: 60px;
     white-space: pre-wrap;
@@ -207,30 +214,27 @@ table td {
 
 <table class="patient-detail-table">
     <tr>
-        <th width="12%">Patient Name</th>
-        <td width="18%">{{ $invoice->patient_name }}</td>
+        <th width="14%">Patient Name</th>
+        <td width="26%">{{ $invoice->patient_name }}</td>
 
-        <th width="10%">Age / Sex</th>
-        <td width="13%">{{ $invoice->patient_age ?? '' }} / {{ $invoice->patient_gender ?? '' }}</td>
+        <th width="11%">Age / Sex</th>
+        <td width="15%">{{ $invoice->patient_age ?? '' }} / {{ $invoice->patient_gender ?? '' }}</td>
 
-        <th width="12%">Invoice No</th>
-        <td width="18%">{{ $invoice->invoice_no }}</td>
-
-        <th width="7%">Invoice Date</th>
-        <td width="10%">{{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</td>
+        <th width="12%">Referred By</th>
+        <td width="22%">{{ $invoice->referred_doctor }}</td>
     </tr>
     <tr class="no-border-row">
-        <td colspan="3">
-            <span class="label-blue">Referred By :</span>
-            {{ $invoice->referred_doctor }}
+        <td colspan="2">
+            <span class="label-blue">Invoice No :</span>
+            {{ $invoice->invoice_no }}
+        </td>
+        <td colspan="2">
+            <span class="label-blue">Invoice Date :</span>
+            {{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}
         </td>
         <td colspan="2">
             <span class="label-blue">Test Done on :</span>
             {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
-        </td>
-        <td colspan="3">
-            <span class="label-blue">Patient ID :</span>
-            {{ $invoice->patient_id ?? '-' }}
         </td>
     </tr>
 </table>
@@ -254,7 +258,7 @@ table td {
 
 @if(!empty($finding->impression))
 <div class="report-section">
-    <div class="report-section-heading">Impression</div>
+    <div class="report-section-heading impression-heading">IMPRESSION</div>
     <div class="report-section-body">{!! usgRenderClinicalField($finding->impression) !!}</div>
 </div>
 @endif

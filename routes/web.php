@@ -44,6 +44,7 @@ use App\Http\Controllers\TestResultEntryController;
 use App\Http\Controllers\UsgReportController;
 use App\Http\Controllers\CardiologyReportTemplateController;
 use App\Http\Controllers\CardiologyReportController;
+use App\Http\Controllers\XrayReportUploadController;
 use App\Http\Controllers\NonPathologyReportController;
 use App\Http\Controllers\NonPathologyReportTemplateController;
 use App\Http\Controllers\PathologyReportTemplateController;
@@ -2752,6 +2753,21 @@ Route::middleware(['auth'])->prefix('cardiology-report')->group(function () {
 
 });
 
+// Upload of externally generated X-Ray report PDFs (one per invoice).
+Route::middleware(['auth'])->prefix('xray-report-upload')->group(function () {
+
+    Route::get('/', [XrayReportUploadController::class, 'index'])->name('xray-report-upload.index');
+
+    Route::get('/list', [XrayReportUploadController::class, 'list'])->name('xray-report-upload.list');
+
+    Route::post('/upload', [XrayReportUploadController::class, 'upload'])->name('xray-report-upload.upload');
+
+    Route::post('/send-whatsapp/{invoiceId}', [XrayReportUploadController::class, 'sendWhatsappNow'])->name('xray-report-upload.send-whatsapp');
+
+    Route::get('/view/{invoiceId}', [XrayReportUploadController::class, 'view'])->name('xray-report-upload.view');
+
+});
+
 // Narrative-report module for every Non-Pathology category that has no
 // structured parameter grid, except USG (own module above). Has its own
 // standalone dashboard, same pattern as usg-report/cardiology-report below.
@@ -3000,6 +3016,16 @@ Route::middleware(['auth'])->prefix('test-report-dashboard')->group(function () 
         '/update-patient-name/{id}',
         [TestReportDashboardController::class, 'updatePatientName']
     )->name('test-report-dashboard.update-patient-name');
+
+    Route::get(
+        '/items/{id}',
+        [TestReportDashboardController::class, 'items']
+    )->name('test-report-dashboard.items');
+
+    Route::post(
+        '/print-selected',
+        [TestReportDashboardController::class, 'printSelected']
+    )->name('test-report-dashboard.print-selected');
 
 });
 

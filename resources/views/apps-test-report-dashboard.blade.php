@@ -68,10 +68,19 @@
                         <select id="resultStatusFilter" class="form-select form-select-sm">
                             <option value="">All</option>
                             <option value="N/A">N/A</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Partial">Partial</option>
+                            <option value="Pending">No Report Prepared</option>
+                            <option value="Partial">Prepared Partially</option>
                             <option value="Confirmation Pending">Confirmation Pending</option>
-                            <option value="Complete">Complete</option>
+                            <option value="Complete">Completed</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-2">
+                        <label class="form-label mb-1">Delivery</label>
+                        <select id="deliveryFilter" class="form-select form-select-sm">
+                            <option value="not_delivered" selected>Not Delivered</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="all">All</option>
                         </select>
                     </div>
 
@@ -162,6 +171,67 @@
 
     </div>
 
+</div>
+
+<div class="modal fade" id="printItemsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title mb-0">Print Reports</h5>
+                    <small class="text-muted" id="printItemsInvoiceInfo"></small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+
+                <div class="alert alert-info py-2 mb-3 d-none" id="printItemsSummary"></div>
+
+                <div class="table-responsive">
+
+                    <table class="table table-bordered align-middle mb-0">
+
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 1%">
+                                    <input type="checkbox" class="form-check-input" id="printItemsSelectAll"
+                                           title="Select all confirmed items">
+                                </th>
+                                <th>Item</th>
+                                <th>Status</th>
+                                <th>Prepared By</th>
+                                <th>Prepared Date &amp; Time</th>
+                                <th>Confirmed By</th>
+                                <th>Confirmed Date &amp; Time</th>
+                                <th>Remarks</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="printItemsBody">
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+                <small class="text-muted d-block mt-2">
+                    Only items whose report is confirmed can be selected. Items that share one report
+                    (e.g. several tests on one Pathology report) are printed together.
+                </small>
+
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="printItemsPrintBtn" disabled>
+                    <i class="ri-printer-line"></i> Print Selected
+                </button>
+            </div>
+
+        </div>
+    </div>
 </div>
 
 @endsection

@@ -82,8 +82,11 @@
                                                 staff self-service password reset entirely until re-enabled.
                                             </div>
                                             @break
+                                        @case('DOCTOR_VISIT_INVOICE')
+                                            <small class="text-muted d-block">Sent when a Doctor Visit invoice is created.</small>
+                                            @break
                                         @case('INVOICE')
-                                            <small class="text-muted d-block">Sent when an invoice is created (Diagnostic, Doctor Visit, Equipment Rental, Ambulance Rental, Membership Fee).</small>
+                                            <small class="text-muted d-block">Sent when an invoice is created for every other category (Diagnostic, Equipment Rental, Ambulance Rental, Membership Fee).</small>
                                             @break
                                         @case('APPOINTMENT')
                                             <small class="text-muted d-block">Sent when a doctor appointment is booked (staff or public portal).</small>
@@ -96,6 +99,9 @@
                                             @break
                                         @case('NON_PATHOLOGY_REPORT')
                                             <small class="text-muted d-block">Sent when a non-pathology report (X-Ray, Cardiology, EMG-NCV, etc.) is confirmed. Confirmed per billed line -- an invoice with several items confirmed separately sends once per line.</small>
+                                            @break
+                                        @case('XRAY_REPORT')
+                                            <small class="text-muted d-block">Sent when an externally generated X-Ray report PDF is uploaded (Diagnostic Test &gt; Upload X-Ray Report). Held while a payment is due on the invoice.</small>
                                             @break
                                         @case('DOCTOR_SCHEDULE_CHANGE')
                                             <small class="text-muted d-block">Sent to affected patients when a doctor's schedule edit shifts their booked appointment time.</small>

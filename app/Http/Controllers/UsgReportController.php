@@ -375,7 +375,7 @@ class UsgReportController extends Controller
             compact('finding', 'invoice', 'doctor')
         );
 
-        PdfPageNumbers::add($pdf);
+        PdfPageNumbers::add($pdf, 110 - 14.17, 'right'); // right side, 5mm lower than the default spot
 
         return $pdf->stream('usg-report-preview.pdf');
     }
@@ -465,14 +465,7 @@ class UsgReportController extends Controller
             abort(403, 'USG report must be confirmed before printing.');
         }
 
-        [$invoice, , $doctor] = $this->loadReportContext($finding);
-
-        $pdf = Pdf::loadView(
-            'apps-usg-report-pdf',
-            compact('finding', 'invoice', 'doctor')
-        );
-
-        PdfPageNumbers::add($pdf);
+        $pdf = $this->buildFindingPdf($finding);
 
         $auditService->logAction(
             self::MODULE_CODE,
@@ -482,6 +475,24 @@ class UsgReportController extends Controller
         );
 
         return $pdf->stream($this->safeFileName($finding));
+    }
+
+    /**
+     * The staff-print PDF of one finding, page-numbered -- shared with the
+     * Test Report Dashboard's "print selected items" (which merges several).
+     */
+    public function buildFindingPdf(UsgReportFinding $finding)
+    {
+        [$invoice, , $doctor] = $this->loadReportContext($finding);
+
+        $pdf = Pdf::loadView(
+            'apps-usg-report-pdf',
+            compact('finding', 'invoice', 'doctor')
+        );
+
+        PdfPageNumbers::add($pdf, 110 - 14.17, 'right'); // right side, 5mm lower than the default spot
+
+        return $pdf;
     }
 
     /*
@@ -534,7 +545,7 @@ class UsgReportController extends Controller
                 compact('finding', 'invoice', 'doctor')
             );
 
-            PdfPageNumbers::add($pdf);
+            PdfPageNumbers::add($pdf, 110 - 14.17, 'right'); // right side, 5mm lower than the default spot
 
             $fileName = $this->safeFileName($finding);
 

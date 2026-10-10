@@ -31,6 +31,7 @@ class DiagnosticReportGuard
         'non_pathology_report_findings',
         'usg_report_findings',
         'test_result_entries',
+        'xray_report_uploads',
     ];
 
     public static function invoiceIsCancelled(string $invoiceNo): bool

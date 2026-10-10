@@ -32,9 +32,12 @@ class WhatsappAutoSendSettingController extends Controller
         $labels = WhatsappMessageTypeRegistry::controllableTypes();
 
         foreach ($labels as $type => $label) {
+            // A newly listed type starts at whatever it is effectively set to
+            // right now (ON by default, or the switch of the type it was
+            // split from) so merely opening this page never flips sending.
             WhatsappAutoSendSetting::firstOrCreate(
                 ['message_type' => $type],
-                ['is_enabled' => true]
+                ['is_enabled' => WhatsappAutoSendSetting::isEnabled($type)]
             );
         }
 

@@ -20,6 +20,11 @@ class WhatsappAutoSendSetting extends Model
 
     public const CACHE_KEY = 'whatsapp_auto_send_settings';
 
+    /** new message type => the type it was split from */
+    private const INHERITS_SETTING_FROM = [
+        'DOCTOR_VISIT_INVOICE' => 'INVOICE',
+    ];
+
     /**
      * A message_type with no row yet defaults to enabled -- new categories
      * introduced by future features stay on until an Admin explicitly turns
@@ -31,7 +36,20 @@ class WhatsappAutoSendSetting extends Model
             return self::pluck('is_enabled', 'message_type')->all();
         });
 
-        return $settings[$messageType] ?? true;
+        if (array_key_exists($messageType, $settings)) {
+            return $settings[$messageType];
+        }
+
+        // A type that was split out of another one inherits the old type's
+        // switch until an Admin sets its own, so splitting a category never
+        // silently turns sending back on (or off).
+        $inheritsFrom = self::INHERITS_SETTING_FROM[$messageType] ?? null;
+
+        if ($inheritsFrom !== null && array_key_exists($inheritsFrom, $settings)) {
+            return $settings[$inheritsFrom];
+        }
+
+        return true;
     }
 
     public static function forgetCache(): void

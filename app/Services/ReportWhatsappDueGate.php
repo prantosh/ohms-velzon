@@ -7,6 +7,7 @@ use App\Http\Controllers\NonPathologyReportController;
 use App\Http\Controllers\PathologyReportController;
 use App\Http\Controllers\TestResultEntryController;
 use App\Http\Controllers\UsgReportController;
+use App\Http\Controllers\XrayReportUploadController;
 use App\Models\Invoice;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -125,6 +126,7 @@ class ReportWhatsappDueGate
             UsgReportController::class,
             NonPathologyReportController::class,
             TestResultEntryController::class,
+            XrayReportUploadController::class,
         ] as $controller) {
 
             try {

@@ -112,7 +112,7 @@ class DiagnosticResultStatusService
         foreach ([
             'usg_report_findings' => $lines->where('item_code', 'USG001')->pluck('invoice_detail_id'),
             'cardiology_report_findings' => $lines->where('item_code', 'CRD001')->pluck('invoice_detail_id'),
-            'non_pathology_report_findings' => $lines->whereNotIn('item_code', ['PAT001', 'USG001', 'CRD001'])->pluck('invoice_detail_id'),
+            'non_pathology_report_findings' => $lines->whereNotIn('item_code', ['PAT001', 'USG001', 'CRD001', 'XRY001'])->pluck('invoice_detail_id'),
         ] as $table => $ids) {
 
             if ($ids->isEmpty()) {
@@ -121,6 +121,27 @@ class DiagnosticResultStatusService
 
             $resultsEntered += DB::table($table)->whereIn('invoice_detail_id', $ids)->count();
             $confirmedCount += DB::table($table)->whereIn('invoice_detail_id', $ids)->whereNotNull('confirmed_at')->count();
+        }
+
+        // X-Ray reports are generated outside this system and attached as a
+        // PDF (see XrayReportUploadController), so an uploaded PDF counts as
+        // every X-Ray line on the invoice being reported AND confirmed (the
+        // upload itself is the sign-off). With no upload, an X-Ray line can
+        // still be reported the old way through the narrative module.
+        $xrayIds = $lines->where('item_code', 'XRY001')->pluck('invoice_detail_id');
+
+        if ($xrayIds->isNotEmpty()) {
+
+            if (DB::table('xray_report_uploads')->where('invoice_no', $invoice->invoice_no)->exists()) {
+
+                $resultsEntered += $xrayIds->count();
+                $confirmedCount += $xrayIds->count();
+
+            } else {
+
+                $resultsEntered += DB::table('non_pathology_report_findings')->whereIn('invoice_detail_id', $xrayIds)->count();
+                $confirmedCount += DB::table('non_pathology_report_findings')->whereIn('invoice_detail_id', $xrayIds)->whereNotNull('confirmed_at')->count();
+            }
         }
 
         // Fully entered isn't the same as Complete -- a report whose text is

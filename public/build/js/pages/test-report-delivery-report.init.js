@@ -84,7 +84,7 @@ async function loadReports(page = 1) {
     document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
 
     if (!result.data.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">No delivery records found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-4">No delivery records found.</td></tr>';
         return;
     }
 
@@ -102,6 +102,7 @@ async function loadReports(page = 1) {
                 <td class="text-end">${row.total_amount.toFixed(2)}</td>
                 <td class="text-end">${row.paid_amount.toFixed(2)}</td>
                 <td class="text-end">${row.due_amount.toFixed(2)}</td>
+                <td>${row.xray_report_url ? `<a href="${row.xray_report_url}" target="_blank" class="btn btn-sm btn-soft-secondary" title="View uploaded X-Ray report"><i class="ri-file-pdf-line"></i></a>` : '-'}</td>
             </tr>
         `;
     });
@@ -283,6 +284,16 @@ async function loadUndeliveredReports(page = 1) {
                     <i class="ri-checkbox-circle-line"></i>
                     Deliver Outsourced
                 </button>
+            `;
+        }
+
+        if (row.xray_report_url) {
+            actions += `
+                <a href="${row.xray_report_url}" target="_blank" class="btn btn-sm btn-soft-secondary mb-1"
+                   title="View uploaded X-Ray report">
+                    <i class="ri-file-pdf-line"></i>
+                    X-Ray Report
+                </a>
             `;
         }
 

@@ -48,6 +48,7 @@ return [
     'test-result-entry.index' => 'test-result-entry',
     'usg-report.index' => 'usg-report',
     'cardiology-report.index' => 'cardiology-report',
+    'xray-report-upload.index' => 'xray-report-upload',
     'diagnostic-test-report.index' => 'diagnostic-test-report',
     'test-report-dashboard.index' => 'test-report-dashboard',
     'non-pathology-report.index' => 'non-pathology-report',

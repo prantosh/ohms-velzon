@@ -467,6 +467,12 @@ function refreshPathologyStartPicker(pane, g) {
 
         if (!remainingItemCodes.length) return;
 
+        // Offer a template only while EVERY test it covers is still open
+        // on this invoice -- a panel that covers tests the patient never
+        // ordered (or that are already reported) is just noise; the Blank
+        // Report option below always covers any open item.
+        if (remainingItemCodes.length !== t.item_code_subs.length) return;
+
         let itemNames = remainingItemCodes.map(code => {
             let item = g.unclaimed_items.find(i => i.item_code_sub === code);
             return item ? item.item_description : code;
@@ -648,7 +654,7 @@ document.addEventListener('change', async function (e) {
     }
 
     g.available_templates = g.available_templates.filter(t =>
-        t.item_code_subs.some(code => g.unclaimed_items.some(i => i.item_code_sub === code))
+        t.item_code_subs.every(code => g.unclaimed_items.some(i => i.item_code_sub === code))
     );
 
     refreshPathologyStartPicker(pane, g);

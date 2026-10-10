@@ -17,14 +17,18 @@ class WhatsappMessageTypeRegistry
     // future feature) is appended automatically, sorted alphabetically --
     // no code change is required for it to show up as its own column/row.
     public const TYPE_ORDER = [
-        'INVOICE', 'TEST_REPORT', 'APPOINTMENT',
+        'DOCTOR_VISIT_INVOICE', 'INVOICE', 'TEST_REPORT', 'APPOINTMENT',
         'OTP_APPOINTMENT_BOOKING', 'OTP_FORGOT_PASSWORD', 'OTP',
         'DOCTOR_APPOINTMENT_REASSIGNED', 'DOCTOR_SCHEDULE_CHANGE',
-        'NON_PATHOLOGY_REPORT', 'USG_REPORT', 'CARDIOLOGY_REPORT',
+        'NON_PATHOLOGY_REPORT', 'USG_REPORT', 'CARDIOLOGY_REPORT', 'XRAY_REPORT',
     ];
 
     public const TYPE_LABELS = [
-        'INVOICE' => 'Invoice',
+        // 'INVOICE' used to cover every invoice; Doctor Visit now has its own
+        // switch and 'INVOICE' stays as the type for all the other categories
+        // (Diagnostic, Equipment Rental, Ambulance Rental, Membership Fee).
+        'DOCTOR_VISIT_INVOICE' => 'Invoice for Doctor Visit',
+        'INVOICE' => 'Invoice for Rest Categories',
         'TEST_REPORT' => 'Test Report',
         'APPOINTMENT' => 'Appointment',
         // Kept for old rows logged before OTP was split into the two types
@@ -37,6 +41,7 @@ class WhatsappMessageTypeRegistry
         'NON_PATHOLOGY_REPORT' => 'Non-Pathology Report',
         'USG_REPORT' => 'USG Report',
         'CARDIOLOGY_REPORT' => 'Cardiology (Echo) Report',
+        'XRAY_REPORT' => 'X-Ray Report (Uploaded PDF)',
     ];
 
     /**

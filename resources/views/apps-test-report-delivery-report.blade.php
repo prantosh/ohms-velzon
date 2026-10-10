@@ -154,6 +154,7 @@
                                         <th class="text-end">Total</th>
                                         <th class="text-end">Paid</th>
                                         <th class="text-end">Due</th>
+                                        <th>X-Ray Report</th>
                                     </tr>
 
                                 </thead>

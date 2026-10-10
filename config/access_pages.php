@@ -96,6 +96,7 @@ return [
     'usg-report-template' => 'USG Report Template Master',
     'cardiology-report' => 'Cardiology Report',
     'cardiology-report-template' => 'Cardiology Report Template Master',
+    'xray-report-upload' => 'Upload X-Ray Report',
     'whatsapp-auto-send-settings' => 'WhatsApp Auto-Send Settings',
     'whatsapp-message-report' => 'WhatsApp Message Report',
 ];

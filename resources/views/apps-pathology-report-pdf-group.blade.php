@@ -137,17 +137,24 @@ table {
 .study-title {
     font-size: 18px;
     text-align: center;
-    margin-top: 12px;
+    margin-top: 6px;
 }
 
 .section-divider {
     border: none;
     border-top: 1px dashed #999;
-    margin: 16px 0;
+    margin: 8px 0;
 }
 
 .report-body {
-    margin-top: 14px;
+    margin-top: 8px;
+}
+
+/* The CKEditor body is a run of <p>s, each with the browser-default 1em
+   top/bottom margin -- most of a short report's height was that spacing,
+   which is what pushed every report onto a page of its own. */
+.report-body p {
+    margin: 3px 0;
 }
 
 .report-body table {

@@ -189,16 +189,17 @@ class PathologyReportController extends Controller
                 ->orderBy('title')
                 ->get();
 
-            // A template can be used for a subset of the items it covers
-            // whenever at least one of those items is still open in this
-            // group. This makes panel-style templates like
-            // 'GLUCOSE (FBS & PPBS)' usable across different collection/
-            // delivery dates without blocking the later test from being
-            // created as a separate report.
+            // A template is offered only when EVERY test it covers is still
+            // open on this invoice. A panel template (e.g. RENAL PROFILE, or
+            // 'GLUCOSE (FBS & PPBS)') used to show up as soon as ONE of its
+            // tests was open, cluttering the dropdown with templates for
+            // tests the patient never ordered -- e.g. an FBS-only invoice
+            // was offered the FBS+PPBS panel. Blank reports (one per open
+            // item) are always available regardless; see the JS picker.
             return $templates->filter(function ($template) use ($unclaimedItemCodeSubs) {
                 $covered = $template->items->pluck('item_code_sub')->values()->all();
-                $remaining = self::remainingTemplateItems($covered, $unclaimedItemCodeSubs->values()->all());
-                return !empty($remaining);
+                $notOpen = array_diff($covered, $unclaimedItemCodeSubs->values()->all());
+                return !empty($covered) && empty($notOpen);
             })->values();
         });
 
@@ -731,6 +732,19 @@ class PathologyReportController extends Controller
             abort(403, 'Pathology report must be confirmed before printing.');
         }
 
+        $pdf = $this->buildFindingPdf($finding);
+
+        $auditService->logAction(self::MODULE_CODE, $finding, 'PRINT', 'Pathology report printed');
+
+        return $pdf->stream($this->safeFileName($finding));
+    }
+
+    /**
+     * The staff-print PDF of one finding, page-numbered -- shared with the
+     * Test Report Dashboard's "print selected items" (which merges several).
+     */
+    public function buildFindingPdf(PathologyReportFinding $finding)
+    {
         [$invoice, $itemDescriptions] = $this->loadReportContext($finding);
 
         $pdf = Pdf::loadView(
@@ -740,9 +754,7 @@ class PathologyReportController extends Controller
 
         PdfPageNumbers::add($pdf);
 
-        $auditService->logAction(self::MODULE_CODE, $finding, 'PRINT', 'Pathology report printed');
-
-        return $pdf->stream($this->safeFileName($finding));
+        return $pdf;
     }
 
     /*
@@ -1011,7 +1023,7 @@ class PathologyReportController extends Controller
      * that was (or will be) sent, not a second implementation that could
      * quietly drift from it.
      */
-    private function buildInvoiceSections(string $invoiceNo)
+    public function buildInvoiceSections(string $invoiceNo, ?array $onlyFindingIds = null)
     {
         $lines = DB::table('invoice_details as d')
             ->join('invoice_item_details as iid', function ($join) {
@@ -1039,6 +1051,10 @@ class PathologyReportController extends Controller
 
         $findingIds = $lines->pluck('pathology_report_finding_id')->filter()->unique();
 
+        if ($onlyFindingIds !== null) {
+            $findingIds = $findingIds->intersect($onlyFindingIds);
+        }
+
         $findings = PathologyReportFinding::with('items')
             ->whereIn('id', $findingIds)
             ->whereNotNull('confirmed_at')
@@ -1064,6 +1080,29 @@ class PathologyReportController extends Controller
                 'content' => $finding->content,
                 'confirmed_at' => $finding->confirmed_at,
             ]);
+    }
+
+    /**
+     * Several confirmed reports as ONE document in the group layout: reports
+     * of the same test group flow on continuously and a new page starts only
+     * when the group changes. Used by the Test Report Dashboard's "print
+     * selected items" so ticking e.g. three Haematology tests doesn't give
+     * three separate documents.
+     *
+     * @param array<int,int> $findingIds
+     */
+    public function buildSectionedPdf(Invoice $invoice, array $findingIds)
+    {
+        $sections = $this->buildInvoiceSections($invoice->invoice_no, $findingIds);
+
+        $pdf = Pdf::loadView(
+            'apps-pathology-report-pdf-group',
+            compact('invoice', 'sections')
+        );
+
+        PdfPageNumbers::add($pdf);
+
+        return $pdf;
     }
 
     /*

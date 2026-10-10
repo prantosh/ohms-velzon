@@ -441,14 +441,7 @@ class CardiologyReportController extends Controller
             abort(403, 'Cardiology report must be confirmed before printing.');
         }
 
-        [$invoice, , $doctor] = $this->loadReportContext($finding);
-
-        $pdf = Pdf::loadView(
-            'apps-cardiology-report-pdf',
-            compact('finding', 'invoice', 'doctor')
-        );
-
-        PdfPageNumbers::add($pdf);
+        $pdf = $this->buildFindingPdf($finding);
 
         $auditService->logAction(
             self::MODULE_CODE,
@@ -458,6 +451,24 @@ class CardiologyReportController extends Controller
         );
 
         return $pdf->stream($this->safeFileName($finding));
+    }
+
+    /**
+     * The staff-print PDF of one finding, page-numbered -- shared with the
+     * Test Report Dashboard's "print selected items" (which merges several).
+     */
+    public function buildFindingPdf(CardiologyReportFinding $finding)
+    {
+        [$invoice, , $doctor] = $this->loadReportContext($finding);
+
+        $pdf = Pdf::loadView(
+            'apps-cardiology-report-pdf',
+            compact('finding', 'invoice', 'doctor')
+        );
+
+        PdfPageNumbers::add($pdf);
+
+        return $pdf;
     }
 
     /*

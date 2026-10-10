@@ -33,8 +33,12 @@ class PdfPageNumbers
 
         $x = 40;
 
+        $textWidth = $fontMetrics->getTextWidth('Page 00/00', $font, $size);
+
         if ($align === 'center') {
-            $x = ($canvas->get_width() - $fontMetrics->getTextWidth('Page 00/00', $font, $size)) / 2;
+            $x = ($canvas->get_width() - $textWidth) / 2;
+        } elseif ($align === 'right') {
+            $x = $canvas->get_width() - 40 - $textWidth;
         }
 
         $canvas->page_text($x, $canvas->get_height() - $fromBottom, 'Page {PAGE_NUM}/{PAGE_COUNT}', $font, $size, [0.3, 0.3, 0.3]);
