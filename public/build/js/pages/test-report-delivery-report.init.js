@@ -181,8 +181,9 @@ document.getElementById('dayRangeButtons').addEventListener('click', function (e
 
 function inHouseStatusBadge(row) {
 
+    // Nothing to report in-house on this invoice: show nothing rather than "N/A".
     if (row.in_house_total_tests === 0) {
-        return '<span class="badge bg-secondary">N/A</span>';
+        return '';
     }
 
     let cls = {
@@ -201,8 +202,12 @@ function inHouseStatusBadge(row) {
 
 function outsourcedStatusBadge(row) {
 
+    // No outsourced tests on this invoice: show nothing rather than "N/A".
+    if (row.outsourced_status === 'N/A') {
+        return '';
+    }
+
     let cls = {
-        'N/A': 'bg-secondary',
         'Pending': 'bg-warning text-dark',
         'Received': 'bg-info text-dark',
         'Delivered': 'bg-success',

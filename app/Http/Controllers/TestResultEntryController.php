@@ -194,7 +194,9 @@ class TestResultEntryController extends Controller
             })
             ->where('d.invoice_no', $invoice->invoice_no)
             ->whereIn('d.item_code', $qualifyingItemCodes)
-            ->where('iid.is_package', 0)
+            // Same rule as every other screen (packages are reported at
+            // package level; old component-level reports keep counting).
+            ->whereRaw(\App\Support\ReportableLines::sql())
             ->where('iid.is_outsourced', 0)
             ->where('iid.is_report_not_required', 0);
     }
@@ -208,6 +210,10 @@ class TestResultEntryController extends Controller
             // 1031 on LAB/0826/082/0004.
             ->whereNotNull('item_code')
             ->where('item_code', '!=', '')
+            // A package is billed as ONE line (e.g. LIPID PROFILE); its hidden
+            // zero-rate component lines exist only to hold results for old-style
+            // reporting and must not inflate the description or the count.
+            ->whereNull('package_parent_item_code_sub')
             ->get(['item_code', 'item_description']);
 
         // Non-Pathology mixes several categories (X-Ray, Cardiology, USG,

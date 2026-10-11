@@ -344,6 +344,90 @@ function refreshPathologyGroupButtons() {
 
         confirmBtn.style.display = readyToConfirm ? 'inline-block' : 'none';
     });
+
+    refreshPathologyDeleteButtons(invoiceProgress);
+}
+
+// "Delete" on a saved/confirmed report: Admin only, and only while the
+// invoice's Pathology reports are not ALL confirmed (WhatsApp goes out once
+// they are). The server enforces both; this just keeps the button out of
+// the way. Unsaved cards have nothing to delete yet.
+function refreshPathologyDeleteButtons(invoiceProgress) {
+
+    if (!pathologyState) return;
+
+    let allowed = !!pathologyState.can_delete_reports
+        && !(invoiceProgress || pathologyInvoiceProgress()).complete;
+
+    document.querySelectorAll('.pathology-finding-card').forEach(card => {
+
+        let btn = card.querySelector('.pathology-delete-btn');
+
+        if (btn) btn.style.display = (allowed && card.dataset.findingId) ? 'inline-block' : 'none';
+    });
+}
+
+async function deletePathologyFinding(deleteBtn) {
+
+    let card = deleteBtn.closest('.pathology-finding-card');
+    let findingId = card.dataset.findingId;
+
+    if (!findingId) return;
+
+    let isConfirmed = card.querySelector('.pathology-confirmed-badge').style.display !== 'none';
+    let what = card.querySelector('.pathology-item-description').innerText;
+
+    let ask = await Swal.fire({
+        icon: 'warning',
+        title: 'Delete this report?',
+        html: `<b>${escapeHtml(what)}</b><br>${isConfirmed ? 'This report is <b>confirmed</b>. ' : ''}It will be removed and its tests become open again, so a new report can be written.`,
+        showCancelButton: true,
+        confirmButtonColor: '#d63939',
+        confirmButtonText: 'Yes, delete it'
+    });
+
+    if (!ask.isConfirmed) return;
+
+    deleteBtn.disabled = true;
+
+    let outcome;
+
+    try {
+
+        outcome = await fetchJson(`/pathology-report/delete/${findingId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken()
+            },
+            // which invoice's screen this is -- lets the server tell a normal
+            // delete from a stray link shown on the wrong invoice
+            body: JSON.stringify({ invoice_no: card.dataset.invoiceNo })
+        });
+
+    } catch (err) {
+
+        deleteBtn.disabled = false;
+        Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+        return;
+    }
+
+    deleteBtn.disabled = false;
+
+    let result = outcome.result;
+
+    if (!result.status) {
+
+        Swal.fire({ icon: 'error', title: 'Cannot delete', text: result.message || 'Unable to delete this report.' });
+        // Whatever changed under us (e.g. the invoice just became fully
+        // confirmed) -- show the real current state.
+        await searchInvoice();
+        return;
+    }
+
+    await Swal.fire({ icon: 'success', title: 'Deleted', text: result.message, timer: 1400, showConfirmButton: false });
+
+    await searchInvoice();
 }
 
 // Same {total, confirmed, complete} shape as pathologyGroupProgress(), but
@@ -708,6 +792,7 @@ async function savePathologyCard(card) {
 
     if (result.status && result.data && result.data.id) {
         card.dataset.findingId = result.data.id;
+        refreshPathologyDeleteButtons();
     }
 
     return result;
@@ -947,6 +1032,13 @@ document.addEventListener('click', async function (e) {
 
     if (confirmFindingBtn) {
         await confirmPathologyFinding(confirmFindingBtn);
+        return;
+    }
+
+    let deleteFindingBtn = e.target.closest('.pathology-delete-btn');
+
+    if (deleteFindingBtn) {
+        await deletePathologyFinding(deleteFindingBtn);
     }
 });
 

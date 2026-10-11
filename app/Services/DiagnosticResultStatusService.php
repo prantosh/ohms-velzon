@@ -30,15 +30,7 @@ class DiagnosticResultStatusService
                     ->on('iid.item_code_sub', '=', 'd.item_code_sub');
             })
             ->where('d.invoice_no', $invoice->invoice_no)
-            ->where(function ($query) {
-                $query->where('iid.is_package', 0)
-                    ->orWhereExists(function ($finding) {
-                        $finding->selectRaw('1')
-                            ->from('pathology_report_finding_items as pfi')
-                            ->whereColumn('pfi.invoice_detail_id', 'd.id')
-                            ->where('d.item_code', 'PAT001');
-                    });
-            })
+            ->whereRaw(\App\Support\ReportableLines::sql())
             ->where('iid.is_outsourced', 0)
             ->where('iid.is_report_not_required', 0);
     }
@@ -198,6 +190,53 @@ class DiagnosticResultStatusService
      * single right destination -- falls back to the Test Result Entry
      * modal, same as plain Non-Pathology.
      */
+    /**
+     * printRouteFor() for a whole page of invoices in ONE query, keyed by
+     * invoice id. Same decision rules; Pathology-category invoices need no
+     * lookup at all.
+     *
+     * @param \Illuminate\Support\Collection $invoices
+     * @return array<int, string>
+     */
+    public function printRoutesFor($invoices): array
+    {
+        $needLookup = $invoices->filter(fn ($i) => $i->invoice_category !== 'PATHOLOGY');
+
+        $codesByInvoice = $needLookup->isEmpty() ? collect() : DB::table('invoice_details as d')
+            ->join('invoice_item_details as iid', function ($join) {
+                $join->on('iid.item_code', '=', 'd.item_code')
+                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+            })
+            ->whereIn('d.invoice_no', $needLookup->pluck('invoice_no'))
+            ->whereRaw(\App\Support\ReportableLines::sql())
+            ->where('iid.is_outsourced', 0)
+            ->where('iid.is_report_not_required', 0)
+            ->get(['d.invoice_no', 'd.item_code'])
+            ->groupBy('invoice_no')
+            ->map(fn ($rows) => $rows->pluck('item_code')->unique()->values());
+
+        $routes = [];
+
+        foreach ($invoices as $invoice) {
+
+            if ($invoice->invoice_category === 'PATHOLOGY') {
+                $routes[$invoice->id] = 'pathology';
+                continue;
+            }
+
+            $itemCodes = $codesByInvoice->get($invoice->invoice_no, collect());
+
+            $routes[$invoice->id] = match (true) {
+                $itemCodes->isEmpty() => 'legacy',
+                $itemCodes->count() === 1 && $itemCodes->first() === 'USG001' => 'usg',
+                $itemCodes->count() === 1 && $itemCodes->first() === 'CRD001' => 'cardiology',
+                default => 'non_pathology',
+            };
+        }
+
+        return $routes;
+    }
+
     public function printRouteFor(Invoice $invoice): string
     {
         if ($invoice->invoice_category === 'PATHOLOGY') {

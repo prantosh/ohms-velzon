@@ -44,6 +44,31 @@ class XrayReportUpload extends Model
     }
 
     /**
+     * viewUrlFor() for a whole page of invoices in ONE query, keyed by
+     * invoice_no (absent = no usable upload).
+     *
+     * @param \Illuminate\Support\Collection $invoices
+     * @return array<string, string>
+     */
+    public static function viewUrlsFor($invoices): array
+    {
+        $uploads = static::whereIn('invoice_no', $invoices->pluck('invoice_no'))->get()->keyBy('invoice_no');
+
+        $urls = [];
+
+        foreach ($invoices as $invoice) {
+
+            $upload = $uploads->get($invoice->invoice_no);
+
+            if ($upload && $upload->fileExists()) {
+                $urls[$invoice->invoice_no] = route('xray-report-upload.view', $invoice->id);
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
      * Authenticated in-app link to the uploaded PDF for this invoice, or
      * null when none was uploaded (or the file has since gone missing).
      * Shared by the Test Report Dashboard and the Delivery Log.

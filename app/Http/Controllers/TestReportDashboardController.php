@@ -89,15 +89,7 @@ class TestReportDashboardController extends Controller
                             ->on('iid.item_code_sub', '=', 'd.item_code_sub');
                     })
                     ->whereColumn('d.invoice_no', 'invoices.invoice_no')
-                    ->where(function ($reportable) {
-                        $reportable->where('iid.is_package', 0)
-                            ->orWhereExists(function ($finding) {
-                                $finding->selectRaw('1')
-                                    ->from('pathology_report_finding_items as pfi')
-                                    ->whereColumn('pfi.invoice_detail_id', 'd.id')
-                                    ->where('d.item_code', 'PAT001');
-                            });
-                    })
+                    ->whereRaw(\App\Support\ReportableLines::sql())
                     ->where('iid.is_report_not_required', 0);
             });
         }
@@ -139,27 +131,39 @@ class TestReportDashboardController extends Controller
             }
         }
 
+        // Both the delivery filter and the status filter read values STORED on
+        // the invoice (see InvoiceReportStatusRecorder), so they are plain
+        // column tests instead of nested EXISTS subqueries. Any invoice in the
+        // filtered set that has no stored values yet (new, invalidated, or never
+        // backfilled) is computed and saved first so it can't be missed -- a
+        // cheap no-op once everything is stored.
+        if ($deliveryStatus !== 'all' || $request->filled('result_status')) {
+            $this->statusRecorder->fillMissing($query);
+        }
+
         if ($deliveryStatus === 'not_delivered') {
-            ReportDeliveryScope::owesDelivery($query);
+            ReportDeliveryScope::owesDeliveryStored($query);
         } elseif ($deliveryStatus === 'delivered') {
-            ReportDeliveryScope::owesDelivery($query, true);
+            ReportDeliveryScope::owesDeliveryStored($query, true);
         }
 
         if ($request->filled('result_status')) {
-            // The status is stored on the invoice (see InvoiceReportStatusRecorder),
-            // so this is a plain indexed filter. Any invoice in the filtered set
-            // that has no stored status yet (new, invalidated, or never
-            // backfilled) is computed and saved first so it can't be missed --
-            // a no-op once everything is stored.
-            $this->statusRecorder->fillMissing($query);
-
             $query->where('report_status', $request->result_status);
         }
 
         $invoices = $query->orderByDesc('invoice_date')->orderByDesc('id')->paginate($perPage);
 
-        $rows = $invoices->getCollection()->map(function ($invoice) {
-            return $this->toRow($invoice);
+        // Per-row extras for the whole page in a handful of queries instead of
+        // one or two per row.
+        $pageInvoices = $invoices->getCollection();
+
+        $printRoutes = $this->statusService->printRoutesFor($pageInvoices);
+        $xrayUrls = XrayReportUpload::viewUrlsFor($pageInvoices);
+        $legacyConfirmed = TestReportConfirmation::whereIn('invoice_no', $pageInvoices->pluck('invoice_no'))
+            ->pluck('invoice_no')->flip()->all();
+
+        $rows = $pageInvoices->map(function ($invoice) use ($printRoutes, $xrayUrls, $legacyConfirmed) {
+            return $this->toRow($invoice, $printRoutes, $xrayUrls, $legacyConfirmed);
         });
 
         $total = $invoices->total();
@@ -488,7 +492,12 @@ class TestReportDashboardController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    private function toRow(Invoice $invoice): array
+    /**
+     * @param array<int, string>    $printRoutes     invoice id => report screen
+     * @param array<string, string> $xrayUrls        invoice_no => uploaded X-Ray report url
+     * @param array<string, int>    $legacyConfirmed invoice_no => (any) for invoices carrying the old whole-invoice confirmation
+     */
+    private function toRow(Invoice $invoice, array $printRoutes, array $xrayUrls, array $legacyConfirmed): array
     {
         [$resultStatus, $totalTests, $resultsEntered, $confirmedCount] = $this->statusRecorder->statusFor($invoice);
 
@@ -497,7 +506,7 @@ class TestReportDashboardController extends Controller
         // rollout) already reads as every line confirmed in the stored counts;
         // it only needs its own lookup for an invoice with no qualifying line.
         $confirmed = ($totalTests > 0 && $confirmedCount >= $totalTests)
-            || ($totalTests === 0 && TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists());
+            || ($totalTests === 0 && isset($legacyConfirmed[$invoice->invoice_no]));
 
         $paymentStatus = $invoice->due_amount <= 0
             ? 'Paid'
@@ -512,7 +521,7 @@ class TestReportDashboardController extends Controller
             'patient_name' => $invoice->patient_name,
             'patient_mobile_no' => $invoice->patient_mobile_no,
             'invoice_category' => $invoice->invoice_category,
-            'print_route' => $this->statusService->printRouteFor($invoice),
+            'print_route' => $printRoutes[$invoice->id],
             'total_tests' => $totalTests,
             'results_entered' => $resultsEntered,
             'result_status' => $resultStatus,
@@ -523,7 +532,7 @@ class TestReportDashboardController extends Controller
             'paid_amount' => (float) $invoice->paid_amount,
             'due_amount' => (float) $invoice->due_amount,
             'whatsapp_status' => $invoice->whatsapp_status,
-            'xray_report_url' => XrayReportUpload::viewUrlFor($invoice),
+            'xray_report_url' => $xrayUrls[$invoice->invoice_no] ?? null,
         ];
     }
 }

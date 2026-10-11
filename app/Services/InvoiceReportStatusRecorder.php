@@ -33,7 +33,9 @@ class InvoiceReportStatusRecorder
      */
     public function statusFor(Invoice $invoice): array
     {
-        if ($invoice->report_status !== null) {
+        // A row stored before report_outsourced_tests existed has it NULL and
+        // is recomputed once, like any other missing value.
+        if ($invoice->report_status !== null && $invoice->report_outsourced_tests !== null) {
 
             return [
                 $invoice->report_status,
@@ -57,11 +59,17 @@ class InvoiceReportStatusRecorder
 
         [$resultStatus, $total, $prepared, $confirmed] = $status;
 
+        // Outsourced (outside-lab) report lines: with report_total_tests (the
+        // in-house lines) this is all that "does it still owe a delivery"
+        // depends on -- see ReportDeliveryScope::owesDeliveryStored().
+        [, $outsourced] = $this->statusService->outsourcedStatusFor($invoice);
+
         DB::table('invoices')->where('id', $invoice->id)->update([
             'report_status' => $resultStatus,
             'report_total_tests' => $total,
             'report_prepared_count' => $prepared,
             'report_confirmed_count' => $confirmed,
+            'report_outsourced_tests' => $outsourced,
             'report_status_updated_at' => now(),
         ]);
 
@@ -70,6 +78,7 @@ class InvoiceReportStatusRecorder
         $invoice->report_total_tests = $total;
         $invoice->report_prepared_count = $prepared;
         $invoice->report_confirmed_count = $confirmed;
+        $invoice->report_outsourced_tests = $outsourced;
 
         return $status;
     }
@@ -154,7 +163,9 @@ class InvoiceReportStatusRecorder
         // Paged by id, NOT by offset: this loop fills the very column the
         // query filters on, so offset paging would skip rows as they drop
         // out of the result set.
-        foreach ((clone $invoicesQuery)->whereNull('report_status')->lazyById(200) as $invoice) {
+        foreach ((clone $invoicesQuery)->where(function ($q) {
+            $q->whereNull('report_status')->orWhereNull('report_outsourced_tests');
+        })->lazyById(200) as $invoice) {
             $this->refreshInvoice($invoice);
             $count++;
         }

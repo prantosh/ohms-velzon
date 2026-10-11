@@ -367,6 +367,14 @@
                     Print Report
                 </a>
 
+                <!-- Admin only, and only while the invoice isn't fully confirmed
+                     (shown/hidden by refreshPathologyDeleteButtons(); the server
+                     enforces the same rules). -->
+                <button type="button" class="btn btn-outline-danger pathology-delete-btn" style="display:none;">
+                    <i class="ri-delete-bin-line"></i>
+                    Delete
+                </button>
+
             </div>
 
         </div>

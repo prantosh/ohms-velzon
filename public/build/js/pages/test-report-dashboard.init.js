@@ -103,7 +103,19 @@ function setLoadingState(isLoading) {
     // The Search box is left alone on purpose -- locking it would interrupt
     // someone still typing; loadSequence already discards stale responses.
     document.querySelectorAll('#categoryFilter, #paymentStatusFilter, #resultStatusFilter, #rangeFilter, #deliveryFilter, #perPage, #prevPage, #nextPage')
-        .forEach(el => { el.disabled = isLoading; });
+        .forEach(el => {
+
+            el.disabled = isLoading;
+
+            // The dropdown/button the user just used keeps the browser's violet
+            // focus ring after the list has reloaded, which makes it look as if
+            // that filter is still "working". Once loading is finished, drop the
+            // focus so the ring goes away (the Search box is left alone -- the
+            // user may still be typing in it).
+            if (!isLoading) {
+                el.blur();
+            }
+        });
 }
 
 async function loadReports(page = 1) {

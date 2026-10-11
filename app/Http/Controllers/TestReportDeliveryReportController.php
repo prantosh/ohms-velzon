@@ -62,8 +62,12 @@ class TestReportDeliveryReportController extends Controller
             ->orderByDesc('id')
             ->paginate($perPage);
 
-        $rows->getCollection()->transform(function ($row) {
-            return $this->toRow($row);
+        $xrayUrls = XrayReportUpload::viewUrlsFor(
+            $rows->getCollection()->pluck('invoice')->filter()->values()
+        );
+
+        $rows->getCollection()->transform(function ($row) use ($xrayUrls) {
+            return $this->toRow($row, $xrayUrls);
         });
 
         return response()->json([
@@ -136,7 +140,8 @@ class TestReportDeliveryReportController extends Controller
         return $query;
     }
 
-    private function toRow(TestReportDelivery $row): array
+    /** @param array<string, string> $xrayUrls invoice_no => uploaded X-Ray report url */
+    private function toRow(TestReportDelivery $row, array $xrayUrls = []): array
     {
         $paymentStatus = $row->due_amount <= 0
             ? 'Paid'
@@ -161,7 +166,7 @@ class TestReportDeliveryReportController extends Controller
             'type_label' => $typeLabel,
             'delivered_by_name' => optional($row->deliveredByUser)->name ?? '-',
             'delivered_at_fmt' => $row->delivered_at ? $row->delivered_at->format('d-m-Y h:i A') : '-',
-            'xray_report_url' => $row->invoice ? XrayReportUpload::viewUrlFor($row->invoice) : null,
+            'xray_report_url' => $row->invoice ? ($xrayUrls[$row->invoice->invoice_no] ?? null) : null,
         ];
     }
 
@@ -192,14 +197,20 @@ class TestReportDeliveryReportController extends Controller
             });
         }
 
-        \App\Support\ReportDeliveryScope::owesDelivery($query);
+        // Read from the values stored on the invoice (a plain column test);
+        // anything not stored yet is computed first. See ReportDeliveryScope.
+        app(\App\Services\InvoiceReportStatusRecorder::class)->fillMissing($query);
+
+        \App\Support\ReportDeliveryScope::owesDeliveryStored($query);
 
         // Oldest invoice first, same reasoning as the old Not Delivered tab
         // -- clears the backlog in order.
         $invoices = $query->orderBy('invoice_date')->orderBy('id')->paginate($perPage);
 
-        $rows = $invoices->getCollection()->map(function ($invoice) {
-            return $this->toUndeliveredRow($invoice);
+        $xrayUrls = XrayReportUpload::viewUrlsFor($invoices->getCollection());
+
+        $rows = $invoices->getCollection()->map(function ($invoice) use ($xrayUrls) {
+            return $this->toUndeliveredRow($invoice, $xrayUrls);
         });
 
         $protectedUsers = $this->identityGuard->protectedUsersForMobiles($rows->pluck('patient_mobile_no'));
@@ -224,7 +235,8 @@ class TestReportDeliveryReportController extends Controller
         ]);
     }
 
-    private function toUndeliveredRow(Invoice $invoice): array
+    /** @param array<string, string> $xrayUrls invoice_no => uploaded X-Ray report url */
+    private function toUndeliveredRow(Invoice $invoice, array $xrayUrls = []): array
     {
         [$inHouseStatus, $inHouseTotal, $inHouseEntered] = app(InvoiceReportStatusRecorder::class)->statusFor($invoice);
         [$outsourcedStatus, $outsourcedTotal] = $this->statusService->outsourcedStatusFor($invoice);
@@ -252,7 +264,7 @@ class TestReportDeliveryReportController extends Controller
             'outsourced_status' => $outsourcedStatus,
             'outsourced_total_tests' => $outsourcedTotal,
 
-            'xray_report_url' => XrayReportUpload::viewUrlFor($invoice),
+            'xray_report_url' => $xrayUrls[$invoice->invoice_no] ?? null,
         ];
     }
 

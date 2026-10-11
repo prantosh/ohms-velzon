@@ -188,6 +188,7 @@ class PathologyReportTemplateController extends Controller
     public function seedGlucoseFbsPpbsTemplate()
     {
         abort_unless(Auth::check(), 403);
+        abort_unless(optional(Auth::user())->role === 'Admin', 403, 'Only an Admin can create templates.');
 
         $title = 'GLUCOSE (FBS & PPBS)';
         $testGroupCode = 3;
@@ -287,6 +288,11 @@ class PathologyReportTemplateController extends Controller
 
     public function store(Request $request, AuditService $auditService)
     {
+        // Creating a template is Admin-only (editing/deleting is unchanged).
+        if ($denied = $this->denyUnlessAdmin('Only an Admin can create templates.')) {
+            return $denied;
+        }
+
         $data = $this->validateTemplate($request);
 
         DB::beginTransaction();

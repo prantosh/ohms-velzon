@@ -22,6 +22,29 @@ use Illuminate\Database\Eloquent\Builder;
 class ReportDeliveryScope
 {
     /**
+     * Same answer as owesDelivery() below, read from the values stored on the
+     * invoice (report_total_tests = in-house lines, report_outsourced_tests =
+     * outside-lab lines, plus the two delivered_at columns) instead of nested
+     * EXISTS subqueries -- roughly 5-20x cheaper per query, and the dashboard
+     * runs it twice (page + count). Callers must first make sure the invoices
+     * in the query have those values stored
+     * (InvoiceReportStatusRecorder::fillMissing()); owesDelivery() stays as the
+     * from-scratch reference this is verified against.
+     */
+    public static function owesDeliveryStored(Builder $query, bool $negate = false): Builder
+    {
+        $condition = function ($q) {
+            $q->where(function ($inHouse) {
+                $inHouse->whereNull('report_delivered_at')->where('report_total_tests', '>', 0);
+            })->orWhere(function ($outsourced) {
+                $outsourced->whereNull('outsourced_report_delivered_at')->where('report_outsourced_tests', '>', 0);
+            });
+        };
+
+        return $negate ? $query->whereNot($condition) : $query->where($condition);
+    }
+
+    /**
      * Adds the "owes a delivery" condition to an invoices query as one
      * grouped where. Pass $negate to get invoices that owe nothing, i.e.
      * fully delivered.
@@ -40,15 +63,7 @@ class ReportDeliveryScope
                                     ->on('iid.item_code_sub', '=', 'd.item_code_sub');
                             })
                             ->whereColumn('d.invoice_no', 'invoices.invoice_no')
-                            ->where(function ($reportable) {
-                                $reportable->where('iid.is_package', 0)
-                                    ->orWhereExists(function ($finding) {
-                                        $finding->selectRaw('1')
-                                            ->from('pathology_report_finding_items as pfi')
-                                            ->whereColumn('pfi.invoice_detail_id', 'd.id')
-                                            ->where('d.item_code', 'PAT001');
-                                    });
-                            })
+                            ->whereRaw(\App\Support\ReportableLines::sql())
                             ->where('iid.is_outsourced', 0)
                             ->where('iid.is_report_not_required', 0);
                     });

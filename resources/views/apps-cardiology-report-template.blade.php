@@ -112,6 +112,8 @@
 
     <div class="d-flex align-items-center gap-2 flex-wrap">
 
+        {{-- Creating a template is Admin-only (the server enforces it too). --}}
+        @if(auth()->user() && auth()->user()->role === 'Admin')
         <button type="button"
                 class="btn btn-primary"
                 data-bs-toggle="modal"
@@ -122,6 +124,7 @@
             Add Template
 
         </button>
+        @endif
 
     </div>
 

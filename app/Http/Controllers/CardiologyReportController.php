@@ -6,6 +6,8 @@ use App\Models\CardiologyReportFinding;
 use App\Models\Invoice;
 use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
+use App\Services\ReportDeletionGuard;
+use App\Services\InvoiceReportItemsService;
 use App\Services\ReportWhatsappDueGate;
 use App\Support\PdfPageNumbers;
 use App\Services\PdfPasswordProtectionService;
@@ -205,7 +207,8 @@ class CardiologyReportController extends Controller
                 'patient_age' => $invoice->patient_age,
                 'patient_gender' => $invoice->patient_gender,
             ],
-            'lines' => $lines,
+            'lines' => $this->withDeleteFlags($invoice, $lines),
+            'can_delete_reports' => optional(Auth::user())->role === 'Admin',
         ]);
     }
 
@@ -428,6 +431,76 @@ class CardiologyReportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | DELETE ONE REPORT -- Admin only. A saved report can go any time; a
+    | confirmed one only if it hasn't been WhatsApp'd to the patient and the
+    | invoice's reports for these tests aren't all confirmed yet (see
+    | ReportDeletionGuard). The billed line becomes open again for a fresh
+    | report.
+    |--------------------------------------------------------------------------
+    */
+
+    public function destroyFinding($id, AuditService $auditService)
+    {
+        $finding = CardiologyReportFinding::findOrFail($id);
+
+        $invoice = Invoice::where('invoice_no', $finding->invoice_no)->firstOrFail();
+
+        $reason = ReportDeletionGuard::denyReason(
+            $invoice,
+            InvoiceReportItemsService::KIND_CARDIOLOGY,
+            'CARDIOLOGY_REPORT',
+            $finding->confirmed_at
+        );
+
+        if ($reason !== null) {
+
+            return response()->json([
+                'status' => false,
+                'message' => $reason
+            ], optional(Auth::user())->role === 'Admin' ? 422 : 403);
+        }
+
+        $oldData = $finding->only($finding->getFillable());
+        $wasConfirmed = (bool) $finding->confirmed_at;
+
+        $finding->delete();
+
+        ReportDeletionGuard::reset();
+
+        $auditService->logDelete(
+            self::MODULE_CODE,
+            $finding,
+            $oldData,
+            ($wasConfirmed ? 'Confirmed' : 'Saved') . ' Cardiology report deleted by Admin (invoice ' . $finding->invoice_no . ')'
+        );
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Report deleted. The test is open again.'
+        ]);
+    }
+
+    /**
+     * Adds can_delete to each line of the search payload -- true only for a
+     * saved report this Admin may actually delete right now.
+     */
+    private function withDeleteFlags(Invoice $invoice, $lines)
+    {
+        return $lines->map(function ($line) use ($invoice) {
+
+            $line->can_delete = !empty($line->finding_id)
+                && ReportDeletionGuard::denyReason(
+                    $invoice,
+                    InvoiceReportItemsService::KIND_CARDIOLOGY,
+                    'CARDIOLOGY_REPORT',
+                    $line->confirmed_at
+                ) === null;
+
+            return $line;
+        });
+    }
+    /*
+    |--------------------------------------------------------------------------
     | PDF PRINT
     |--------------------------------------------------------------------------
     */
@@ -538,15 +611,41 @@ class CardiologyReportController extends Controller
 
             $pdfUrl = asset('invoices/' . $fileName);
 
+            $invoiceNoText = PdfPasswordProtectionService::invoiceNoWithHint($invoice->invoice_no, (bool) $password);
+
+            if (config('services.wati.cardiology_report_template_name')) {
+
+                // Dedicated Cardiology template (only when configured in .env):
+                // {{1}}=patient name, {{2}}=invoice no, {{3}}=Document header (PDF).
+                $template = config('services.wati.cardiology_report_template_name');
+                $broadcast = config('services.wati.cardiology_report_broadcast_name') ?: $template;
+
+                $parameters = [
+                    ['name' => '1', 'value' => $invoice->patient_name],
+                    ['name' => '2', 'value' => $invoiceNoText],
+                    ['name' => '3', 'value' => $pdfUrl],
+                ];
+
+            } else {
+
+                // Default: the approved Non-Pathology report template --
+                // {{1}}=patient name, {{2}}=test, {{3}}=invoice no, {{4}}=PDF.
+                $template = config('services.wati.non_pathology_report_template_name');
+                $broadcast = config('services.wati.non_pathology_report_broadcast_name');
+
+                $parameters = [
+                    ['name' => '1', 'value' => $invoice->patient_name],
+                    ['name' => '2', 'value' => $finding->item_description],
+                    ['name' => '3', 'value' => $invoiceNoText],
+                    ['name' => '4', 'value' => $pdfUrl],
+                ];
+            }
+
             $watiResponse = $wati->sendTemplateMessage(
                 '91' . preg_replace('/\D/', '', $invoice->patient_mobile_no),
-                config('services.wati.cardiology_report_template_name'),
-                config('services.wati.cardiology_report_broadcast_name'),
-                [
-                    ['name' => '1', 'value' => $invoice->patient_name],
-                    ['name' => '2', 'value' => PdfPasswordProtectionService::invoiceNoWithHint($invoice->invoice_no, (bool) $password)],
-                    ['name' => '3', 'value' => $pdfUrl],
-                ]
+                $template,
+                $broadcast,
+                $parameters
             );
 
             $sent = is_array($watiResponse) && ($watiResponse['result'] ?? false) === true;

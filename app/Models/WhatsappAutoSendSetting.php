@@ -18,7 +18,15 @@ class WhatsappAutoSendSetting extends Model
         'is_enabled' => 'boolean',
     ];
 
-    public const CACHE_KEY = 'whatsapp_auto_send_settings';
+    // A short lifetime (not forever) so a missed cache refresh -- e.g. a
+    // setting changed from another process, or a cache directory that wasn't
+    // writable at that moment -- can only ever show a stale switch for a couple
+    // of minutes instead of until someone clears the cache by hand. The key
+    // carries a version so deploying this also ignores any old never-expiring
+    // copy already sitting in the cache.
+    public const CACHE_KEY = 'whatsapp_auto_send_settings.v2';
+
+    private const CACHE_SECONDS = 120;
 
     /** new message type => the type it was split from */
     private const INHERITS_SETTING_FROM = [
@@ -32,7 +40,7 @@ class WhatsappAutoSendSetting extends Model
      */
     public static function isEnabled(string $messageType): bool
     {
-        $settings = Cache::rememberForever(self::CACHE_KEY, function () {
+        $settings = Cache::remember(self::CACHE_KEY, self::CACHE_SECONDS, function () {
             return self::pluck('is_enabled', 'message_type')->all();
         });
 

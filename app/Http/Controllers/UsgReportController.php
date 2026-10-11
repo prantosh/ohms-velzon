@@ -6,6 +6,8 @@ use App\Models\Invoice;
 use App\Models\UsgReportFinding;
 use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
+use App\Services\ReportDeletionGuard;
+use App\Services\InvoiceReportItemsService;
 use App\Services\ReportWhatsappDueGate;
 use App\Support\PdfPageNumbers;
 use App\Services\PdfPasswordProtectionService;
@@ -222,7 +224,8 @@ class UsgReportController extends Controller
                 'patient_age' => $invoice->patient_age,
                 'patient_gender' => $invoice->patient_gender,
             ],
-            'lines' => $lines,
+            'lines' => $this->withDeleteFlags($invoice, $lines),
+            'can_delete_reports' => optional(Auth::user())->role === 'Admin',
         ]);
     }
 
@@ -450,6 +453,76 @@ class UsgReportController extends Controller
         ]);
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | DELETE ONE REPORT -- Admin only. A saved report can go any time; a
+    | confirmed one only if it hasn't been WhatsApp'd to the patient and the
+    | invoice's reports for these tests aren't all confirmed yet (see
+    | ReportDeletionGuard). The billed line becomes open again for a fresh
+    | report.
+    |--------------------------------------------------------------------------
+    */
+
+    public function destroyFinding($id, AuditService $auditService)
+    {
+        $finding = UsgReportFinding::findOrFail($id);
+
+        $invoice = Invoice::where('invoice_no', $finding->invoice_no)->firstOrFail();
+
+        $reason = ReportDeletionGuard::denyReason(
+            $invoice,
+            InvoiceReportItemsService::KIND_USG,
+            'USG_REPORT',
+            $finding->confirmed_at
+        );
+
+        if ($reason !== null) {
+
+            return response()->json([
+                'status' => false,
+                'message' => $reason
+            ], optional(Auth::user())->role === 'Admin' ? 422 : 403);
+        }
+
+        $oldData = $finding->only($finding->getFillable());
+        $wasConfirmed = (bool) $finding->confirmed_at;
+
+        $finding->delete();
+
+        ReportDeletionGuard::reset();
+
+        $auditService->logDelete(
+            self::MODULE_CODE,
+            $finding,
+            $oldData,
+            ($wasConfirmed ? 'Confirmed' : 'Saved') . ' USG report deleted by Admin (invoice ' . $finding->invoice_no . ')'
+        );
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Report deleted. The test is open again.'
+        ]);
+    }
+
+    /**
+     * Adds can_delete to each line of the search payload -- true only for a
+     * saved report this Admin may actually delete right now.
+     */
+    private function withDeleteFlags(Invoice $invoice, $lines)
+    {
+        return $lines->map(function ($line) use ($invoice) {
+
+            $line->can_delete = !empty($line->finding_id)
+                && ReportDeletionGuard::denyReason(
+                    $invoice,
+                    InvoiceReportItemsService::KIND_USG,
+                    'USG_REPORT',
+                    $line->confirmed_at
+                ) === null;
+
+            return $line;
+        });
+    }
     /*
     |--------------------------------------------------------------------------
     | PDF PRINT

@@ -2705,6 +2705,12 @@ Route::middleware(['auth'])->prefix('usg-report')->group(function () {
         [UsgReportController::class, 'sendWhatsapp']
     )->name('usg-report.send-whatsapp');
 
+    // Admin only (enforced in the controller, see ReportDeletionGuard).
+    Route::post(
+        '/delete/{id}',
+        [UsgReportController::class, 'destroyFinding']
+    )->name('usg-report.delete');
+
 });
 
 // Standalone Cardiology (2D-Echo) live-entry dashboard -- mirrors the
@@ -2750,6 +2756,12 @@ Route::middleware(['auth'])->prefix('cardiology-report')->group(function () {
         '/send-whatsapp/{id}',
         [CardiologyReportController::class, 'sendWhatsapp']
     )->name('cardiology-report.send-whatsapp');
+
+    // Admin only (enforced in the controller, see ReportDeletionGuard).
+    Route::post(
+        '/delete/{id}',
+        [CardiologyReportController::class, 'destroyFinding']
+    )->name('cardiology-report.delete');
 
 });
 
@@ -2807,6 +2819,12 @@ Route::middleware(['auth'])->prefix('non-pathology-report')->group(function () {
         '/send-whatsapp/{id}',
         [NonPathologyReportController::class, 'sendWhatsapp']
     )->name('non-pathology-report.send-whatsapp');
+
+    // Admin only (enforced in the controller, see ReportDeletionGuard).
+    Route::post(
+        '/delete/{id}',
+        [NonPathologyReportController::class, 'destroyFinding']
+    )->name('non-pathology-report.delete');
 
 });
 
@@ -2942,6 +2960,13 @@ Route::middleware(['auth'])->prefix('pathology-report')->group(function () {
         '/confirm-finding/{id}',
         [PathologyReportController::class, 'confirmFinding']
     )->name('pathology-report.confirm-finding');
+
+    // Admin only (enforced in the controller): remove one saved/confirmed
+    // report while the invoice isn't fully confirmed yet.
+    Route::post(
+        '/delete/{id}',
+        [PathologyReportController::class, 'destroyFinding']
+    )->name('pathology-report.delete');
 
     Route::get(
         '/print/{id}',

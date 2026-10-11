@@ -277,6 +277,8 @@ document.getElementById('dashNextPage').addEventListener('click', function () {
 |--------------------------------------------------------------------------
 */
 
+let canDeleteReports = false;
+
 async function searchInvoice(invoiceNo) {
 
     document.getElementById('invoiceNotFoundMsg').style.display = 'none';
@@ -304,6 +306,8 @@ async function searchInvoice(invoiceNo) {
     }
 
     let inv = result.invoice;
+
+    canDeleteReports = !!result.can_delete_reports;
 
     document.getElementById('info-invoice_no').innerText = inv.invoice_no ?? '';
     document.getElementById('info-invoice_date').innerText = inv.invoice_date ?? '';
@@ -351,6 +355,11 @@ async function searchInvoice(invoiceNo) {
         } else if (line.item_code_sub) {
 
             loadTemplatesForCard(root, line.item_code_sub);
+        }
+
+        // Delete only where the server says this saved report may go.
+        if (line.can_delete) {
+            root.querySelector('.study-delete-btn').style.display = 'inline-block';
         }
     });
 }
@@ -451,6 +460,7 @@ function lockStudyCard(root, findingId) {
     root.querySelector('.study-save-btn').style.display = 'none';
     root.querySelector('.study-preview-btn').style.display = 'none';
     root.querySelector('.study-confirm-btn').style.display = 'none';
+    root.querySelector('.study-delete-btn').style.display = 'none';
 
     let printBtn = root.querySelector('.study-print-btn');
     printBtn.href = `/usg-report/print/${findingId}`;
@@ -590,6 +600,11 @@ document.addEventListener('click', async function (e) {
 
             if (result.status && result.data && result.data.id) {
                 root.dataset.findingId = result.data.id;
+
+                // a freshly saved (unconfirmed) report may be deleted by an Admin
+                if (canDeleteReports && root.querySelector('.study-confirmed-badge').style.display === 'none') {
+                    root.querySelector('.study-delete-btn').style.display = 'inline-block';
+                }
             }
 
             Swal.fire({
@@ -807,3 +822,74 @@ document.addEventListener('click', async function (e) {
 });
 
 loadDashboard(1);
+
+/*
+|--------------------------------------------------------------------------
+| DELETE a saved/confirmed report -- Admin only. The button is shown only
+| for a report the server says can be deleted right now (see
+| ReportDeletionGuard); the server re-checks everything on the request.
+|--------------------------------------------------------------------------
+*/
+
+document.addEventListener('click', async function (e) {
+
+    let deleteBtn = e.target.closest('.study-delete-btn');
+
+    if (!deleteBtn) return;
+
+    let root = deleteBtn.closest('.usg-study-card');
+    let findingId = root.dataset.findingId;
+
+    if (!findingId) return;
+
+    let isConfirmed = root.querySelector('.study-confirmed-badge').style.display !== 'none';
+    let what = root.querySelector('.study-item-description').innerText;
+
+    let ask = await Swal.fire({
+        icon: 'warning',
+        title: 'Delete this USG report?',
+        html: `<b>${escapeHtml(what)}</b><br>${isConfirmed ? 'This report is <b>confirmed</b>. ' : ''}It will be removed and the test becomes open again, so a new report can be written.`,
+        showCancelButton: true,
+        confirmButtonColor: '#d63939',
+        confirmButtonText: 'Yes, delete it'
+    });
+
+    if (!ask.isConfirmed) return;
+
+    deleteBtn.disabled = true;
+
+    let outcome;
+
+    try {
+
+        outcome = await fetchJson(`/usg-report/delete/${findingId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken()
+            }
+        });
+
+    } catch (err) {
+
+        deleteBtn.disabled = false;
+        Swal.fire({ icon: 'error', title: 'Error', text: err.message });
+        return;
+    }
+
+    deleteBtn.disabled = false;
+
+    let invoiceNo = document.getElementById('info-invoice_no').innerText;
+
+    if (!outcome.result.status) {
+
+        Swal.fire({ icon: 'error', title: 'Cannot delete', text: outcome.result.message || 'Unable to delete this report.' });
+        // show the real current state (something may have changed meanwhile)
+        searchInvoice(invoiceNo);
+        return;
+    }
+
+    await Swal.fire({ icon: 'success', title: 'Deleted', text: outcome.result.message, timer: 1400, showConfirmButton: false });
+
+    searchInvoice(invoiceNo);
+});

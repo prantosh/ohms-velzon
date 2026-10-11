@@ -109,29 +109,20 @@ class PathologyReportController extends Controller
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
             ->where('iid.is_report_not_required', 0)
-            // A package's own billed line (e.g. "LIPID PROFILE") is a
-            // pricing label, not a measurable test -- it has no result of
-            // its own (mirrors TestReportRowBuilder's identical exclusion
-            // for the old tabular system). Its real, reportable components
-            // are separate billed lines already, each carrying its own
-            // test_group_code, so they fall into their own group's tab
-            // exactly like any other item -- no special handling needed
-            // for them beyond excluding the package's own non-reportable
-            // row here.
-            // New reports belong to package components, not the package's
-            // pricing row. Keep a package row only when an older report is
-            // already linked to it so existing confirmed reports remain
-            // visible after package rows were excluded from new reporting.
-            ->where(function ($q) {
-                $q->where('iid.is_package', 0)
-                    ->orWhereNotNull('pfi.pathology_report_finding_id');
-            })
+            // Packages are reported at PACKAGE level: the package's own line
+            // (e.g. "LIPID PROFILE") is the item shown here and gets one
+            // report, while its hidden zero-rate component lines are not
+            // listed. Invoices already reported the old way (component by
+            // component) keep showing their components -- see ReportableLines.
+            ->whereRaw(\App\Support\ReportableLines::sql())
             ->orderBy('d.line_no')
             ->get([
                 'd.id as invoice_detail_id',
                 'd.item_code_sub',
                 'd.item_description',
                 'iid.test_group_code',
+                'iid.is_package',
+                'd.package_parent_item_code_sub',
                 'pfi.pathology_report_finding_id',
             ]);
 
@@ -169,12 +160,37 @@ class PathologyReportController extends Controller
         $unclaimedByGroup = $lines->whereNull('pathology_report_finding_id')
             ->groupBy(fn ($l) => $l->test_group_code ?? 0);
 
-        $availableTemplatesByGroup = $unclaimedByGroup->map(function ($groupLines, $testGroupCode) {
+        // Component codes of every package billed on this invoice, keyed by the
+        // package's own item_code_sub. A template built from a package's
+        // components (e.g. the LIPID PROFILE template) is offered for the
+        // package line itself.
+        $packageComponentCodes = DB::table('invoice_details')
+            ->where('invoice_no', $invoice->invoice_no)
+            ->whereNotNull('package_parent_item_code_sub')
+            ->get(['package_parent_item_code_sub as parent', 'item_code_sub'])
+            ->groupBy('parent')
+            ->map(fn ($g) => $g->pluck('item_code_sub')->unique()->sort()->values()->all());
+
+        $availableTemplatesByGroup = $unclaimedByGroup->map(function ($groupLines, $testGroupCode) use ($packageComponentCodes) {
 
             $unclaimedItemCodeSubs = $groupLines->pluck('item_code_sub')->unique();
 
+            // package line (open) => its sorted component codes, looked up by
+            // the component set so a template covering exactly that set maps
+            // back to the package line.
+            $openPackageByComponentSet = [];
+
+            foreach ($groupLines->where('is_package', 1)->whereNull('package_parent_item_code_sub') as $packageLine) {
+
+                $components = $packageComponentCodes->get($packageLine->item_code_sub);
+
+                if (!empty($components)) {
+                    $openPackageByComponentSet[implode(',', $components)] = $packageLine->item_code_sub;
+                }
+            }
+
             $candidateTemplateIds = DB::table('pathology_report_template_items')
-                ->whereIn('item_code_sub', $unclaimedItemCodeSubs)
+                ->whereIn('item_code_sub', $unclaimedItemCodeSubs->merge(collect($openPackageByComponentSet)->keys()->flatMap(fn ($k) => explode(',', $k)))->unique()->values())
                 ->pluck('pathology_report_template_id')
                 ->unique();
 
@@ -196,8 +212,18 @@ class PathologyReportController extends Controller
             // tests the patient never ordered -- e.g. an FBS-only invoice
             // was offered the FBS+PPBS panel. Blank reports (one per open
             // item) are always available regardless; see the JS picker.
-            return $templates->filter(function ($template) use ($unclaimedItemCodeSubs) {
+            return $templates->filter(function ($template) use ($unclaimedItemCodeSubs, $openPackageByComponentSet) {
                 $covered = $template->items->pluck('item_code_sub')->values()->all();
+
+                // A template made of exactly a package's components covers the
+                // package line: it is offered for it, claiming that one line.
+                $sortedKey = collect($covered)->unique()->sort()->values()->implode(',');
+
+                if (isset($openPackageByComponentSet[$sortedKey])) {
+                    $template->setAttribute('effective_item_code_subs', [$openPackageByComponentSet[$sortedKey]]);
+                    return true;
+                }
+
                 $notOpen = array_diff($covered, $unclaimedItemCodeSubs->values()->all());
                 return !empty($covered) && empty($notOpen);
             })->values();
@@ -241,7 +267,7 @@ class PathologyReportController extends Controller
                         'id' => $t->id,
                         'title' => $t->title,
                         'content' => $t->content,
-                        'item_code_subs' => $t->items->pluck('item_code_sub')->values(),
+                        'item_code_subs' => collect($t->effective_item_code_subs ?? $t->items->pluck('item_code_sub')->all())->values(),
                     ])->values();
 
                 return [
@@ -261,6 +287,7 @@ class PathologyReportController extends Controller
             'legacy_confirmed' => false,
             'groups' => $groups,
             'pathology_whatsapp' => $this->pathologyWhatsappStatus($invoice->invoice_no),
+            'can_delete_reports' => optional(Auth::user())->role === 'Admin',
         ]);
     }
 
@@ -589,10 +616,7 @@ class PathologyReportController extends Controller
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
             ->where('iid.is_report_not_required', 0)
-            ->where(function ($q) {
-                $q->where('iid.is_package', 0)
-                    ->orWhereNotNull('pfi.pathology_report_finding_id');
-            })
+            ->whereRaw(\App\Support\ReportableLines::sql())
             ->where(function ($q) use ($testGroupCode) {
                 $testGroupCode === null
                     ? $q->whereNull('iid.test_group_code')
@@ -719,6 +743,161 @@ class PathologyReportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | DELETE ONE REPORT -- Admin only, and only while the invoice's Pathology
+    | reports are NOT all confirmed. The combined WhatsApp goes out only once
+    | every report is confirmed, so until then a wrong/duplicate report (even
+    | a confirmed one) can still be removed; its billed lines become open
+    | again and can be reported afresh. Once everything is confirmed the
+    | document has been (or is about to be) sent, so it is locked.
+    |--------------------------------------------------------------------------
+    */
+
+    public function destroyFinding($id, AuditService $auditService)
+    {
+        if (optional(Auth::user())->role !== 'Admin') {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Only an Admin can delete a report.'
+            ], 403);
+        }
+
+        $finding = PathologyReportFinding::with('items')->findOrFail($id);
+
+        // The page sends the invoice it is showing. A report that is shown on
+        // an invoice other than its own (a stray link left by old/test data
+        // from one invoice's report to another invoice's billed line) must not
+        // be deleted -- that would destroy the other invoice's genuine report.
+        // Deleting it here only removes the stray link from THIS invoice.
+        $viewedInvoiceNo = trim((string) request()->input('invoice_no', ''));
+
+        if ($viewedInvoiceNo !== '' && $viewedInvoiceNo !== $finding->invoice_no) {
+
+            return $this->removeStrayLink($finding, $viewedInvoiceNo, $auditService);
+        }
+
+        if ($this->isInvoicePathologyFullyConfirmed($finding->invoice_no)) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Every Pathology report on this invoice is already confirmed, so the combined report is locked. A report can only be deleted until then.'
+            ], 422);
+        }
+
+        $oldData = array_merge(
+            $finding->only($finding->getFillable()),
+            ['invoice_detail_ids' => $finding->items->pluck('invoice_detail_id')->all()]
+        );
+
+        $wasConfirmed = (bool) $finding->confirmed_at;
+
+        DB::beginTransaction();
+
+        try {
+
+            // Each row through the model (not a bulk delete) so the report
+            // status stored on the invoice is refreshed.
+            $finding->items->each->delete();
+            $finding->delete();
+
+            DB::commit();
+
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            \Log::error('Pathology report delete failed: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Unable to delete this report.'
+            ], 500);
+        }
+
+        $auditService->logDelete(
+            self::MODULE_CODE,
+            $finding,
+            $oldData,
+            ($wasConfirmed ? 'Confirmed' : 'Saved') . ' Pathology report deleted by Admin (invoice ' . $finding->invoice_no . ')'
+        );
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Report deleted. Its tests are open again.'
+        ]);
+    }
+
+    /**
+     * Detaches a report from billed lines of an invoice it does not belong to.
+     * The report itself and its own invoice's links are left untouched. Same
+     * lock as a normal delete, judged on the invoice being viewed.
+     */
+    private function removeStrayLink(PathologyReportFinding $finding, string $viewedInvoiceNo, AuditService $auditService)
+    {
+        if ($this->isInvoicePathologyFullyConfirmed($viewedInvoiceNo)) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Every Pathology report on this invoice is already confirmed, so the combined report is locked. A report can only be deleted until then.'
+            ], 422);
+        }
+
+        $strayItems = $finding->items->filter(
+            fn ($item) => DB::table('invoice_details')
+                ->where('id', $item->invoice_detail_id)
+                ->where('invoice_no', $viewedInvoiceNo)
+                ->exists()
+        );
+
+        if ($strayItems->isEmpty()) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This report is not linked to this invoice.'
+            ], 422);
+        }
+
+        $detailIds = $strayItems->pluck('invoice_detail_id')->all();
+
+        DB::beginTransaction();
+
+        try {
+
+            $strayItems->each->delete();
+
+            DB::commit();
+
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            \Log::error('Pathology stray link removal failed: ' . $e->getMessage());
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Unable to remove this report from the invoice.'
+            ], 500);
+        }
+
+        // The observers refresh the report's own invoice; this invoice's
+        // stored status must follow too.
+        app(\App\Services\InvoiceReportStatusRecorder::class)->refreshByInvoiceNo($viewedInvoiceNo);
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $finding,
+            'CUSTOM',
+            'Stray link removed by Admin: report #' . $finding->id . ' (invoice ' . $finding->invoice_no . ') detached from invoice ' . $viewedInvoiceNo . ' (billed line ids ' . implode(',', $detailIds) . ')'
+        );
+
+        return response()->json([
+            'status' => true,
+            'message' => 'This report did not belong to this invoice, so it was only detached from it (its own invoice is untouched). The test is open again.'
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | PDF PRINT
     |--------------------------------------------------------------------------
     */
@@ -802,10 +981,7 @@ class PathologyReportController extends Controller
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
             ->where('iid.is_report_not_required', 0)
-            ->where(function ($q) {
-                $q->where('iid.is_package', 0)
-                    ->orWhereNotNull('pfi.pathology_report_finding_id');
-            })
+            ->whereRaw(\App\Support\ReportableLines::sql())
             ->where(function ($q) use ($testGroupCode) {
                 $testGroupCode === null
                     ? $q->whereNull('iid.test_group_code')
@@ -944,10 +1120,7 @@ class PathologyReportController extends Controller
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
             ->where('iid.is_report_not_required', 0)
-            ->where(function ($q) {
-                $q->where('iid.is_package', 0)
-                    ->orWhereNotNull('pfi.pathology_report_finding_id');
-            })
+            ->whereRaw(\App\Support\ReportableLines::sql())
             ->get(['d.id', 'pfi.pathology_report_finding_id', 'pf.confirmed_at']);
 
         if ($lines->isEmpty()) {
@@ -1035,10 +1208,7 @@ class PathologyReportController extends Controller
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
             ->where('iid.is_report_not_required', 0)
-            ->where(function ($q) {
-                $q->where('iid.is_package', 0)
-                    ->orWhereNotNull('pfi.pathology_report_finding_id');
-            })
+            ->whereRaw(\App\Support\ReportableLines::sql())
             ->get([
                 'd.id as invoice_detail_id',
                 'd.item_description',

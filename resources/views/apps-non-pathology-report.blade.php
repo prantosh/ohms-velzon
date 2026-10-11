@@ -276,6 +276,13 @@
                     Print Report
                 </a>
 
+                <!-- Admin only; shown by the page script only for a report that may be deleted
+                     right now (the server enforces the rules, see ReportDeletionGuard). -->
+                <button type="button" class="btn btn-outline-danger nonpath-delete-btn" style="display:none;">
+                    <i class="ri-delete-bin-line"></i>
+                    Delete
+                </button>
+
                 <button type="button" class="btn btn-success nonpath-whatsapp-btn" style="display:none;">
                     <i class="ri-whatsapp-line"></i>
                     Send via WhatsApp
