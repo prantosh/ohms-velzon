@@ -260,6 +260,9 @@ class InvoiceCancellationController extends Controller
                 'cancellation_remarks' => $request->cancellation_remarks,
             ]);
 
+            // its doctor's share will never be paid -- take the unpaid payables out of every report
+            \App\Support\DoctorPayableCancellation::cancelUnpaidForInvoice($invoice->id);
+
             if ($invoice->paid_amount > 0) {
 
                 $this->recordLedgerEntry(
@@ -324,15 +327,9 @@ class InvoiceCancellationController extends Controller
         string $remarks
     ): void {
 
-        $transactionNo = \App\Support\OfflineMode::prefix('TRN/') .
-            now()->format('ymd') .
-            '/' .
-            str_pad(DB::table('daily_transactions')->count() + 1, 6, '0', STR_PAD_LEFT);
-
-        DB::table('daily_transactions')->insert([
+        \App\Support\DailyTransactionRecorder::insert([
 
             'transaction_date' => now()->toDateString(),
-            'transaction_no' => $transactionNo,
             'transaction_type' => 'REFUND',
 
             'received_amount' => 0,

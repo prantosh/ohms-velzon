@@ -16,11 +16,19 @@ use App\Services\CashInHandService;
 use App\Models\DoctorPayable;
 use App\Models\Doctor;
 use App\Models\Patient;
+use App\Services\PatientIdentityGuard;
 class DoctorVisitInvoiceController extends Controller
 {
     private const PATIENT_MODULE_CODE = 'PATIENT';
 
     private const MODULE_CODE = 'DOCTOR_VISIT';
+
+    private PatientIdentityGuard $identityGuard;
+
+    public function __construct(PatientIdentityGuard $identityGuard)
+    {
+        $this->identityGuard = $identityGuard;
+    }
 
     /*
     |--------------------------------------------------------------------------
@@ -131,6 +139,21 @@ class DoctorVisitInvoiceController extends Controller
 
                     ->get();
 
+            // Quick typo-fix eligibility -- same rule as the Diagnostic invoice list
+            // (see PatientIdentityGuard). Cancelled / not-yet-invoiced rows get no button.
+            $protectedUsers = $this->identityGuard->protectedUsersForMobiles(
+                $appointments->pluck('patient_mobile_no')
+            );
+
+            $appointments->each(function ($row) use ($protectedUsers) {
+                $row->setAttribute(
+                    'can_edit_patient_name',
+                    !empty($row->invoice_id)
+                        && $row->cancelled !== 'Y'
+                        && !$this->identityGuard->isProtected($row->patient_mobile_no, $row->patient_name, $protectedUsers)
+                );
+            });
+
             return response()->json([
 
                 'status' => true,
@@ -148,6 +171,84 @@ class DoctorVisitInvoiceController extends Controller
 
             ], 500);
         }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | FIX PATIENT NAME (typo correction) -- same behaviour as the Diagnostic
+    | invoice list: updates the invoice, its appointment and the patient master.
+    |--------------------------------------------------------------------------
+    */
+
+    public function updatePatientName(Request $request, $id, AuditService $auditService)
+    {
+        $request->validate([
+            'patient_name' => 'required|string|max:150',
+        ]);
+
+        $invoice = Invoice::where('invoice_type', 'DOCTOR_VISIT')->findOrFail($id);
+
+        if ($invoice->cancelled === 'Y') {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'A cancelled invoice cannot be edited.',
+            ], 422);
+        }
+
+        $protectedUsers = $this->identityGuard->protectedUsersForMobiles([$invoice->patient_mobile_no]);
+
+        if ($this->identityGuard->isProtected($invoice->patient_mobile_no, $invoice->patient_name, $protectedUsers)) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This patient matches a Member/Admin/Supervisor account (or one of their registered family members) and cannot be renamed here.',
+            ], 422);
+        }
+
+        $newName = trim($request->patient_name);
+
+        if ($newName === '') {
+            return response()->json(['status' => false, 'message' => 'Patient name cannot be empty.'], 422);
+        }
+
+        $oldName = $invoice->patient_name;
+
+        DB::beginTransaction();
+
+        try {
+
+            $invoice->update(['patient_name' => $newName]);
+
+            if ($invoice->appointment_id) {
+                DoctorAppointment::where('id', $invoice->appointment_id)->update(['patient_name' => $newName]);
+            }
+
+            if ($invoice->patient_id) {
+                Patient::where('patient_id', $invoice->patient_id)->update(['patient_name' => $newName]);
+            }
+
+            DB::commit();
+
+        } catch (\Exception $e) {
+
+            DB::rollBack();
+
+            return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+        }
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $invoice,
+            'CUSTOM',
+            "Patient name corrected from \"{$oldName}\" to \"{$newName}\""
+        );
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Patient name updated.',
+            'patient_name' => $newName,
+        ]);
     }
 
     /*
@@ -521,23 +622,10 @@ class DoctorVisitInvoiceController extends Controller
 
             'updated_at' => now()
         ]);
-        $transactionNo =
-            \App\Support\OfflineMode::prefix('TRN/') .
-            now()->format('ymd') .
-            '/' .
-            str_pad(
-                DB::table('daily_transactions')->count() + 1,
-                6,
-                '0',
-                STR_PAD_LEFT
-            );
-
-        DB::table('daily_transactions')->insert([
+        \App\Support\DailyTransactionRecorder::insert([
 
             'transaction_date' => $request->invoice_date
                 ?: now()->toDateString(),
-
-            'transaction_no' => $transactionNo,
 
             'transaction_type' => 'RECEIVED',
 
@@ -758,22 +846,9 @@ class DoctorVisitInvoiceController extends Controller
                 + ($invoice->paid_amount_1 ?? 0)
                 + ($invoice->paid_amount_2 ?? 0);
 
-            $transactionNo =
-                \App\Support\OfflineMode::prefix('TRN/') .
-                now()->format('ymd') .
-                '/' .
-                str_pad(
-                    DB::table('daily_transactions')->count() + 1,
-                    6,
-                    '0',
-                    STR_PAD_LEFT
-                );
-
-            DB::table('daily_transactions')->insert([
+            \App\Support\DailyTransactionRecorder::insert([
 
                 'transaction_date' => now()->format('Y-m-d'),
-
-                'transaction_no' => $transactionNo,
 
                 'transaction_type' => 'REFUND',
 
@@ -835,6 +910,9 @@ class DoctorVisitInvoiceController extends Controller
 
                 'updated_by' => Auth::id()
             ]);
+
+            // its doctor's share will never be paid -- take the unpaid payables out of every report
+            \App\Support\DoctorPayableCancellation::cancelUnpaidForInvoice($invoice->id);
 
             DB::commit();
 

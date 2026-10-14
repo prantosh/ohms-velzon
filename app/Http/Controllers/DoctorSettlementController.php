@@ -843,22 +843,9 @@ private function generateSettlementNo()
             'UPI' => 'UPI',
         ];
 
-        $transactionNo =
-            'TRN/' .
-            now()->format('ymd') .
-            '/' .
-            str_pad(
-                DB::table('daily_transactions')->count() + 1,
-                6,
-                '0',
-                STR_PAD_LEFT
-            );
-
-        DB::table('daily_transactions')->insert([
+        \App\Support\DailyTransactionRecorder::insert([
 
             'transaction_date' => $settlement->settlement_date,
-
-            'transaction_no' => $transactionNo,
 
             'transaction_type' => 'PAYMENT',
 
@@ -1284,10 +1271,14 @@ private function generateSettlementNo()
 
     public function indexByUser()
     {
-        // Same reasoning as DoctorSettlementController::index() -- the
-        // "User" field is locked to the logged-in user only, not a pick of
-        // any staff member.
+        // The "User" field is locked to the logged-in user -- except for an
+        // Admin, who may pick any staff member (see
+        // getOutstandingPayablesByUserDate()).
         $currentUser = Auth::user();
+
+        $users = $currentUser->role === 'Admin'
+            ? \App\Models\User::whereIn('role', ['Admin', 'Supervisor', 'Employee'])->orderBy('name')->get(['id', 'name', 'role'])
+            : null;
 
         $paymentModes = [
 
@@ -1302,6 +1293,7 @@ private function generateSettlementNo()
             'apps-doctor-settlement-by-user',
             compact(
                 'currentUser',
+                'users',
                 'paymentModes'
             )
         );
@@ -1312,6 +1304,26 @@ private function generateSettlementNo()
     | Outstanding Payables (by user + invoice date, grouped by doctor)
     |--------------------------------------------------------------------------
     */
+
+    /**
+     * Whose collections this screen lists: always the logged-in user, except that
+     * an Admin may choose any staff member (user_id must be a real user).
+     */
+    private function effectiveUserId(Request $request): int
+    {
+        if (Auth::user()->role === 'Admin' && $request->filled('user_id')) {
+
+            $id = \App\Models\User::where('id', $request->user_id)
+                ->whereIn('role', ['Admin', 'Supervisor', 'Employee'])
+                ->value('id');
+
+            if ($id) {
+                return (int) $id;
+            }
+        }
+
+        return (int) Auth::id();
+    }
 
     public function getOutstandingPayablesByUserDate(Request $request)
     {
@@ -1360,11 +1372,12 @@ private function generateSettlementNo()
                 // A cancelled invoice has no payable settlement left to make.
                 ->where('invoices.cancelled', '!=', 'Y')
 
-                // Always the logged-in user, never a client-submitted value --
-                // see getOutstandingPayables()'s own comment on this.
+                // The logged-in user -- never a client-submitted value, with
+                // one exception: an Admin may look at any staff member's
+                // collections (the screen's User box is only offered to them).
                 ->whereRaw(
                     'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',
-                    [Auth::id()]
+                    [$this->effectiveUserId($request)]
                 )
 
                 // See getOutstandingPayables()'s own comment on this same

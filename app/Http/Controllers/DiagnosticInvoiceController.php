@@ -22,6 +22,7 @@ use App\Services\AuditService;
 use App\Services\CashInHandService;
 use App\Services\PatientIdentityGuard;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 class DiagnosticInvoiceController extends Controller
 {
     private const MODULE_CODE = 'DIAGNOSTIC_INVOICE';
@@ -295,6 +296,7 @@ class DiagnosticInvoiceController extends Controller
 
                 'member_discount',
                 'discount_member_other_lab',
+                'discount_senior_citizen',
             ]);
 
         $tests = $tests->map(function ($test) {
@@ -313,6 +315,7 @@ class DiagnosticInvoiceController extends Controller
                         'discount_other_lab' => $component->discount_other_lab,
                         'member_discount' => $component->member_discount,
                         'discount_member_other_lab' => $component->discount_member_other_lab,
+                        'discount_senior_citizen' => $component->discount_senior_citizen,
                     ])
                 : [];
 
@@ -947,6 +950,12 @@ class DiagnosticInvoiceController extends Controller
                     'package_parent_item_code_sub' =>
                         $row['package_parent_item_code_sub'] ?: null,
 
+                    // This test's own date (defaults to the invoice's test
+                    // date; editable per test here and later on the report
+                    // screens). A package component takes its package's date.
+                    'test_date' =>
+                        $this->resolveLineTestDate($row, $request->tests, $request->test_date),
+
                     'remarks' => $row['remarks'] ?? null,
 
                     'created_by' => Auth::id(),
@@ -1031,28 +1040,10 @@ class DiagnosticInvoiceController extends Controller
                 $request->paid_amount,
                 'INITIAL'
             );
-            $transactionNo =
-                \App\Support\OfflineMode::prefix('TRN/') .
-                now()->format('ymd') .
-                '/' .
-                str_pad(
-                    DB::table(
-                        'daily_transactions'
-                    )->count() + 1,
-                    6,
-                    '0',
-                    STR_PAD_LEFT
-                );
-
-            DB::table(
-                'daily_transactions'
-            )->insert([
+            \App\Support\DailyTransactionRecorder::insert([
 
                         'transaction_date' =>
                             $request->invoice_date ?: now()->toDateString(),
-
-                        'transaction_no' =>
-                            $transactionNo,
 
                         'transaction_type' =>
                             'RECEIVED',
@@ -1175,6 +1166,53 @@ class DiagnosticInvoiceController extends Controller
         }
     }
 
+
+    /**
+     * The test date to store on one billed line: its own (when a valid date
+     * was sent), else the invoice's test date. A package component row takes
+     * the date of the package line it belongs to.
+     */
+    private function resolveLineTestDate(array $row, array $allRows, $invoiceTestDate): ?string
+    {
+        $valid = function ($value) {
+
+            $text = substr((string) $value, 0, 10);
+
+            return preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $text, $m)
+                && (int) $m[1] > 1000
+                && checkdate((int) $m[2], (int) $m[3], (int) $m[1])
+                ? $text
+                : null;
+        };
+
+        // A package component's own date (set by hand on the form) wins; the
+        // form pre-fills it with the package line's date, so untouched
+        // components still match the package.
+        $own = $valid($row['test_date'] ?? null);
+
+        if ($own) {
+            return $own;
+        }
+
+        $parentSub = $row['package_parent_item_code_sub'] ?? null;
+
+        if ($parentSub) {
+
+            foreach ($allRows as $other) {
+
+                if (empty($other['package_parent_item_code_sub']) && ($other['item_code_sub'] ?? null) === $parentSub) {
+
+                    $parentDate = $valid($other['test_date'] ?? null);
+
+                    if ($parentDate) {
+                        return $parentDate;
+                    }
+                }
+            }
+        }
+
+        return $valid($row['test_date'] ?? null) ?? $valid($invoiceTestDate);
+    }
 
     public function generatePatientId(Request $request)
     {
@@ -1320,6 +1358,8 @@ class DiagnosticInvoiceController extends Controller
 
             $paperSize = $this->invoicePdfPaperSize($tests->count());
 
+            $testDateText = \App\Support\ReportTestDates::applyToInvoiceLines($tests, $invoice);
+
             $pdf =
                 Pdf::loadView(
                     'apps-diagnostic-invoice-pdf',
@@ -1327,6 +1367,7 @@ class DiagnosticInvoiceController extends Controller
                         'invoice' => $invoice,
                         'tests' => $tests,
                         'paperSize' => $paperSize,
+                        'testDateText' => $testDateText,
                     ]
                 );
 
@@ -1756,6 +1797,34 @@ class DiagnosticInvoiceController extends Controller
 
     public function update(Request $request, $id, AuditService $auditService)
     {
+        // invoices is a MyISAM table (no transactions, no row locking --
+        // DB::beginTransaction()/lockForUpdate() are silently no-ops on it),
+        // so two near-simultaneous submissions for the same invoice (a
+        // double-click, or a slow network prompting a second click) could
+        // both read payment_edit_count before either had written back,
+        // both pass the same "== 0" / "== 1" check, and both record a
+        // payment -- duplicating the daily_transactions row and the
+        // cash-in-hand credit even though payment_edit_count only reflects
+        // one increment (both writes set the same value). A cache-backed
+        // lock serializes this instead, independent of the table engine;
+        // a genuine second click just waits briefly and then correctly
+        // sees the first payment's result rather than racing it.
+        $lock = Cache::lock("diagnostic_invoice_update_{$id}", 15);
+
+        try {
+            return $lock->block(10, function () use ($request, $id, $auditService) {
+                return $this->updateDuePayment($request, $id, $auditService);
+            });
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'This invoice is already being updated -- please wait a moment and try again.'
+            ], 409);
+        }
+    }
+
+    private function updateDuePayment(Request $request, $id, AuditService $auditService)
+    {
         DB::beginTransaction();
 
         try {
@@ -2182,24 +2251,10 @@ class DiagnosticInvoiceController extends Controller
             |--------------------------------------------------------------------------
             */
 
-            $transactionNo =
-                \App\Support\OfflineMode::prefix('TRN/') .
-                now()->format('ymd') .
-                '/' .
-                str_pad(
-                    DB::table('daily_transactions')->count() + 1,
-                    6,
-                    '0',
-                    STR_PAD_LEFT
-                );
-
-            DB::table('daily_transactions')->insert([
+            \App\Support\DailyTransactionRecorder::insert([
 
                 'transaction_date' =>
                     now()->toDateString(),
-
-                'transaction_no' =>
-                    $transactionNo,
 
                 'transaction_type' =>
                     'RECEIVED',
@@ -2359,25 +2414,13 @@ class DiagnosticInvoiceController extends Controller
 
             $invoice->save();
 
-            $transactionNo =
-                \App\Support\OfflineMode::prefix('TRN/') .
-                now()->format('ymd') .
-                '/' .
-                str_pad(
-                    DB::table('daily_transactions')->count() + 1,
-                    6,
-                    '0',
-                    STR_PAD_LEFT
-                );
+            // its doctor's share will never be paid -- take the unpaid payables out of every report
+            \App\Support\DoctorPayableCancellation::cancelUnpaidForInvoice($invoice->id);
 
-            DB::table('daily_transactions')
-                ->insert([
+            \App\Support\DailyTransactionRecorder::insert([
 
                     'transaction_date' =>
                         now()->toDateString(),
-
-                    'transaction_no' =>
-                        $transactionNo,
 
                     'transaction_type' =>
                         'REFUND',
@@ -2673,9 +2716,11 @@ class DiagnosticInvoiceController extends Controller
 
         $paperSize = $this->invoicePdfPaperSize($tests->count());
 
+        $testDateText = \App\Support\ReportTestDates::applyToInvoiceLines($tests, $invoice);
+
         $pdf = Pdf::loadView(
             'apps-diagnostic-invoice-pdf',
-            compact('invoice', 'tests', 'paperSize')
+            compact('invoice', 'tests', 'paperSize', 'testDateText')
         );
 
         $this->applyInvoicePdfPaperSize($pdf, $paperSize);

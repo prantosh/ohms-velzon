@@ -400,15 +400,9 @@ class IncomeController extends Controller
         ?string $paymentReference = null
     ): void {
 
-        $transactionNo = \App\Support\OfflineMode::prefix('TRN/') .
-            now()->format('ymd') .
-            '/' .
-            str_pad(DB::table('daily_transactions')->count() + 1, 6, '0', STR_PAD_LEFT);
-
-        DB::table('daily_transactions')->insert([
+        \App\Support\DailyTransactionRecorder::insert([
 
             'transaction_date' => now()->toDateString(),
-            'transaction_no' => $transactionNo,
             'transaction_type' => $type,
 
             'received_amount' => $type === 'RECEIVED' ? $amount : 0,
