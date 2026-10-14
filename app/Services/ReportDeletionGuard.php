@@ -3,77 +3,76 @@
 namespace App\Services;
 
 use App\Models\Invoice;
+use App\Models\ReportCorrectionNotice;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 /**
  * When may an Admin delete a saved/confirmed report on the per-line report
- * screens (USG, Cardiology, Non-Pathology)? Pathology has its own variant in
- * PathologyReportController::destroyFinding() because its combined WhatsApp
- * only goes out once every report is confirmed; these modules send each
- * report on its own as soon as it is confirmed, so the rules are:
- *
- *   - Admin only.
- *   - Not once every report of this screen's items on the invoice is
- *     confirmed (the same "everything is final" rule as Pathology).
- *   - A confirmed report that has already been WhatsApp'd to the patient is
- *     never deleted (the patient holds it), regardless of the above.
- *   - A saved (unconfirmed) report can always go while the first rule holds.
+ * screens (USG, Cardiology, Non-Pathology) or Pathology? Admin only -- that
+ * is the only rule now. A confirmed report may be deleted even after it has
+ * already reached the patient via WhatsApp; lastSentAt() below is used by
+ * each controller's destroyFinding() purely to decide whether (and with
+ * what timestamp) to leave a report_correction_notices trail (see
+ * recordCorrection()), not to block the delete.
  */
 class ReportDeletionGuard
 {
-    /** @var array<string, bool> per invoice+kind cache for one request */
-    private static array $moduleLocked = [];
-
     public static function isAdmin(): bool
     {
         return optional(Auth::user())->role === 'Admin';
     }
 
     /**
-     * @param string  $kind        InvoiceReportItemsService::KIND_* of the screen
-     * @param ?string $confirmedAt the report's confirmed_at (null while only saved)
      * @return ?string reason it can NOT be deleted, or null when it can
      */
-    public static function denyReason(Invoice $invoice, string $kind, string $messageType, $confirmedAt): ?string
+    public static function denyReason(): ?string
     {
         if (!self::isAdmin()) {
             return 'Only an Admin can delete a report.';
         }
 
-        $key = $invoice->id . '|' . $kind;
-
-        if (!isset(self::$moduleLocked[$key])) {
-
-            $items = collect(app(InvoiceReportItemsService::class)->forInvoice($invoice))->where('kind', $kind);
-
-            self::$moduleLocked[$key] = $items->isNotEmpty() && $items->every(fn ($i) => $i['confirmed']);
-        }
-
-        if (self::$moduleLocked[$key]) {
-            return 'Every report on this invoice for these tests is already confirmed, so it is locked. A report can only be deleted until then.';
-        }
-
-        if ($confirmedAt) {
-
-            $sent = DB::table('whatsapp_message_logs')
-                ->where('invoice_no', $invoice->invoice_no)
-                ->where('message_type', $messageType)
-                ->where('status', 'SENT')
-                ->where('created_at', '>=', \Carbon\Carbon::parse($confirmedAt)->subSeconds(5))
-                ->exists();
-
-            if ($sent) {
-                return 'This confirmed report has already been sent to the patient on WhatsApp, so it cannot be deleted.';
-            }
-        }
-
         return null;
     }
 
-    /** Forget the per-request cache (used after a delete changes the answer). */
-    public static function reset(): void
+    /**
+     * When this confirmed report was actually sent to the patient via
+     * WhatsApp (the real send time, for the "previous report sent at X"
+     * footnote), or null if it never was. Auto-send fires within moments of
+     * confirm() in every module, so "created_at >= confirmedAt - 5s"
+     * reliably matches the send that followed THIS confirmation rather
+     * than some unrelated earlier one; the latest matching send is used.
+     */
+    public static function lastSentAt(Invoice $invoice, string $messageType, $confirmedAt): ?\Carbon\Carbon
     {
-        self::$moduleLocked = [];
+        if (!$confirmedAt) {
+            return null;
+        }
+
+        $sentAt = DB::table('whatsapp_message_logs')
+            ->where('invoice_no', $invoice->invoice_no)
+            ->where('message_type', $messageType)
+            ->where('status', 'SENT')
+            ->where('created_at', '>=', \Carbon\Carbon::parse($confirmedAt)->subSeconds(5))
+            ->orderByDesc('created_at')
+            ->value('created_at');
+
+        return $sentAt ? \Carbon\Carbon::parse($sentAt) : null;
+    }
+
+    /**
+     * Leaves a trail, keyed by billed line, so the NEXT report written for
+     * this same test can carry a "please ignore the previous report sent
+     * at X" footnote (consumed once -- see each controller's store()).
+     * One notice per line; deleting a second already-corrected report
+     * before a replacement is ever written just replaces the stored time
+     * rather than stacking two footnotes.
+     */
+    public static function recordCorrection(int $invoiceDetailId, $sentAt): void
+    {
+        ReportCorrectionNotice::updateOrCreate(
+            ['invoice_detail_id' => $invoiceDetailId],
+            ['previous_sent_at' => $sentAt]
+        );
     }
 }

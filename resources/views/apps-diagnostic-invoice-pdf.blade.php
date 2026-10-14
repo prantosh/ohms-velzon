@@ -254,7 +254,7 @@ $isShort = ($paperSize ?? 'STANDARD') === 'SHORT';
     <td>{{ $invoice->referred_doctor }}</td>
 
     <td class="label-blue">Test Date</td>
-    <td>{{ fmtDate($invoice->test_date) }}</td>
+    <td>{{ !empty($testDateText) ? $testDateText : fmtDate($invoice->test_date) }}</td>
 </tr>
 </table>
 
@@ -361,7 +361,14 @@ $sl = 1;
 </tr>
 </table>
 
+@php
+// The LAST payment is already stated in the Receipt Acknowledgement below (amount and
+// who received it), so the table lists only the EARLIER payments.
+$paymentCount = 1 + (($invoice->paid_amount_1 ?? 0) > 0 ? 1 : 0) + (($invoice->paid_amount_2 ?? 0) > 0 ? 1 : 0);
+@endphp
+
 <table class="bordered-table">
+@if($paymentCount > 1)
 <tr>
     <td class="label-blue">
         Date of Payment
@@ -376,10 +383,15 @@ $sl = 1;
     </td>
 
     <td class="label-blue">
+        Received By
+    </td>
+
+    <td class="label-blue">
         Due after Payment
     </td>
 
 </tr>
+@endif
 
 @php
 
@@ -417,8 +429,18 @@ $initialPaymentMode = $initialPaymentTxn->payment_mode ?? $invoice->payment_mode
 $phase1PaymentMode = $phase1PaymentTxn->payment_mode ?? '-';
 $phase2PaymentMode = $phase2PaymentTxn->payment_mode ?? '-';
 
+// Who received each payment: the cashier recorded on that payment's own
+// transaction. The initial payment falls back to whoever created the invoice
+// (older invoices without a transaction row); due payments have no other record.
+$initialReceivedBy = $initialPaymentTxn->operator_name
+    ?? \Illuminate\Support\Facades\DB::table('users')->where('id', $invoice->created_by)->value('name')
+    ?? '-';
+$phase1ReceivedBy = $phase1PaymentTxn->operator_name ?? '-';
+$phase2ReceivedBy = $phase2PaymentTxn->operator_name ?? '-';
+
 @endphp
 
+@if($paymentCount > 1)
 <tr>
 
     <td>
@@ -433,6 +455,10 @@ $phase2PaymentMode = $phase2PaymentTxn->payment_mode ?? '-';
         {{ $initialPaymentMode }}
     </td>
 
+    <td>
+        {{ $initialReceivedBy }}
+    </td>
+
     <td class="text-end">
         {{ number_format(
             $invoice->total_amount
@@ -442,8 +468,9 @@ $phase2PaymentMode = $phase2PaymentTxn->payment_mode ?? '-';
     </td>
 
 </tr>
+@endif
 
-@if($invoice->paid_amount_1 > 0)
+@if($invoice->paid_amount_1 > 0 && $invoice->paid_amount_2 > 0)
 
 <tr>
 
@@ -459,6 +486,10 @@ $phase2PaymentMode = $phase2PaymentTxn->payment_mode ?? '-';
         {{ $phase1PaymentMode }}
     </td>
 
+    <td>
+        {{ $phase1ReceivedBy }}
+    </td>
+
     <td class="text-end">
         {{ number_format(
             $invoice->total_amount
@@ -471,42 +502,24 @@ $phase2PaymentMode = $phase2PaymentTxn->payment_mode ?? '-';
 
 @endif
 
-@if($invoice->paid_amount_2 > 0)
+{{-- the 2nd due payment is always the last payment: shown in the Receipt Acknowledgement below --}}
 
 <tr>
 
-    <td>
-        {{ fmtDateTime($invoice->paid_date_2) }}
-    </td>
-
-    <td class="text-end">
-        {{ number_format($invoice->paid_amount_2,2) }}
-    </td>
-
-    <td>
-        {{ $phase2PaymentMode }}
-    </td>
-
-    <td class="text-end">
-        {{ number_format(
-            $invoice->total_amount
-            - $cumulativeAfterPhase2,
-            2
-        ) }}
-    </td>
-
-</tr>
-
-@endif
-
-<tr>
-
-    <td colspan="4" class="label-blue">
+    <td colspan="5" class="label-blue">
 
         Payment Status :
 
         <span style="color:#000000;">
             {{ $invoice->status }}
+        </span>
+
+        &nbsp;&nbsp;&nbsp;&nbsp;
+
+        <span class="label-blue">Due Amount :</span>
+
+        <span style="color:#000000;">
+            Rs. {{ number_format($invoice->due_amount ?? 0, 2) }}
         </span>
 
     </td>
@@ -529,18 +542,21 @@ $fallbackReceiver = \Illuminate\Support\Facades\DB::table('users')
     ->value('name') ?? '-';
 
 $lastPaymentOperator = optional($initialPaymentTxn)->operator_name ?? $fallbackReceiver;
+$lastPaymentAt = optional($initialPaymentTxn)->created_at ?? $invoice->created_at;
 
 if (!empty($invoice->paid_amount_2) && $invoice->paid_amount_2 > 0) {
 
     $lastPayment = $invoice->paid_amount_2;
     $lastPaymentDate = $invoice->paid_date_2;
     $lastPaymentOperator = optional($phase2PaymentTxn)->operator_name ?? $fallbackReceiver;
+    $lastPaymentAt = $invoice->paid_date_2 ?: (optional($phase2PaymentTxn)->created_at ?? $lastPaymentDate);
 
 } elseif (!empty($invoice->paid_amount_1) && $invoice->paid_amount_1 > 0) {
 
     $lastPayment = $invoice->paid_amount_1;
     $lastPaymentDate = $invoice->paid_date_1;
     $lastPaymentOperator = optional($phase1PaymentTxn)->operator_name ?? $fallbackReceiver;
+    $lastPaymentAt = $invoice->paid_date_1 ?: (optional($phase1PaymentTxn)->created_at ?? $lastPaymentDate);
 }
 
 /*
@@ -585,6 +601,11 @@ $amountInWords = ucwords(
 
                 Received By :
                 <b>{{ $lastPaymentOperator }}</b>
+
+                &nbsp;&nbsp;&nbsp;&nbsp;
+
+                Receipt Date &amp; Time :
+                <b>{{ fmtDateTime($lastPaymentAt) }}</b>
 
         </td>
 

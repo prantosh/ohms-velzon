@@ -595,7 +595,7 @@ class HomeController extends Controller
             ->joinSub($latestLoginIdPerUser, 'latest', 'latest.id', '=', 'login_logs.id')
             ->join('users', 'users.id', '=', 'login_logs.user_id')
             ->whereNull('login_logs.logout_time')
-            ->where('users.role', '!=', 'Admin')
+            ->whereNotIn('users.role', ['Admin', 'Supervisor'])
             ->orderBy('users.name')
             ->get(['users.id', 'users.name', 'users.avatar', 'users.user_image']);
 

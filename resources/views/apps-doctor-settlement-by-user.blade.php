@@ -63,10 +63,16 @@
                         <label class="form-label">User <span class="text-danger">*</span></label>
                         {{-- Locked to the logged-in user -- this screen only
                              ever settles payables against invoices the
-                             CURRENT session collected, never an arbitrary
-                             colleague's. --}}
+                             CURRENT session collected -- except for an Admin,
+                             who can pick any staff member. --}}
                         <select id="user_id-field" class="form-select" required>
-                            <option value="{{ $currentUser->id }}" selected>{{ $currentUser->name }} ({{ $currentUser->role }})</option>
+                            @if(!empty($users))
+                                @foreach($users as $u)
+                                    <option value="{{ $u->id }}" @selected($u->id === $currentUser->id)>{{ $u->name }} ({{ $u->role }})</option>
+                                @endforeach
+                            @else
+                                <option value="{{ $currentUser->id }}" selected>{{ $currentUser->name }} ({{ $currentUser->role }})</option>
+                            @endif
                         </select>
                     </div>
 

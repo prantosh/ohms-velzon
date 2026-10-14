@@ -246,7 +246,7 @@ width="100%">
 
     <th rowspan="2" class="text-center align-middle">Rate<br>(₹)</th>
 
-    <th colspan="4" class="text-center bg-soft-info">
+    <th colspan="5" class="text-center bg-soft-info">
         Discount %
     </th>
 
@@ -316,6 +316,10 @@ width="100%">
 
     <th class="text-center">
         Member +<br>Other Lab
+    </th>
+
+    <th class="text-center">
+        Only Senior<br>Citizen
     </th>
 
 </tr>
@@ -671,6 +675,21 @@ width="100%">
 
                         <label class="form-label">
 
+                            Only Senior Citizen Discount (age 60+)
+
+                        </label>
+
+                        <input type="number"
+                               step="0.01"
+                               id="senior_citizen_discount"
+                               class="form-control numeric">
+
+                    </div>
+
+                    <div class="col-md-4">
+
+                        <label class="form-label">
+
                             Test Group
 
                         </label>
@@ -844,6 +863,11 @@ window.invoiceItemDetailRoutes = {
     excel      : "{{ route('invoice-item-details.excel') }}",
     token      : "{{ csrf_token() }}"
 };
+
+// Creating a NEW package is Admin-only (the server enforces it too) --
+// editing an existing package's components stays open to any authorized
+// staff role, same convention as report template creation.
+window.isAdminUser = {{ (auth()->user() && auth()->user()->role === 'Admin') ? 'true' : 'false' }};
 
 </script>
 

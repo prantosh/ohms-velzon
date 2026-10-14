@@ -303,26 +303,37 @@ class CashLedgerService
         |------------------------------------------------------------------
         */
 
-        $rows = collect($totals)
-            ->map(function ($cols, $itemCode) use ($itemCodeToName) {
+        // Each column is apportioned to whole rupees ACROSS ALL CATEGORIES
+        // together (not per-category independently) -- see
+        // apportionToWholeRupees()'s doc comment for why a mixed-category
+        // invoice makes independent per-category rounding both fractional
+        // and, worse, liable to not sum back to the real whole-rupee total.
+        $cashCollectedByItem = $this->apportionToWholeRupees(array_combine(array_keys($totals), array_column($totals, 'cash_collected')));
+        $nonCashCollectedByItem = $this->apportionToWholeRupees(array_combine(array_keys($totals), array_column($totals, 'non_cash_collected')));
+        $refundByItem = $this->apportionToWholeRupees(array_combine(array_keys($totals), array_column($totals, 'refund')));
+        $doctorPaymentCashSourceByItem = $this->apportionToWholeRupees(array_combine(array_keys($totals), array_column($totals, 'doctor_payment_cash_source')));
+        $doctorPaymentNonCashSourceByItem = $this->apportionToWholeRupees(array_combine(array_keys($totals), array_column($totals, 'doctor_payment_non_cash_source')));
 
-                $cashCollected = round($cols['cash_collected'], 2);
-                $nonCashCollected = round($cols['non_cash_collected'], 2);
-                $refund = round($cols['refund'], 2);
-                $doctorPaymentCashSource = round($cols['doctor_payment_cash_source'], 2);
-                $doctorPaymentNonCashSource = round($cols['doctor_payment_non_cash_source'], 2);
-                $doctorPaymentTotal = round($doctorPaymentCashSource + $doctorPaymentNonCashSource, 2);
+        $rows = collect($totals)
+            ->map(function ($cols, $itemCode) use ($itemCodeToName, $cashCollectedByItem, $nonCashCollectedByItem, $refundByItem, $doctorPaymentCashSourceByItem, $doctorPaymentNonCashSourceByItem) {
+
+                $cashCollected = $cashCollectedByItem[$itemCode];
+                $nonCashCollected = $nonCashCollectedByItem[$itemCode];
+                $refund = $refundByItem[$itemCode];
+                $doctorPaymentCashSource = $doctorPaymentCashSourceByItem[$itemCode];
+                $doctorPaymentNonCashSource = $doctorPaymentNonCashSourceByItem[$itemCode];
+                $doctorPaymentTotal = $doctorPaymentCashSource + $doctorPaymentNonCashSource;
 
                 return [
                     'item_code' => $itemCode,
                     'item_name' => $itemCodeToName[$itemCode] ?? self::UNCATEGORIZED_ITEM,
                     'cash_collected' => $cashCollected,
                     'non_cash_collected' => $nonCashCollected,
-                    'total_collected' => round($cashCollected + $nonCashCollected, 2),
+                    'total_collected' => $cashCollected + $nonCashCollected,
                     'refund' => $refund,
                     'doctor_payment_cash_source' => $doctorPaymentCashSource,
                     'doctor_payment_non_cash_source' => $doctorPaymentNonCashSource,
-                    'amount_to_deposit' => round($cashCollected - $refund - $doctorPaymentTotal, 2),
+                    'amount_to_deposit' => $cashCollected - $refund - $doctorPaymentTotal,
                 ];
             })
             ->sortBy('item_name')
@@ -398,6 +409,52 @@ class CashLedgerService
         }
 
         $totals[$itemCode][$column] += $amount;
+    }
+
+    /**
+     * Largest-remainder apportionment: rounds every value in $amountByKey
+     * to a whole rupee such that they still sum to EXACTLY round(total) --
+     * never off by a rupee the way rounding each value independently can
+     * be. Needed because a mixed-category invoice (e.g. one Cardiology +
+     * X-Ray invoice paid as a single transaction) splits that one
+     * whole-rupee payment across categories by each item's share of the
+     * invoice total, e.g. 1400/1550 and 150/1550 -- ratios that essentially
+     * never divide evenly, so every category's running total ends up
+     * fractional even though every real transaction was a whole number.
+     *
+     * Method: floor() every value, then hand out the shortfall between
+     * that and the true rounded total one rupee at a time to whichever
+     * keys had the largest fractional remainder (standard Hamilton/
+     * largest-remainder apportionment -- the same method used for e.g.
+     * seat allocation).
+     */
+    private function apportionToWholeRupees(array $amountByKey): array
+    {
+        $trueTotal = array_sum($amountByKey);
+        $targetTotal = (int) round($trueTotal);
+
+        $floors = [];
+        $remainders = [];
+
+        foreach ($amountByKey as $key => $value) {
+            // Epsilon guards against e.g. 1.9999999999 (float imprecision
+            // from the division above) flooring to 1 instead of 2.
+            $floors[$key] = (int) floor($value + 1e-9);
+            $remainders[$key] = $value - $floors[$key];
+        }
+
+        $shortfall = $targetTotal - array_sum($floors);
+
+        arsort($remainders);
+
+        $keysByRemainder = array_keys($remainders);
+        $keyCount = count($keysByRemainder);
+
+        for ($i = 0; $i < $shortfall && $keyCount > 0; $i++) {
+            $floors[$keysByRemainder[$i % $keyCount]]++;
+        }
+
+        return $floors;
     }
 
     /**
@@ -680,6 +737,8 @@ class CashLedgerService
         $cashRefunded = round($cashRefunded, 2);
         $cashPaidToDoctors = round($cashPaidToDoctors, 2);
 
+        $doctorPayable = $this->doctorPayableCreatedBy($userId, $fromDate, $toDate);
+
         return [
             'ledger' => $ledger,
             'doctor_payments' => $doctorPaymentDetail,
@@ -689,10 +748,34 @@ class CashLedgerService
                 'cash_collected' => $cashCollected,
                 'non_cash_collected' => round((float) $nonCashCollected, 2),
                 'cash_refunded' => $cashRefunded,
+                'doctor_payable' => $doctorPayable,
                 'cash_paid_to_doctors' => $cashPaidToDoctors,
                 'net_cash_to_deposit' => round($cashCollected - $cashRefunded - $cashPaidToDoctors, 2),
             ],
         ];
+    }
+
+    /**
+     * Doctor payable that fell due on the invoices this user billed in the range --
+     * the same figure as the Reporting Group Summary's "Doctor Payable" column.
+     * Payables of cancelled invoices that were never paid out are left out (the
+     * doctor's share of a cancelled invoice is never paid).
+     */
+    private function doctorPayableCreatedBy($userId, string $fromDate, string $toDate): float
+    {
+        $sum = DB::table('doctor_payables as dp')
+            ->leftJoin('invoices as inv', 'inv.id', '=', 'dp.invoice_id')
+            ->where('dp.payment_status', '!=', 'CANCELLED')
+            ->where(function ($q) {
+                $q->whereNull('inv.cancelled')
+                    ->orWhere('inv.cancelled', '!=', 'Y')
+                    ->orWhere('dp.payment_status', 'PAID');
+            })
+            ->where('dp.created_by', $userId)
+            ->whereBetween(DB::raw('DATE(dp.created_at)'), [$fromDate, $toDate])
+            ->sum('dp.payable_amount');
+
+        return round((float) $sum, 2);
     }
 
     /**

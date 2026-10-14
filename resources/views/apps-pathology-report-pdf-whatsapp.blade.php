@@ -229,20 +229,29 @@ table {
 
 <div class="report-item @if(!$isFirstInGroup) avoid-break @endif">
 
+    {{-- One date printed once when every test in this report shares it; when
+         they differ the title below carries each date in brackets instead. --}}
+    @if(empty($section['date_mixed']))
     <table class="no-border">
         <tr>
             <td width="70%">
                 <span class="label-blue">Test Date :</span>
-                {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
+                {{ $section['date_single'] ?? ($invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-') }}
             </td>
         </tr>
     </table>
+    @endif
 
     <h4 class="study-title">{{ $section['title'] }}</h4>
+    @if(!empty($section['date_note']))
+    <div style="text-align:center; font-size:10px; margin:0 0 6px 0;">Test dates: {{ $section['date_note'] }}</div>
+    @endif
 
     <div class="report-body">
         {!! $section['content'] !!}
     </div>
+
+    @include('partials.report-correction-footnote', ['correctedFromSentAt' => $section['corrected_from_sent_at'] ?? null])
 
 </div>
 

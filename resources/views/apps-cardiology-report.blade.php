@@ -265,6 +265,11 @@
 
         <div class="card-body">
 
+            <div class="mb-3 d-flex align-items-center gap-2">
+                <label class="form-label fw-semibold mb-0">Test Date</label>
+                <input type="date" class="form-control form-control-sm study-test-date" style="width:auto">
+            </div>
+
             <div class="mb-3">
                 <label class="form-label fw-semibold">Load Template</label>
                 <select class="form-select study-template-picker">

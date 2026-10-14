@@ -34,6 +34,11 @@ class Kernel extends ConsoleKernel
         // one place it gets reset, back to 0 for every user at the start of
         // each new day.
         $schedule->command('cash-in-hand:reset')->dailyAt('00:01');
+
+        // Saves each user's reconciliation summary of the month that just ended (see
+        // UserReconciliationService). The dashboard also fills any missing month when it
+        // is opened, so a missed run leaves no gap.
+        $schedule->command('reconciliation:snapshot')->monthlyOn(1, '00:30');
     }
 
     /**

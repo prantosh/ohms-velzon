@@ -27,12 +27,17 @@ class CardiologyReportFinding extends Model
         'inter_ventricular_septum',
         'inter_atrial_septum',
         'pericardium',
+
+        'inferior_vena_cava',
         'others',
         'conclusion',
+
+        'impression',
         'remarks',
 
         'confirmed_by',
         'confirmed_at',
+        'corrected_from_sent_at',
 
         'created_by',
         'updated_by',
@@ -40,5 +45,6 @@ class CardiologyReportFinding extends Model
 
     protected $casts = [
         'confirmed_at' => 'datetime',
+        'corrected_from_sent_at' => 'datetime',
     ];
 }

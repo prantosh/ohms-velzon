@@ -301,6 +301,8 @@ async function searchInvoice(invoiceNo) {
         root.querySelector('.nonpath-item-description').innerText = line.item_description ?? '';
         root.querySelector('.nonpath-item-code-sub').innerText = line.item_code_sub ? `(${line.item_code_sub})` : '';
         root.querySelector('.nonpath-doctor-name').innerText = line.doctor_name ?? '-';
+        root.querySelector('.nonpath-test-date').value = line.test_date ?? '';
+        root.querySelector('.nonpath-report-title').value = line.report_title || (line.item_description ?? '');
 
         wrap.appendChild(frag);
 
@@ -319,6 +321,8 @@ async function searchInvoice(invoiceNo) {
         impressionEditor.setData(toEditorHtml(line.impression ?? ''));
 
         if (line.confirmed_at) {
+            root.querySelector('.nonpath-test-date').disabled = true;
+            root.querySelector('.nonpath-report-title').disabled = true;
             lockNonPathCard(root, line.finding_id);
         } else if (line.item_code_sub) {
             loadNonPathTemplatesForPicker(root.querySelector('.nonpath-template-picker'), line.item_code_sub);
@@ -502,6 +506,8 @@ document.addEventListener('click', async function (e) {
             },
             body: JSON.stringify({
                 invoice_detail_id: root.dataset.invoiceDetailId,
+                test_date: root.querySelector('.nonpath-test-date').value || '',
+                report_title: root.querySelector('.nonpath-report-title').value,
                 clinical_history: editors.clinical_history.getData(),
                 findings: editors.findings.getData(),
                 impression: editors.impression.getData()
@@ -654,7 +660,8 @@ document.addEventListener('click', async function (e) {
     let ask = await Swal.fire({
         icon: 'warning',
         title: 'Delete this Non-Pathology report?',
-        html: `<b>${escapeHtml(what)}</b><br>${isConfirmed ? 'This report is <b>confirmed</b>. ' : ''}It will be removed and the test becomes open again, so a new report can be written.`,
+        html: `<b>${escapeHtml(what)}</b><br>${isConfirmed ? 'This report is <b>confirmed</b>. ' : ''}It will be removed and the test becomes open again, so a new report can be written.`
+            + (isConfirmed ? '<br><br>If this report was already sent to the patient via WhatsApp, the next report written for this test will automatically note that the earlier one should be ignored.' : ''),
         showCancelButton: true,
         confirmButtonColor: '#d63939',
         confirmButtonText: 'Yes, delete it'

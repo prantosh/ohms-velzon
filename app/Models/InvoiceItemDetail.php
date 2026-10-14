@@ -24,6 +24,7 @@ class InvoiceItemDetail extends Model
         'member_discount',
         'discount_other_lab',
         'discount_member_other_lab',
+        'discount_senior_citizen',
 
         'test_group_code',
         'sample_master_id',
@@ -58,6 +59,8 @@ class InvoiceItemDetail extends Model
         'discount_other_lab' => 'decimal:2',
 
         'discount_member_other_lab' => 'decimal:2',
+
+        'discount_senior_citizen' => 'decimal:2',
 
         'report_days' => 'integer'
 

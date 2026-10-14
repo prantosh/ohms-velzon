@@ -207,6 +207,12 @@ function initialiseDataTable() {
             },
 
             {
+                data: 'discount_senior_citizen',
+                name: 'invoice_item_details.discount_senior_citizen',
+                className: 'text-end'
+            },
+
+            {
                 data: 'test_group_name',
                 name: 'test_group_masters.test_group_name'
             },
@@ -304,7 +310,12 @@ function clearForm() {
 
     $('#item_description_sub').val('');
 
-    $('#is_package').prop('checked', false);
+    // Creating a NEW package is Admin-only -- editing an existing one stays
+    // open to any authorized staff role (re-enabled in editRecord() below).
+    $('#is_package').prop('checked', false)
+        .prop('disabled', !window.isAdminUser)
+        .closest('.form-check')
+        .attr('title', window.isAdminUser ? '' : 'Only an Admin can create a new package.');
 
     $('#is_outsourced').prop('checked', false);
 
@@ -325,6 +336,8 @@ function clearForm() {
     $('#other_lab_discount').val('0');
 
     $('#member_other_lab_discount').val('0');
+
+    $('#senior_citizen_discount').val('0');
 
     $('#test_group_code').val('');
 
@@ -452,7 +465,12 @@ function editRecord() {
 
             $('#item_description_sub').val(response.item_description_sub);
 
-            $('#is_package').prop('checked', !!(response.is_package * 1));
+            // Editing an existing item (package or not) is unrestricted --
+            // only creating a brand-new package is Admin-only.
+            $('#is_package').prop('checked', !!(response.is_package * 1))
+                .prop('disabled', false)
+                .closest('.form-check')
+                .attr('title', '');
 
             $('#is_outsourced').prop('checked', !!(response.is_outsourced * 1));
 
@@ -483,6 +501,8 @@ function editRecord() {
             $('#other_lab_discount').val(response.discount_other_lab);
 
             $('#member_other_lab_discount').val(response.discount_member_other_lab);
+
+            $('#senior_citizen_discount').val(response.discount_senior_citizen ?? 0);
 
             $('#test_group_code').val(response.test_group_code);
 
@@ -622,6 +642,8 @@ function saveRecord() {
             other_lab_discount: $('#other_lab_discount').val(),
 
             member_other_lab_discount: $('#member_other_lab_discount').val(),
+
+            senior_citizen_discount: $('#senior_citizen_discount').val(),
 
             test_group_code: $('#test_group_code').val(),
 

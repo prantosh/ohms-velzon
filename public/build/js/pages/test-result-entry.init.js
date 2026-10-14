@@ -345,19 +345,19 @@ function refreshPathologyGroupButtons() {
         confirmBtn.style.display = readyToConfirm ? 'inline-block' : 'none';
     });
 
-    refreshPathologyDeleteButtons(invoiceProgress);
+    refreshPathologyDeleteButtons();
 }
 
-// "Delete" on a saved/confirmed report: Admin only, and only while the
-// invoice's Pathology reports are not ALL confirmed (WhatsApp goes out once
-// they are). The server enforces both; this just keeps the button out of
-// the way. Unsaved cards have nothing to delete yet.
-function refreshPathologyDeleteButtons(invoiceProgress) {
+// "Delete" on a saved/confirmed report: Admin only, any time -- even after
+// the combined invoice WhatsApp has already gone out (the server leaves a
+// correction-notice trail in that case so the replacement report carries a
+// "please ignore the previous report" footnote). Unsaved cards have
+// nothing to delete yet.
+function refreshPathologyDeleteButtons() {
 
     if (!pathologyState) return;
 
-    let allowed = !!pathologyState.can_delete_reports
-        && !(invoiceProgress || pathologyInvoiceProgress()).complete;
+    let allowed = !!pathologyState.can_delete_reports;
 
     document.querySelectorAll('.pathology-finding-card').forEach(card => {
 
@@ -376,11 +376,13 @@ async function deletePathologyFinding(deleteBtn) {
 
     let isConfirmed = card.querySelector('.pathology-confirmed-badge').style.display !== 'none';
     let what = card.querySelector('.pathology-item-description').innerText;
+    let alreadySent = isConfirmed && !!(pathologyState.pathology_whatsapp || {}).sent;
 
     let ask = await Swal.fire({
         icon: 'warning',
         title: 'Delete this report?',
-        html: `<b>${escapeHtml(what)}</b><br>${isConfirmed ? 'This report is <b>confirmed</b>. ' : ''}It will be removed and its tests become open again, so a new report can be written.`,
+        html: `<b>${escapeHtml(what)}</b><br>${isConfirmed ? 'This report is <b>confirmed</b>. ' : ''}It will be removed and its tests become open again, so a new report can be written.`
+            + (alreadySent ? '<br><br>This invoice\'s report has already been sent to the patient via WhatsApp. The next report written for this test will automatically note that the earlier one should be ignored.' : ''),
         showCancelButton: true,
         confirmButtonColor: '#d63939',
         confirmButtonText: 'Yes, delete it'
@@ -562,42 +564,84 @@ function refreshPathologyStartPicker(pane, g) {
             return item ? item.item_description : code;
         }).join(', ');
 
+        // a template that covers a whole open package: it reports all its items in one go
+        let coversPackage = remainingItemCodes.some(code =>
+            (g.unclaimed_items.find(i => i.item_code_sub === code) || {}).components
+        );
+
         let option = document.createElement('option');
         option.value = 'template:' + t.id;
-        option.textContent = `Template: ${t.title} (${itemNames})`;
+        option.textContent = coversPackage
+            ? `All items in one report -- Template: ${t.title} (${itemNames})`
+            : `Template: ${t.title} (${itemNames})`;
         picker.appendChild(option);
 
-        // Offer a derived single-item choice only when no dedicated
-        // single-item template already exists for that test. This keeps
-        // multi-test panels usable across separate dates without showing
-        // duplicate choices beside their dedicated templates.
-        remainingItemCodes.forEach(code => {
-            let item = g.unclaimed_items.find(i => i.item_code_sub === code);
-            if (!item) return;
-
-            let hasDedicatedTemplate = g.available_templates.some(other =>
-                String(other.id) !== String(t.id)
-                    && other.item_code_subs.filter(otherCode =>
-                        g.unclaimed_items.some(openItem => openItem.item_code_sub === otherCode)
-                    ).length === 1
-                    && other.item_code_subs.includes(code)
-            );
-
-            if (hasDedicatedTemplate) return;
-
-            let singleItemOption = document.createElement('option');
-            singleItemOption.value = `template-item:${t.id}:${code}`;
-            singleItemOption.textContent = `Template: ${t.title} — Single test: ${item.item_description}`;
-            picker.appendChild(singleItemOption);
-        });
+        // (There is deliberately no "single test from a multi-test template" choice:
+        // it would print the other tests of the template too. A single test is
+        // reported from that test's OWN template, or from a blank report.)
     });
 
     g.unclaimed_items.forEach(item => {
 
         let option = document.createElement('option');
         option.value = 'blank:' + item.invoice_detail_id;
-        option.textContent = `Blank Report: ${item.item_description}`;
+        option.textContent = (item.components && item.components.length > 1)
+            ? `All items in one report -- Blank Report: ${item.item_description}`
+            : `Blank Report: ${item.item_description}`;
         picker.appendChild(option);
+    });
+
+    // A package still open as one line can also be reported in PARTS (e.g. FBS
+    // today, PPBS tomorrow): offer its components / the templates that cover
+    // only some of them. The rest stay open and are reported later, each part
+    // printing as its own report; "Print All Reports" combines them at the end.
+    g.unclaimed_items.forEach(item => {
+
+        if (!item.components || item.components.length < 2) return;
+
+        let compCodes = item.components.map(c => c.item_code_sub);
+
+        // ALL items in one report built from each item's OWN template -- offered
+        // when the package has no single template of its own and every item has
+        // exactly one template (so nothing has to be guessed).
+        let ownTemplates = item.components.map(c =>
+            (g.split_templates || []).filter(t => t.item_code_subs.length === 1 && t.item_code_subs[0] === c.item_code_sub)
+        );
+
+        let packageTemplateExists = g.available_templates.some(t => t.item_code_subs.includes(item.item_code_sub));
+
+        if (!packageTemplateExists && ownTemplates.every(list => list.length === 1)) {
+
+            let option = document.createElement('option');
+            option.value = `splitall:${item.invoice_detail_id}`;
+            option.textContent = `All items in one report -- Templates: ${ownTemplates.map(list => list[0].title).join(' + ')}`;
+            picker.appendChild(option);
+        }
+
+        (g.split_templates || []).forEach(t => {
+
+            if (!t.item_code_subs.length || t.item_code_subs.length >= compCodes.length) return;
+            if (!t.item_code_subs.every(code => compCodes.includes(code))) return;
+
+            let names = t.item_code_subs.map(code => {
+                let c = item.components.find(x => x.item_code_sub === code);
+                return c ? c.item_description : code;
+            }).join(', ');
+
+            let option = document.createElement('option');
+            option.value = `splittpl:${t.id}:${item.invoice_detail_id}`;
+            option.textContent = (t.item_code_subs.length === 1 ? 'Single item' : 'Some items')
+                + ` -- Template: ${t.title} (${names}) -- rest of ${item.item_description} stays open`;
+            picker.appendChild(option);
+        });
+
+        item.components.forEach(c => {
+
+            let option = document.createElement('option');
+            option.value = `splitblank:${c.invoice_detail_id}:${item.invoice_detail_id}`;
+            option.textContent = `Single item -- Blank Report: ${c.item_description} -- rest of ${item.item_description} stays open`;
+            picker.appendChild(option);
+        });
     });
 }
 
@@ -618,6 +662,24 @@ function renderPathologyFindingCard(container, finding, invoiceNo) {
     let itemDesc = (finding.items || []).map(i => i.item_description).join(', ');
 
     cardEl.querySelector('.pathology-item-description').innerText = itemDesc;
+
+    // main heading of the report: the saved heading, else the test description(s)
+    cardEl.querySelector('.pathology-report-title').value = finding.report_title || itemDesc;
+
+    // A test date for each test on this report (starts as the date entered at
+    // invoice creation; editable until the report is confirmed).
+    let datesWrap = cardEl.querySelector('.pathology-item-dates');
+
+    (finding.items || []).flatMap(item => item.date_lines && item.date_lines.length ? item.date_lines : [item]).forEach(item => {
+
+        let label = document.createElement('label');
+        label.className = 'd-flex align-items-center gap-2 small mb-0';
+        label.innerHTML = `<span class="text-muted">${escapeHtml(item.item_description)} - test date</span>`
+            + `<input type="date" class="form-control form-control-sm pathology-item-date" style="width:auto"`
+            + ` data-detail-id="${item.invoice_detail_id}" value="${escapeHtml(item.test_date || '')}">`;
+
+        datesWrap.appendChild(label);
+    });
     cardEl.querySelector('.pathology-template-title').innerText =
         finding.template_title ? `(Template: ${finding.template_title})` : '';
 
@@ -650,6 +712,8 @@ function lockPathologyCard(cardEl, findingId) {
     if (editor) editor.enableReadOnlyMode('pathology-locked');
 
     cardEl.querySelector('.pathology-confirmed-badge').style.display = 'inline-block';
+    cardEl.querySelectorAll('.pathology-item-date').forEach(input => { input.disabled = true; });
+    cardEl.querySelector('.pathology-report-title').disabled = true;
     cardEl.querySelector('.pathology-save-btn').style.display = 'none';
     cardEl.querySelector('.pathology-confirm-btn').style.display = 'none';
 
@@ -735,6 +799,88 @@ document.addEventListener('change', async function (e) {
         }, invoiceNo);
 
         g.unclaimed_items = g.unclaimed_items.filter(i => i !== item);
+    } else if (kind === 'splitall') {
+
+        // ALL items of the package in ONE report, each item's own template one after the other
+        let pkg = g.unclaimed_items.find(i => String(i.invoice_detail_id) === idValue);
+
+        if (!pkg || !pkg.components) {
+            picker.value = '';
+            return;
+        }
+
+        let parts = pkg.components.map(c => {
+            let own = (g.split_templates || []).filter(t => t.item_code_subs.length === 1 && t.item_code_subs[0] === c.item_code_sub);
+            return own.length === 1 ? own[0].content : null;
+        });
+
+        if (parts.some(p => p === null)) {
+            picker.value = '';
+            return;
+        }
+
+        cardReady = renderPathologyFindingCard(findingsWrap, {
+            id: null,
+            content: parts.join('<p>&nbsp;</p>'),
+            template_id: null,
+            template_title: null,
+            confirmed_at: null,
+            items: [Object.assign({}, pkg, { date_lines: pkg.components })]
+        }, invoiceNo);
+
+        g.unclaimed_items = g.unclaimed_items.filter(i => i !== pkg);
+
+    } else if (kind === 'splittpl' || kind === 'splitblank') {
+
+        // report PART of a package: only the chosen components are claimed
+        let pkg = g.unclaimed_items.find(i => String(i.invoice_detail_id) === itemCodeSub);
+        let tpl = kind === 'splittpl' ? (g.split_templates || []).find(t => String(t.id) === idValue) : null;
+
+        if (!pkg || !pkg.components || (kind === 'splittpl' && !tpl)) {
+            picker.value = '';
+            return;
+        }
+
+        let chosen = kind === 'splittpl'
+            ? pkg.components.filter(c => tpl.item_code_subs.includes(c.item_code_sub))
+            : pkg.components.filter(c => String(c.invoice_detail_id) === idValue);
+
+        if (!chosen.length) {
+            picker.value = '';
+            return;
+        }
+
+        cardReady = renderPathologyFindingCard(findingsWrap, {
+            id: null,
+            content: tpl ? tpl.content : '',
+            template_id: tpl ? tpl.id : null,
+            template_title: tpl ? tpl.title : null,
+            confirmed_at: null,
+            items: chosen
+        }, invoiceNo);
+
+        // the package line is no longer open as one; its other components become
+        // ordinary open lines (what the server works out after the first save)
+        let chosenIds = chosen.map(c => c.invoice_detail_id);
+
+        g.unclaimed_items = g.unclaimed_items.filter(i => i !== pkg);
+
+        pkg.components
+            .filter(c => !chosenIds.includes(c.invoice_detail_id))
+            .forEach(c => g.unclaimed_items.push({
+                invoice_detail_id: c.invoice_detail_id,
+                item_code_sub: c.item_code_sub,
+                item_description: c.item_description,
+                test_date: c.test_date,
+                components: null
+            }));
+
+        // templates for the components that are left
+        (g.split_templates || []).forEach(t => {
+            if (!g.available_templates.some(a => String(a.id) === String(t.id))) {
+                g.available_templates.push(t);
+            }
+        });
     }
 
     g.available_templates = g.available_templates.filter(t =>
@@ -765,7 +911,15 @@ async function savePathologyCard(card) {
     let editor = pathologyEditors.get(card);
     let content = editor ? editor.getData() : '';
 
-    let payload = { content: content };
+    let payload = { content: content, report_title: card.querySelector('.pathology-report-title').value };
+
+    // per-test dates: { invoice_detail_id: 'YYYY-MM-DD' } ('' clears a test's own
+    // date so it follows the invoice's again)
+    payload.item_dates = {};
+
+    card.querySelectorAll('.pathology-item-date').forEach(input => {
+        payload.item_dates[input.dataset.detailId] = input.value || '';
+    });
 
     if (card.dataset.findingId) {
 

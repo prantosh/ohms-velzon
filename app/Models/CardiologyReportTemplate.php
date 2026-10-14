@@ -24,8 +24,12 @@ class CardiologyReportTemplate extends Model
         'inter_ventricular_septum',
         'inter_atrial_septum',
         'pericardium',
+
+        'inferior_vena_cava',
         'others',
         'conclusion',
+
+        'impression',
         'remarks',
 
         'status',

@@ -246,6 +246,7 @@ class NonPathologyReportController extends Controller
                 'f.clinical_history',
                 'f.findings',
                 'f.impression',
+                'f.report_title',
                 'f.confirmed_at',
             ]);
 
@@ -278,6 +279,8 @@ class NonPathologyReportController extends Controller
             $request->all(),
             [
                 'invoice_detail_id' => 'required|integer',
+                'test_date' => 'nullable|date_format:Y-m-d',
+                'report_title' => 'nullable|string|max:255',
                 'clinical_history' => 'nullable|max:20000',
                 'findings' => 'nullable|max:20000',
                 'impression' => 'nullable|max:20000',
@@ -333,6 +336,8 @@ class NonPathologyReportController extends Controller
                 'item_code' => $line->item_code,
                 'item_code_sub' => $line->item_code_sub,
                 'item_description' => $line->item_description,
+                // the heading typed on the card (null = the default, the test description)
+                ...($request->has('report_title') ? ['report_title' => \App\Support\ReportTitle::normalise($request->report_title, (string) $line->item_description)] : []),
                 'clinical_history' => HtmlSanitizerService::sanitizeClinicalText($request->clinical_history),
                 'findings' => HtmlSanitizerService::sanitizeClinicalText($request->findings),
                 'impression' => HtmlSanitizerService::sanitizeClinicalText($request->impression),
@@ -340,6 +345,28 @@ class NonPathologyReportController extends Controller
                 'updated_by' => Auth::id(),
             ]
         );
+
+        // First save of a brand-new report for this line -- if its
+        // predecessor was deleted after already being sent to the patient,
+        // this is the report that replaces it, so it carries the "please
+        // ignore the previous report" footnote from here on (consumed once).
+        if (!$existing) {
+
+            $notice = \App\Models\ReportCorrectionNotice::where('invoice_detail_id', $line->id)->first();
+
+            if ($notice) {
+                $finding->update(['corrected_from_sent_at' => $notice->previous_sent_at]);
+                $notice->delete();
+            }
+        }
+
+        // The test date edited on the report card (defaults to the date entered at
+        // invoice creation); '' clears it so the test follows the invoice's again.
+        if ($request->has('test_date')) {
+            DB::table('invoice_details')
+                ->where('id', $line->id)
+                ->update(['test_date' => $request->test_date ?: null]);
+        }
 
         $auditService->logAction(
             self::MODULE_CODE,
@@ -424,11 +451,12 @@ class NonPathologyReportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | DELETE ONE REPORT -- Admin only. A saved report can go any time; a
-    | confirmed one only if it hasn't been WhatsApp'd to the patient and the
-    | invoice's reports for these tests aren't all confirmed yet (see
-    | ReportDeletionGuard). The billed line becomes open again for a fresh
-    | report.
+    | DELETE ONE REPORT -- Admin only, saved or confirmed, any time -- even
+    | after it has already been WhatsApp'd to the patient. When it has, a
+    | report_correction_notices row is left behind so the next report
+    | written for this same test carries a "please ignore the previous
+    | report" footnote (see ReportDeletionGuard::recordCorrection() and
+    | store() below). The billed line becomes open again for a fresh report.
     |--------------------------------------------------------------------------
     */
 
@@ -436,29 +464,26 @@ class NonPathologyReportController extends Controller
     {
         $finding = NonPathologyReportFinding::findOrFail($id);
 
-        $invoice = Invoice::where('invoice_no', $finding->invoice_no)->firstOrFail();
-
-        $reason = ReportDeletionGuard::denyReason(
-            $invoice,
-            InvoiceReportItemsService::KIND_NON_PATHOLOGY,
-            'NON_PATHOLOGY_REPORT',
-            $finding->confirmed_at
-        );
+        $reason = ReportDeletionGuard::denyReason();
 
         if ($reason !== null) {
 
             return response()->json([
                 'status' => false,
                 'message' => $reason
-            ], optional(Auth::user())->role === 'Admin' ? 422 : 403);
+            ], 403);
         }
+
+        $invoice = Invoice::where('invoice_no', $finding->invoice_no)->firstOrFail();
 
         $oldData = $finding->only($finding->getFillable());
         $wasConfirmed = (bool) $finding->confirmed_at;
 
-        $finding->delete();
+        if ($wasConfirmed && ($sentAt = ReportDeletionGuard::lastSentAt($invoice, 'NON_PATHOLOGY_REPORT', $finding->confirmed_at))) {
+            ReportDeletionGuard::recordCorrection($finding->invoice_detail_id, $sentAt);
+        }
 
-        ReportDeletionGuard::reset();
+        $finding->delete();
 
         $auditService->logDelete(
             self::MODULE_CODE,
@@ -479,15 +504,13 @@ class NonPathologyReportController extends Controller
      */
     private function withDeleteFlags(Invoice $invoice, $lines)
     {
-        return $lines->map(function ($line) use ($invoice) {
+        $testDates = \App\Support\ReportTestDates::effectiveDates($lines->pluck('invoice_detail_id')->all());
 
-            $line->can_delete = !empty($line->finding_id)
-                && ReportDeletionGuard::denyReason(
-                    $invoice,
-                    InvoiceReportItemsService::KIND_NON_PATHOLOGY,
-                    'NON_PATHOLOGY_REPORT',
-                    $line->confirmed_at
-                ) === null;
+        return $lines->map(function ($line) use ($testDates) {
+
+            $line->test_date = $testDates[$line->invoice_detail_id] ?? null;
+
+            $line->can_delete = !empty($line->finding_id) && ReportDeletionGuard::denyReason() === null;
 
             return $line;
         });

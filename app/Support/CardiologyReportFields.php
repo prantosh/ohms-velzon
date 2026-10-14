@@ -31,8 +31,11 @@ class CardiologyReportFields
         'inter_ventricular_septum' => '8. Inter Ventricular Septum',
         'inter_atrial_septum' => '9. Interatrial Septum',
         'pericardium' => '10. Pericardium',
-        'others' => '11. Others',
+        'inferior_vena_cava' => '11. Inferior Vena Cava',
+        'others' => '12. Others',
         'conclusion' => 'Conclusion',
+        // Un-numbered closing statement, printed just above Remarks.
+        'impression' => 'IMPRESSION',
         'remarks' => 'Remarks',
     ];
 

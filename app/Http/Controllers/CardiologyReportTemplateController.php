@@ -107,11 +107,6 @@ class CardiologyReportTemplateController extends Controller
 
     public function store(Request $request, AuditService $auditService)
     {
-        // Creating a template is Admin-only (editing/deleting is unchanged).
-        if ($denied = $this->denyUnlessAdmin('Only an Admin can create templates.')) {
-            return $denied;
-        }
-
         $request->validate($this->validationRules());
 
         DB::beginTransaction();

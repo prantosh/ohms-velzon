@@ -150,20 +150,40 @@ table {
     </tr>
 </table>
 
+@php
+    // From the controller: one date printed once when every test in this
+    // report shares it; when the dates differ there is no single date, and the
+    // title carries each date in brackets beside its test name instead.
+    $dateInfo = $dateInfo ?? [
+        'single' => $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : null,
+        'title' => $itemDescriptions->implode(', '),
+        'mixed' => false,
+    ];
+@endphp
+
+@if(!$dateInfo['mixed'])
 <table class="no-border">
     <tr>
         <td width="70%">
             <span class="label-blue">Test Date :</span>
-            {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
+            {{ $dateInfo['single'] ?? '-' }}
         </td>
     </tr>
 </table>
+@endif
 
-<h4 class="study-title">{{ $itemDescriptions->implode(', ') }}</h4>
+@php $customTitle = trim((string) ($finding->report_title ?? '')); @endphp
+
+<h4 class="study-title">{{ $customTitle !== '' ? $customTitle : $dateInfo['title'] }}</h4>
+@if($customTitle !== '' && $dateInfo['mixed'])
+<div style="text-align:center; font-size:10px; margin:0 0 6px 0;">Test dates: {{ $dateInfo['title'] }}</div>
+@endif
 
 <div class="report-body">
     {!! $finding->content !!}
 </div>
+
+@include('partials.report-correction-footnote', ['correctedFromSentAt' => $finding->corrected_from_sent_at ?? null])
 
 </body>
 

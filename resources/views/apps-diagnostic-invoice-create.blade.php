@@ -272,9 +272,17 @@ Create Diagnostic Invoice
 
                         <div class="col-md-4">
 
-                            <label class="form-label">
-                                Test Date
-                            </label>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label mb-0">
+                                    Test Date
+                                </label>
+                                <span>
+                                    <small id="itemDatesHint" class="text-warning me-2"></small>
+                                    <button type="button" id="itemDatesBtn" class="btn btn-sm btn-soft-primary">
+                                        <i class="ri-calendar-event-line align-bottom me-1"></i> Item-wise Dates
+                                    </button>
+                                </span>
+                            </div>
 
                             <input
                                 type="text"
@@ -351,15 +359,15 @@ Create Diagnostic Invoice
                                         Category
                                     </th>
 
-                                    <th width="24%">
+                                    <th width="25%">
                                         Test
                                     </th>
 
-                                    <th width="8%">
+                                    <th width="7%">
                                         Rate
                                     </th>
 
-                                    <th width="8%">
+                                    <th width="7%">
                                         Std Disc %
                                     </th>
 
@@ -367,15 +375,15 @@ Create Diagnostic Invoice
                                         Payable Amt.
                                     </th>
 
-                                    <th width="12%">
+                                    <th width="11%">
                                         Doctor / Staff
                                     </th>
 
-                                    <th width="12%">
+                                    <th width="10%">
                                         Doctor / Staff Amt.
                                     </th>
 
-                                    <th width="12%">
+                                    <th width="15%">
                                         Action
                                     </th>
 
@@ -697,6 +705,35 @@ Select
 `;
 
 </script>
+<!-- Item-wise test dates -->
+<div class="modal fade" id="itemDatesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Item-wise Test Dates</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">Every test uses the invoice Test Date unless changed here. Change a date only for a test done on a different day.</p>
+                <div id="itemDatesApplyAll" class="d-flex align-items-center gap-2 mb-3">
+                    <span class="small fw-semibold">Set all to</span>
+                    <input type="text" id="itemDatesApplyAllInput" class="form-control form-control-sm" style="width:150px" autocomplete="off">
+                    <button type="button" id="itemDatesApplyAllBtn" class="btn btn-sm btn-light">Apply</button>
+                </div>
+                <p id="itemDatesEmpty" class="text-muted mb-0" style="display:none">No tests selected yet.</p>
+                <table class="table table-sm align-middle mb-0" id="itemDatesTable">
+                    <thead class="table-light"><tr><th>Test</th><th>Test Date</th></tr></thead>
+                    <tbody id="itemDatesBody"></tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="itemDatesSaveBtn">Save Dates</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 

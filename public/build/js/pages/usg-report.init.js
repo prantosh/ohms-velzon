@@ -338,6 +338,8 @@ async function searchInvoice(invoiceNo) {
         root.querySelector('.study-item-description').innerText = line.item_description ?? '';
         root.querySelector('.study-item-code-sub').innerText = line.item_code_sub ? `(${line.item_code_sub})` : '';
         root.querySelector('.study-doctor-name').innerText = line.doctor_name ?? '-';
+        root.querySelector('.study-test-date').value = line.test_date ?? '';
+        root.querySelector('.study-report-title').value = line.report_title || ('USG ' + (line.item_description ?? ''));
 
         wrap.appendChild(card);
 
@@ -350,6 +352,8 @@ async function searchInvoice(invoiceNo) {
 
         if (line.confirmed_at) {
 
+            root.querySelector('.study-test-date').disabled = true;
+            root.querySelector('.study-report-title').disabled = true;
             lockStudyCard(root, line.finding_id);
 
         } else if (line.item_code_sub) {
@@ -592,6 +596,8 @@ document.addEventListener('click', async function (e) {
                 },
                 body: JSON.stringify({
                     invoice_detail_id: root.dataset.invoiceDetailId,
+                    test_date: root.querySelector('.study-test-date').value || '',
+                    report_title: root.querySelector('.study-report-title').value,
                     clinical_history: root.usgEditors.clinical_history.getData(),
                     findings: root.usgEditors.findings.getData(),
                     impression: root.usgEditors.impression.getData()
@@ -653,6 +659,8 @@ document.addEventListener('click', async function (e) {
                 },
                 body: JSON.stringify({
                     invoice_detail_id: root.dataset.invoiceDetailId,
+                    test_date: root.querySelector('.study-test-date').value || '',
+                    report_title: root.querySelector('.study-report-title').value,
                     clinical_history: root.usgEditors.clinical_history.getData(),
                     findings: root.usgEditors.findings.getData(),
                     impression: root.usgEditors.impression.getData()
@@ -848,7 +856,8 @@ document.addEventListener('click', async function (e) {
     let ask = await Swal.fire({
         icon: 'warning',
         title: 'Delete this USG report?',
-        html: `<b>${escapeHtml(what)}</b><br>${isConfirmed ? 'This report is <b>confirmed</b>. ' : ''}It will be removed and the test becomes open again, so a new report can be written.`,
+        html: `<b>${escapeHtml(what)}</b><br>${isConfirmed ? 'This report is <b>confirmed</b>. ' : ''}It will be removed and the test becomes open again, so a new report can be written.`
+            + (isConfirmed ? '<br><br>If this report was already sent to the patient via WhatsApp, the next report written for this test will automatically note that the earlier one should be ignored.' : ''),
         showCancelButton: true,
         confirmButtonColor: '#d63939',
         confirmButtonText: 'Yes, delete it'

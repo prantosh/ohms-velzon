@@ -161,6 +161,15 @@ function buildInvoiceRowHtml(raw) {
                         <i class="ri-whatsapp-line"></i>
                     </button>
 
+                    ${raw.can_edit_patient_name ? `
+                    <button class="btn btn-sm btn-dark editPatientNameBtn"
+                        data-id="${raw.invoice_id}"
+                        data-current-name="${String(raw.patient_name ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"
+                        title="Fix Patient Name (typo correction)">
+                        <i class="ri-user-settings-line"></i>
+                    </button>
+                    ` : ''}
+
                     <button class="btn btn-sm btn-danger deleteBtn"
 
                         data-id="${raw.invoice_id}">
@@ -551,6 +560,65 @@ $(document).on(
 | EDIT
 |--------------------------------------------------------------------------
 */
+
+$(document).on(
+    "click",
+    ".editPatientNameBtn",
+    function () {
+
+        let id = $(this).data("id");
+        let currentName = $(this).attr("data-current-name");
+
+        Swal.fire({
+            icon: "warning",
+            title: "Fix Patient Name",
+            html: "Correcting a typo made during invoice creation. This permanently updates the patient's master record.",
+            input: "text",
+            inputValue: currentName,
+            inputLabel: "Corrected Patient Name",
+            showCancelButton: true,
+            confirmButtonText: "Update",
+            inputValidator: function (value) {
+                if (!value || !value.trim()) return "Patient name cannot be empty.";
+            }
+        }).then(function (result) {
+
+            if (!result.isConfirmed || !result.value) return;
+
+            $.ajax({
+
+                url: "/doctor-visit-invoice/update-patient-name/" + id,
+
+                type: "POST",
+
+                data: {
+                    patient_name: result.value.trim(),
+                    _token: $('meta[name="csrf-token"]').attr("content")
+                },
+
+                success: function (response) {
+
+                    if (!response.status) {
+                        Swal.fire({ icon: "error", title: "Error", text: response.message || "Unable to update patient name." });
+                        return;
+                    }
+
+                    Swal.fire({ icon: "success", title: "Updated", text: "Patient name has been updated.", timer: 1500, showConfirmButton: false });
+
+                    loadInvoices();
+                },
+
+                error: function (xhr) {
+                    Swal.fire({
+                        icon: "error",
+                        title: "Error",
+                        text: xhr.responseJSON?.message || "Unable to update patient name."
+                    });
+                }
+            });
+        });
+    }
+);
 
 $(document).on(
     "click",

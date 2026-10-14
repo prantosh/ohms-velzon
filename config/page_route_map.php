@@ -78,6 +78,7 @@ return [
     'expenditure-category.index' => 'expenditure-category',
     'expenditure-agency.index' => 'expenditure-agency',
     'expenditure.index' => 'expenditure',
+    'expenditure-report.index' => 'expenditure-report',
     'income-category.index' => 'income-category',
     'income.index' => 'income',
     'invoice-cancellation.index' => 'invoice-cancellation',
@@ -121,6 +122,7 @@ return [
     'item-wise-report.index' => 'item-wise-report',
     'monthly-reconciliation-report.index' => 'monthly-reconciliation-report',
     'reporting-group-summary-report.index' => 'reporting-group-summary-report',
+    'user-reconciliation.index' => 'user-reconciliation',
 
     'users.index' => 'users',
     'role-page-access.index' => 'role-page-access',

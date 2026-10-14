@@ -44,7 +44,7 @@ async function loadDetail() {
     document.getElementById('summary-cash_collected').innerText = '₹' + fmtMoney(s.cash_collected);
     document.getElementById('summary-non_cash_collected').innerText = '₹' + fmtMoney(s.non_cash_collected);
     document.getElementById('summary-cash_refunded').innerText = '₹' + fmtMoney(s.cash_refunded);
-    document.getElementById('summary-cash_paid_to_doctors').innerText = '₹' + fmtMoney(s.cash_paid_to_doctors);
+    document.getElementById('summary-cash_paid_to_doctors').innerText = '₹' + fmtMoney(s.doctor_payable) + ' / ₹' + fmtMoney(s.cash_paid_to_doctors);
     document.getElementById('summary-net_cash_to_deposit').innerText = '₹' + fmtMoney(s.net_cash_to_deposit);
 
     document.getElementById('summaryRow').style.display = 'flex';

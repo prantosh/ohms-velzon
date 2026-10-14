@@ -168,6 +168,22 @@
 
 @section('script')
 
+<!-- Payable vs Paid to Doctor: day-wise explanation of a mismatch -->
+<div class="modal fade" id="mismatchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Doctor Payable vs Paid to Doctor &mdash; <span id="mismatchModalTitle"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="mismatchModalBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 
 <script src="{{ URL::asset('build/libs/flatpickr/flatpickr.min.js') }}"></script>

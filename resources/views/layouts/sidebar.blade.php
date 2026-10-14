@@ -605,6 +605,16 @@
                                         <a href="{{ route('monthly-reconciliation-report.index') }}" class="nav-link">@lang('translation.monthlyreconciliationreport')</a>
                                         </li>
                             @endif
+                            @if(is_null($allowedPages) || in_array('expenditure-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('expenditure-report.index') }}" class="nav-link">@lang('translation.expenditurereport')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('user-reconciliation', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('user-reconciliation.index') }}" class="nav-link">@lang('translation.userreconciliationdashboard')</a>
+                                        </li>
+                            @endif
                             @if(is_null($allowedPages) || in_array('reporting-group-summary-report', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('reporting-group-summary-report.index') }}" class="nav-link">@lang('translation.reportinggroupsummaryreport')</a>

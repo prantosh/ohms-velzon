@@ -489,7 +489,8 @@ function recalculateStandardDiscountsForAllRows() {
             parseFloat(testData.discount_percent) || 0,
             parseFloat(testData.discount_other_lab) || 0,
             parseFloat(testData.member_discount) || 0,
-            parseFloat(testData.discount_member_other_lab) || 0
+            parseFloat(testData.discount_member_other_lab) || 0,
+            parseFloat(testData.discount_senior_citizen) || 0
         );
 
         mainRow.find('.standardDiscount').trigger('change');
@@ -531,6 +532,200 @@ function lastSelectedCategoryValue() {
 |--------------------------------------------------------------------------
 */
 
+/*
+|--------------------------------------------------------------------------
+| PER-TEST DATE -- each test line carries its own test date in a hidden
+| .rowTestDate field. It starts as the invoice's Test Date (so by default
+| every test has the same date); the "Item-wise Dates" window above the
+| table lists every selected test (a package's components included) and
+| lets any of them be given a different date. A line whose date was
+| changed there is left alone when the invoice-level Test Date changes.
+|--------------------------------------------------------------------------
+*/
+
+function invoiceTestDateValue() {
+    return $('#test_date').val() || '';
+}
+
+function setRowTestDate(input, value) {
+
+    if (!input) return;
+
+    input.value = value || '';
+}
+
+function applyInvoiceTestDateToRows() {
+
+    let value = invoiceTestDateValue();
+
+    $('#testTable tbody tr.mainRow .rowTestDate').each(function () {
+
+        if (this.dataset.manual !== '1') {
+            setRowTestDate(this, value);
+        }
+    });
+
+    refreshItemDatesHint();
+}
+
+// "n items have a different date" note beside the button
+function refreshItemDatesHint() {
+
+    let base = invoiceTestDateValue();
+    let different = 0;
+
+    $('#testTable tbody tr.mainRow .rowTestDate').each(function () {
+        if (this.dataset.manual === '1' && this.value && this.value !== base) {
+            different++;
+        }
+    });
+
+    $('#itemDatesHint').text(different ? different + ' item' + (different > 1 ? 's' : '') + ' with a different date' : '');
+}
+
+// the lines the window lists: every selected test; a package line becomes a
+// heading over its components (whose rows are hidden on this screen)
+function itemDateEntries() {
+
+    let entries = [];
+
+    $('#testTable tbody tr.mainRow').each(function () {
+
+        let row = $(this);
+        let sub = row.find('.test').val();
+
+        if (!sub) return;
+
+        let name = row.find('.test option:selected').text().trim();
+        let token = row.attr('data-package-token');
+        let hasComponents = token
+            && $('#testTable tbody tr.mainRow[data-package-owner="' + token + '"]').length > 0;
+
+        if (hasComponents) {
+            entries.push({ heading: true, name: name });
+        } else {
+            entries.push({
+                heading: false,
+                name: name,
+                indent: !!row.attr('data-package-owner'),
+                input: row.find('.rowTestDate')[0]
+            });
+        }
+    });
+
+    return entries;
+}
+
+function openItemDatesModal() {
+
+    let entries = itemDateEntries();
+    let body = $('#itemDatesBody').empty();
+    let base = invoiceTestDateValue();
+
+    $('#itemDatesEmpty').toggle(entries.length === 0);
+    $('#itemDatesTable').toggle(entries.length > 0);
+    $('#itemDatesApplyAll').toggle(entries.length > 0);
+
+    entries.forEach(function (e) {
+
+        if (e.heading) {
+            let head = $('<td colspan="2" class="fw-semibold"></td>').text(e.name);
+            body.append($('<tr class="table-light"></tr>').append(head));
+            return;
+        }
+
+        let nameCell = $('<td></td>').text(e.name);
+
+        if (e.indent) nameCell.addClass('ps-4');
+
+        let box = $('<input type="text" class="form-control form-control-sm itemDateInput" autocomplete="off">');
+        box[0]._target = e.input;
+
+        body.append($('<tr></tr>').append(nameCell, $('<td style="width:200px"></td>').append(box)));
+
+        flatpickr(box[0], {
+            dateFormat: 'Y-m-d',
+            altInput: true,
+            altFormat: 'd-m-Y',
+            allowInput: true,
+            defaultDate: (e.input && e.input.value) || base || null
+        });
+    });
+
+    // flatpickr copies the class to its visible box; keep it compact
+    body.find('input.flatpickr-input').each(function () {
+        if (this.type !== 'hidden') this.className = 'form-control form-control-sm flatpickr-input';
+    });
+
+    let all = document.getElementById('itemDatesApplyAllInput');
+
+    if (all && all._flatpickr) {
+        all._flatpickr.clear();
+    }
+
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('itemDatesModal')).show();
+}
+
+$(document).on('click', '#itemDatesBtn', openItemDatesModal);
+
+$(document).on('click', '#itemDatesApplyAllBtn', function () {
+
+    let all = document.getElementById('itemDatesApplyAllInput');
+    let value = all && all._flatpickr ? all._flatpickr.input.value : '';
+
+    if (!value) return;
+
+    $('#itemDatesBody .itemDateInput').each(function () {
+        if (this._flatpickr) this._flatpickr.setDate(value, false);
+    });
+});
+
+$(document).on('click', '#itemDatesSaveBtn', function () {
+
+    let base = invoiceTestDateValue();
+
+    $('#itemDatesBody .itemDateInput').each(function () {
+
+        let target = this._target;
+        let value = this._flatpickr ? this._flatpickr.input.value : this.value;
+
+        if (!target) return;
+
+        setRowTestDate(target, value || base);
+
+        if ((value || base) !== base) {
+            target.dataset.manual = '1';
+        } else {
+            delete target.dataset.manual;
+        }
+    });
+
+    refreshItemDatesHint();
+
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('itemDatesModal')).hide();
+});
+
+$(function () {
+
+    $('#test_date').on('change', applyInvoiceTestDateToRows);
+
+    if (typeof flatpickr !== 'undefined' && document.getElementById('itemDatesApplyAllInput')) {
+        flatpickr('#itemDatesApplyAllInput', { dateFormat: 'Y-m-d', altInput: true, altFormat: 'd-m-Y', allowInput: true });
+    }
+
+    // the invoice-level picker is created by flatpickr-dmy.init.js; hook its
+    // own change callback too in case it does not emit a native change event
+    setTimeout(function () {
+
+        let inst = document.getElementById('test_date') && document.getElementById('test_date')._flatpickr;
+
+        if (inst && !inst._rowDatesHooked) {
+            inst._rowDatesHooked = true;
+            inst.config.onChange.push(applyInvoiceTestDateToRows);
+        }
+    }, 0);
+});
+
 function addTestRow(applyAutoCategory = true) {
     rowIndex++;
 
@@ -539,6 +734,7 @@ function addTestRow(applyAutoCategory = true) {
 <tr class="mainRow">
 
     <td>
+        <input type="hidden" name="tests[${rowIndex}][test_date]" class="rowTestDate">
         <select
             name="tests[${rowIndex}][item_code]"
             class="form-select category">
@@ -743,6 +939,8 @@ function addTestRow(applyAutoCategory = true) {
 
     $("#testTable tbody")
         .append(html);
+
+    setRowTestDate($('#testTable tbody tr.mainRow:last .rowTestDate')[0], invoiceTestDateValue());
 
     $('#addRow').prop('disabled', true);
     $('#testTable tbody tr.mainRow .category')
@@ -1111,7 +1309,8 @@ function buildTestDropdown(dropdown, tests) {
                 data-discount-percent="${row.discount_percent || 0}"
                 data-discount-other-lab="${row.discount_other_lab || 0}"
                 data-discount-member="${row.member_discount || 0}"
-                data-discount-member-other-lab="${row.discount_member_other_lab || 0}">
+                data-discount-member-other-lab="${row.discount_member_other_lab || 0}"
+                data-discount-senior-citizen="${row.discount_senior_citizen || 0}">
 
                 ${row.item_description_sub}
 
@@ -1154,12 +1353,21 @@ function disableInvoiceSection() {
 |--------------------------------------------------------------------------
 */
 
-function applyStandardDiscount(mainRow, d1, d2, d3, d4) {
+function applyStandardDiscount(mainRow, d1, d2, d3, d4, d5 = 0) {
 
     let ageOrInHouseRate =
         (window.isSeniorCitizen || window.isInHousePatient)
             ? Math.max(d1, d2)
             : 0;
+
+    // "Only Senior Citizen" rate (d5): for a patient aged 60+ ONLY -- an
+    // In-House patient who is not a senior does not get it.
+    let seniorOnlyWins = false;
+
+    if (window.isSeniorCitizen && d5 > ageOrInHouseRate) {
+        ageOrInHouseRate = d5;
+        seniorOnlyWins = true;
+    }
 
     let memberRate =
         window.isEmployeeMember
@@ -1176,7 +1384,7 @@ function applyStandardDiscount(mainRow, d1, d2, d3, d4) {
         if (ageOrInHouseRate === standardDiscount) {
 
             if (window.isSeniorCitizen) reasons.push('Senior Citizen');
-            if (window.isInHousePatient) reasons.push('In-House Patient');
+            if (window.isInHousePatient && !seniorOnlyWins) reasons.push('In-House Patient');
         }
 
         if (memberRate === standardDiscount) {
@@ -1205,7 +1413,7 @@ function applyStandardDiscount(mainRow, d1, d2, d3, d4) {
 | lookup). Shared by direct test selection and test-package expansion.
 | `testData` shape matches a getTests() row: item_code_sub,
 | item_description_sub, rate, discount_percent, discount_other_lab,
-| member_discount, discount_member_other_lab.
+| member_discount, discount_member_other_lab, discount_senior_citizen.
 |--------------------------------------------------------------------------
 */
 
@@ -1261,6 +1469,9 @@ function populateTestRow(mainRow, testData, forceZeroAmount = false) {
     let d4 =
         forceZeroAmount ? 0 : (parseFloat(testData.discount_member_other_lab) || 0);
 
+    let d5 =
+        forceZeroAmount ? 0 : (parseFloat(testData.discount_senior_citizen) || 0);
+
     mainRow.find('.rate')
         .val(rate);
 
@@ -1287,7 +1498,7 @@ function populateTestRow(mainRow, testData, forceZeroAmount = false) {
     // routes through the single shared formula below, which also enforces
     // the doctor-payable floor -- the patient's amount for a line can never
     // be discounted below what's owed to the doctor for it, if any.
-    applyStandardDiscount(mainRow, d1, d2, d3, d4);
+    applyStandardDiscount(mainRow, d1, d2, d3, d4, d5);
 
     mainRow.find('.standardDiscount').trigger('change');
 }
@@ -1649,6 +1860,10 @@ $(document).on(
                     $('#testTable tbody tr.mainRow:last');
 
                 newRow.attr('data-package-owner', packageToken);
+
+                // every component starts on the invoice's Test Date; each can be
+                // changed in the "Item-wise Dates" window.
+                setRowTestDate(newRow.find('.rowTestDate')[0], invoiceTestDateValue());
 
                 // Marks this row as a package component, not a separately
                 // billed line -- invoice print excludes it, only the
@@ -2415,11 +2630,30 @@ if (window.editMode) {
 
 $('#btnConfirmDuePayment').on('click', function () {
 
+    // Guards against a double-click/double-tap firing saveInvoice() twice
+    // before the offcanvas finishes hiding -- saveInvoice() only disables
+    // #saveInvoiceBtn (the create-mode button), not this one, so without
+    // this a second click here was free to fire a second, fully duplicate
+    // due-payment request (seen in production: two identical
+    // daily_transactions rows for the same payment).
+    if ($(this).prop('disabled')) {
+        return;
+    }
+
+    $(this).prop('disabled', true);
+
     bootstrap.Offcanvas.getInstance(
         document.getElementById('confirmDuePaymentOffcanvas')
     )?.hide();
 
     saveInvoice();
+});
+
+// Re-arm the confirm button once the offcanvas is dismissed (success
+// navigates away; error/cancel both return here), so a genuine retry
+// after a failed payment isn't permanently blocked.
+$('#confirmDuePaymentOffcanvas').on('hidden.bs.offcanvas', function () {
+    $('#btnConfirmDuePayment').prop('disabled', false);
 });
 
 /*

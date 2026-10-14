@@ -130,8 +130,8 @@ $netCashInWords = ucwords($netCashFormatter->format((float) ($summary['net_cash_
     <td class="label-blue">Cash Refunded</td>
     <td>Rs. {{ fmtMoney4($summary['cash_refunded']) }}</td>
 
-    <td class="label-blue">Cash Paid To Doctors</td>
-    <td>Rs. {{ fmtMoney4($summary['cash_paid_to_doctors']) }}</td>
+    <td class="label-blue">Cash Payable/Paid To Doctors</td>
+    <td>Rs. {{ fmtMoney4($summary['doctor_payable'] ?? 0) }} / {{ fmtMoney4($summary['cash_paid_to_doctors']) }}</td>
 </tr>
 
 <tr>

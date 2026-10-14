@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Log;
 use Exception;
 
 /**
- * Admin CRUD for Non-Pathology report templates -- mirrors
+ * CRUD for Non-Pathology report templates, open to any authorized staff
+ * role -- mirrors
  * UsgReportTemplateController exactly (single-item scoped, three narrative
  * fields), for every Non-Pathology category with no parameter grid (X-Ray,
  * Endoscopy, EMG-NCV, Dental, EYE, Miscellaneous, etc; see
@@ -96,11 +97,6 @@ class NonPathologyReportTemplateController extends Controller
 
     public function store(Request $request, AuditService $auditService)
     {
-        // Creating a template is Admin-only (editing/deleting is unchanged).
-        if ($denied = $this->denyUnlessAdmin('Only an Admin can create templates.')) {
-            return $denied;
-        }
-
         $request->validate([
             'title' => 'required|max:150',
             'item_code_sub' => 'required|exists:invoice_item_details,item_code_sub',

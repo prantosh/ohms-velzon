@@ -9,7 +9,9 @@ use App\Models\PathologyReportTemplate;
 use App\Models\TestReportConfirmation;
 use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
+use App\Services\ReportDeletionGuard;
 use App\Services\ReportWhatsappDueGate;
+use App\Support\ReportTestDates;
 use App\Support\PdfPageNumbers;
 use App\Services\HtmlSanitizerService;
 use App\Services\PdfPasswordProtectionService;
@@ -157,6 +159,16 @@ class PathologyReportController extends Controller
             $findings->pluck('pathology_report_template_id')->filter()->unique()
         )->pluck('title', 'id');
 
+        // Each billed line's own test date, else the invoice's -- shown (and
+        // editable until confirmed) on the report card.
+        $effectiveDates = ReportTestDates::effectiveDates(
+            collect(ReportTestDates::expandPackages(
+                $lines->pluck('invoice_detail_id')
+                    ->merge($findings->flatMap(fn ($f) => $f->items->pluck('invoice_detail_id')))
+                    ->unique()->values()->all()
+            ))->pluck('id')->unique()->values()->all()
+        );
+
         $unclaimedByGroup = $lines->whereNull('pathology_report_finding_id')
             ->groupBy(fn ($l) => $l->test_group_code ?? 0);
 
@@ -229,12 +241,48 @@ class PathologyReportController extends Controller
             })->values();
         });
 
+        // A package that is still open as ONE line can also be reported in parts
+        // (e.g. FBS today, PPBS tomorrow): its reportable components are listed
+        // so the screen can offer them one by one. As soon as one component has a
+        // report, the rest become ordinary open lines (see ReportableLines).
+        $openPackageComponents = [];
+
+        foreach ($lines->whereNull('pathology_report_finding_id')->where('is_package', 1)->whereNull('package_parent_item_code_sub') as $packageLine) {
+
+            $components = DB::table('invoice_details as c')
+                ->join('invoice_item_details as ciid', function ($join) {
+                    $join->on('ciid.item_code', '=', 'c.item_code')
+                        ->on('ciid.item_code_sub', '=', 'c.item_code_sub');
+                })
+                ->where('c.invoice_no', $invoice->invoice_no)
+                ->where('c.item_code', self::ITEM_CODE)
+                ->where('c.package_parent_item_code_sub', $packageLine->item_code_sub)
+                ->where('ciid.is_package', 0)
+                ->where('ciid.is_outsourced', 0)
+                ->where('ciid.is_report_not_required', 0)
+                ->whereNotExists(function ($q) {
+                    $q->select(DB::raw(1))->from('pathology_report_finding_items as cx')->whereColumn('cx.invoice_detail_id', 'c.id');
+                })
+                ->orderBy('c.line_no')
+                ->get(['c.id as invoice_detail_id', 'c.item_code_sub', 'c.item_description']);
+
+            // splitting only makes sense for two or more components
+            if ($components->count() > 1) {
+                $openPackageComponents[$packageLine->invoice_detail_id] = $components->map(fn ($c) => [
+                    'invoice_detail_id' => (int) $c->invoice_detail_id,
+                    'item_code_sub' => $c->item_code_sub,
+                    'item_description' => $c->item_description,
+                    'test_date' => $effectiveDates[$c->invoice_detail_id] ?? null,
+                ])->values()->all();
+            }
+        }
+
         $groups = $lines->groupBy(fn ($l) => $l->test_group_code ?? 0)
-            ->map(function ($groupLines, $testGroupCode) use ($testGroupNames, $findings, $templateTitles, $availableTemplatesByGroup, $lineDescriptionById) {
+            ->map(function ($groupLines, $testGroupCode) use ($testGroupNames, $findings, $templateTitles, $availableTemplatesByGroup, $lineDescriptionById, $effectiveDates, $openPackageComponents) {
 
                 $groupFindingIds = $groupLines->pluck('pathology_report_finding_id')->filter()->unique();
 
-                $findingsPayload = $groupFindingIds->map(function ($findingId) use ($findings, $templateTitles, $lineDescriptionById) {
+                $findingsPayload = $groupFindingIds->map(function ($findingId) use ($findings, $templateTitles, $lineDescriptionById, $effectiveDates) {
 
                     $finding = $findings->get($findingId);
 
@@ -247,11 +295,21 @@ class PathologyReportController extends Controller
                         'content' => $finding->content,
                         'template_id' => $finding->pathology_report_template_id,
                         'template_title' => $templateTitles->get($finding->pathology_report_template_id),
+                        'report_title' => $finding->report_title,
                         'confirmed_at' => optional($finding->confirmed_at)->format('d-m-Y H:i'),
                         'items' => $finding->items->map(fn ($i) => [
                             'invoice_detail_id' => $i->invoice_detail_id,
                             'item_code_sub' => $i->item_code_sub,
                             'item_description' => $lineDescriptionById->get($i->invoice_detail_id, $i->item_code_sub),
+                            'test_date' => $effectiveDates[$i->invoice_detail_id] ?? null,
+                            // the lines whose dates are edited on the card: a package's
+                            // components (each may be done on a different day), else itself
+                            'date_lines' => collect(ReportTestDates::expandPackages([(int) $i->invoice_detail_id]))
+                                ->map(fn ($e) => [
+                                    'invoice_detail_id' => $e['id'],
+                                    'item_description' => $e['name'],
+                                    'test_date' => $effectiveDates[$e['id']] ?? null,
+                                ])->values(),
                         ])->values(),
                     ];
                 })->filter()->values();
@@ -260,7 +318,30 @@ class PathologyReportController extends Controller
                     'invoice_detail_id' => $l->invoice_detail_id,
                     'item_code_sub' => $l->item_code_sub,
                     'item_description' => $l->item_description,
+                    'test_date' => $effectiveDates[$l->invoice_detail_id] ?? null,
+                    // set only for a package line that can be reported in parts
+                    'components' => $openPackageComponents[$l->invoice_detail_id] ?? null,
                 ])->values();
+
+                // Templates that cover only SOME components of an open package
+                // in this group (e.g. 'GLUCOSE (FBS)' for the FBS & PPBS package).
+                $splitCodes = collect($unclaimed)->flatMap(fn ($u) => collect($u['components'] ?? [])->pluck('item_code_sub'))->unique()->values()->all();
+
+                $splitTemplates = empty($splitCodes) ? collect() : PathologyReportTemplate::with('items')
+                    ->where('status', 'ACTIVE')
+                    ->where('test_group_code', $testGroupCode == 0 ? null : $testGroupCode)
+                    ->orderBy('title')
+                    ->get()
+                    ->filter(function ($t) use ($splitCodes) {
+                        $codes = $t->items->pluck('item_code_sub')->all();
+                        return !empty($codes) && empty(array_diff($codes, $splitCodes));
+                    })
+                    ->map(fn ($t) => [
+                        'id' => $t->id,
+                        'title' => $t->title,
+                        'content' => $t->content,
+                        'item_code_subs' => $t->items->pluck('item_code_sub')->values(),
+                    ])->values();
 
                 $availableTemplates = ($availableTemplatesByGroup->get($testGroupCode) ?? collect())
                     ->map(fn ($t) => [
@@ -276,6 +357,7 @@ class PathologyReportController extends Controller
                     'findings' => $findingsPayload,
                     'unclaimed_items' => $unclaimed,
                     'available_templates' => $availableTemplates,
+                    'split_templates' => $splitTemplates,
                 ];
             })
             ->sortBy('test_group_name')
@@ -358,6 +440,9 @@ class PathologyReportController extends Controller
                 'template_id' => 'nullable|integer|exists:pathology_report_templates,id',
                 'invoice_detail_ids' => 'required_without:finding_id|array|min:1',
                 'invoice_detail_ids.*' => 'integer',
+                'item_dates' => 'nullable|array',
+                'item_dates.*' => 'nullable|date_format:Y-m-d',
+                'report_title' => 'nullable|string|max:255',
                 'content' => 'nullable|string',
             ]
         );
@@ -403,7 +488,15 @@ class PathologyReportController extends Controller
                 $finding->update([
                     'content' => $content,
                     'updated_by' => Auth::id(),
-                ]);
+                ] + ($request->has('report_title') ? [
+                    // the heading typed on the card (null = the default, the test descriptions)
+                    'report_title' => \App\Support\ReportTitle::normalise(
+                        $request->report_title,
+                        DB::table('invoice_details')->whereIn('id', $finding->items()->pluck('invoice_detail_id'))->orderBy('id')->pluck('item_description')->implode(', ')
+                    ),
+                ] : []));
+
+                $this->applyItemDates($finding->items()->pluck('invoice_detail_id')->all(), $request->input('item_dates'), $finding->invoice_no);
 
                 DB::commit();
 
@@ -445,6 +538,34 @@ class PathologyReportController extends Controller
                 ], 422);
             }
 
+            foreach ($lines as $line) {
+
+                $conflict = $line->package_parent_item_code_sub
+                    // a component of a package whose own line already has a report
+                    ? DB::table('invoice_details as p')
+                        ->join('pathology_report_finding_items as px', 'px.invoice_detail_id', '=', 'p.id')
+                        ->where('p.invoice_no', $line->invoice_no)
+                        ->where('p.item_code_sub', $line->package_parent_item_code_sub)
+                        ->whereNull('p.package_parent_item_code_sub')
+                        ->exists()
+                    // a package line while one of its components already has a report
+                    : DB::table('invoice_details as c')
+                        ->join('pathology_report_finding_items as cx', 'cx.invoice_detail_id', '=', 'c.id')
+                        ->where('c.invoice_no', $line->invoice_no)
+                        ->where('c.package_parent_item_code_sub', $line->item_code_sub)
+                        ->exists();
+
+                if ($conflict) {
+
+                    DB::rollBack();
+
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'This package is already being reported ' . ($line->package_parent_item_code_sub ? 'as a whole' : 'in parts') . ' -- reload the invoice.'
+                    ], 422);
+                }
+            }
+
             $alreadyClaimed = PathologyReportFindingItem::whereIn('invoice_detail_id', $invoiceDetailIds)->exists();
 
             if ($alreadyClaimed) {
@@ -473,6 +594,9 @@ class PathologyReportController extends Controller
                 'invoice_no' => $invoiceNo,
                 'pathology_report_template_id' => $request->template_id,
                 'content' => $content,
+                'report_title' => $request->has('report_title')
+                    ? \App\Support\ReportTitle::normalise($request->report_title, $lines->sortBy('id')->pluck('item_description')->implode(', '))
+                    : null,
                 'created_by' => Auth::id(),
                 'updated_by' => Auth::id(),
             ]);
@@ -485,6 +609,22 @@ class PathologyReportController extends Controller
                     'item_code_sub' => $line->item_code_sub,
                 ]);
             }
+
+            // A brand-new report always claims brand-new (never-before-
+            // reported-on, or now-reopened-after-deletion) lines -- if any
+            // of them has a pending correction notice, this report is what
+            // replaces the deleted one, so it carries the "please ignore
+            // the previous report" footnote from here on (consumed once).
+            $notices = \App\Models\ReportCorrectionNotice::whereIn('invoice_detail_id', $invoiceDetailIds)->get();
+
+            if ($notices->isNotEmpty()) {
+
+                $finding->update(['corrected_from_sent_at' => $notices->min('previous_sent_at')]);
+
+                \App\Models\ReportCorrectionNotice::whereIn('id', $notices->pluck('id'))->delete();
+            }
+
+            $this->applyItemDates($invoiceDetailIds->all(), $request->input('item_dates'), $invoiceNo);
 
             DB::commit();
 
@@ -527,6 +667,9 @@ class PathologyReportController extends Controller
             [
                 'invoice_detail_ids' => 'required|array|min:1',
                 'invoice_detail_ids.*' => 'integer',
+                'item_dates' => 'nullable|array',
+                'item_dates.*' => 'nullable|date_format:Y-m-d',
+                'report_title' => 'nullable|string|max:255',
                 'content' => 'nullable|string',
             ]
         );
@@ -557,14 +700,22 @@ class PathologyReportController extends Controller
         $finding = (object) [
             'invoice_no' => $invoice->invoice_no,
             'content' => HtmlSanitizerService::sanitizeClinicalText($request->content),
+            'report_title' => \App\Support\ReportTitle::normalise($request->report_title, $lines->sortBy('id')->pluck('item_description')->implode(', ')),
             'confirmed_at' => null,
         ];
 
         $itemDescriptions = $lines->pluck('item_description');
 
+        // the preview shows the dates as currently typed, saved or not
+        $dateInfo = ReportTestDates::describe(
+            $lines->pluck('id')->map(fn ($v) => (int) $v)->sort()->values()->all(),
+            $lines->pluck('item_description', 'id')->all(),
+            collect($request->input('item_dates', []))->mapWithKeys(fn ($v, $k) => [(int) $k => $v])->all()
+        );
+
         $pdf = Pdf::loadView(
             'apps-pathology-report-pdf',
-            compact('finding', 'invoice', 'itemDescriptions')
+            compact('finding', 'invoice', 'itemDescriptions', 'dateInfo')
         );
 
         PdfPageNumbers::add($pdf);
@@ -743,12 +894,13 @@ class PathologyReportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | DELETE ONE REPORT -- Admin only, and only while the invoice's Pathology
-    | reports are NOT all confirmed. The combined WhatsApp goes out only once
-    | every report is confirmed, so until then a wrong/duplicate report (even
-    | a confirmed one) can still be removed; its billed lines become open
-    | again and can be reported afresh. Once everything is confirmed the
-    | document has been (or is about to be) sent, so it is locked.
+    | DELETE ONE REPORT -- Admin only, saved or confirmed, any time -- even
+    | after the combined invoice WhatsApp has already gone out. When it has,
+    | a report_correction_notices row is left behind for each of this
+    | report's billed lines, so the next report written for that same test
+    | carries a "please ignore the previous report" footnote (see
+    | ReportDeletionGuard::recordCorrection() and store() below). Its
+    | billed lines become open again and can be reported afresh.
     |--------------------------------------------------------------------------
     */
 
@@ -776,20 +928,32 @@ class PathologyReportController extends Controller
             return $this->removeStrayLink($finding, $viewedInvoiceNo, $auditService);
         }
 
-        if ($this->isInvoicePathologyFullyConfirmed($finding->invoice_no)) {
-
-            return response()->json([
-                'status' => false,
-                'message' => 'Every Pathology report on this invoice is already confirmed, so the combined report is locked. A report can only be deleted until then.'
-            ], 422);
-        }
-
         $oldData = array_merge(
             $finding->only($finding->getFillable()),
             ['invoice_detail_ids' => $finding->items->pluck('invoice_detail_id')->all()]
         );
 
         $wasConfirmed = (bool) $finding->confirmed_at;
+
+        if ($wasConfirmed) {
+
+            $sentLog = DB::table('whatsapp_message_logs')
+                ->where('invoice_no', $finding->invoice_no)
+                ->where('message_type', 'PATHOLOGY_REPORT')
+                ->where('status', 'SENT')
+                ->where('created_at', '>=', $finding->confirmed_at->copy()->subSeconds(5))
+                ->orderByDesc('created_at')
+                ->first();
+
+            if ($sentLog) {
+
+                $sentAt = \Carbon\Carbon::parse($sentLog->created_at);
+
+                foreach ($finding->items->pluck('invoice_detail_id') as $invoiceDetailId) {
+                    ReportDeletionGuard::recordCorrection($invoiceDetailId, $sentAt);
+                }
+            }
+        }
 
         DB::beginTransaction();
 
@@ -829,19 +993,10 @@ class PathologyReportController extends Controller
 
     /**
      * Detaches a report from billed lines of an invoice it does not belong to.
-     * The report itself and its own invoice's links are left untouched. Same
-     * lock as a normal delete, judged on the invoice being viewed.
+     * The report itself and its own invoice's links are left untouched.
      */
     private function removeStrayLink(PathologyReportFinding $finding, string $viewedInvoiceNo, AuditService $auditService)
     {
-        if ($this->isInvoicePathologyFullyConfirmed($viewedInvoiceNo)) {
-
-            return response()->json([
-                'status' => false,
-                'message' => 'Every Pathology report on this invoice is already confirmed, so the combined report is locked. A report can only be deleted until then.'
-            ], 422);
-        }
-
         $strayItems = $finding->items->filter(
             fn ($item) => DB::table('invoice_details')
                 ->where('id', $item->invoice_detail_id)
@@ -926,9 +1081,11 @@ class PathologyReportController extends Controller
     {
         [$invoice, $itemDescriptions] = $this->loadReportContext($finding);
 
+        $dateInfo = $this->dateInfoFor($finding);
+
         $pdf = Pdf::loadView(
             'apps-pathology-report-pdf',
-            compact('finding', 'invoice', 'itemDescriptions')
+            compact('finding', 'invoice', 'itemDescriptions', 'dateInfo')
         );
 
         PdfPageNumbers::add($pdf);
@@ -1015,15 +1172,24 @@ class PathologyReportController extends Controller
 
         $groupName = $groupName ?: self::UNGROUPED_LABEL;
 
-        $sections = $findings->map(fn ($finding) => [
-            'group_name' => $groupName,
-            'title' => $finding->items->pluck('invoice_detail_id')
-                ->map(fn ($id) => $itemDescById->get($id))
-                ->filter()
-                ->implode(', '),
-            'content' => $finding->content,
-            'confirmed_at' => $finding->confirmed_at,
-        ]);
+        $sections = $findings->map(function ($finding) use ($groupName, $itemDescById) {
+
+            $ids = $finding->items->pluck('invoice_detail_id')->map(fn ($v) => (int) $v)->all();
+
+            $dateInfo = ReportTestDates::describe($ids, $itemDescById->all());
+
+            return [
+                'group_name' => $groupName,
+                'title' => !empty($finding->report_title) ? $finding->report_title : $dateInfo['title'],
+                // a typed heading carries no dates -- keep them visible when they differ
+                'date_note' => (!empty($finding->report_title) && $dateInfo['mixed']) ? $dateInfo['title'] : null,
+                'date_single' => $dateInfo['single'],
+                'date_mixed' => $dateInfo['mixed'],
+                'content' => $finding->content,
+                'confirmed_at' => $finding->confirmed_at,
+                'corrected_from_sent_at' => $finding->corrected_from_sent_at,
+            ];
+        });
 
         $pdf = Pdf::loadView(
             'apps-pathology-report-pdf-group',
@@ -1241,15 +1407,23 @@ class PathologyReportController extends Controller
         return $findings
             ->sortBy(fn ($finding) => $groupNameForFinding($finding->id))
             ->values()
-            ->map(fn ($finding) => [
-                'group_name' => $groupNameForFinding($finding->id),
-                'title' => $finding->items->pluck('invoice_detail_id')
-                    ->map(fn ($id) => $itemDescById->get($id))
-                    ->filter()
-                    ->implode(', '),
-                'content' => $finding->content,
-                'confirmed_at' => $finding->confirmed_at,
-            ]);
+            ->map(function ($finding) use ($groupNameForFinding, $itemDescById) {
+
+                $ids = $finding->items->pluck('invoice_detail_id')->map(fn ($v) => (int) $v)->all();
+
+                $dateInfo = ReportTestDates::describe($ids, $itemDescById->all());
+
+                return [
+                    'group_name' => $groupNameForFinding($finding->id),
+                    'title' => !empty($finding->report_title) ? $finding->report_title : $dateInfo['title'],
+                    'date_note' => (!empty($finding->report_title) && $dateInfo['mixed']) ? $dateInfo['title'] : null,
+                    'date_single' => $dateInfo['single'],
+                    'date_mixed' => $dateInfo['mixed'],
+                    'content' => $finding->content,
+                    'confirmed_at' => $finding->confirmed_at,
+                    'corrected_from_sent_at' => $finding->corrected_from_sent_at,
+                ];
+            });
     }
 
     /**
@@ -1408,6 +1582,52 @@ class PathologyReportController extends Controller
     /**
      * @return array{0: Invoice, 1: \Illuminate\Support\Collection}
      */
+    /**
+     * Saves the per-test dates edited on the report card onto the billed
+     * lines this report covers. Only those lines, only on their own invoice;
+     * an empty value clears the line's own date (it then follows the invoice's).
+     *
+     * @param array<int,int>        $detailIds the lines this report covers
+     * @param array<int,?string>|null $itemDates invoice_detail id => Y-m-d or ''
+     */
+    private function applyItemDates(array $detailIds, ?array $itemDates, string $invoiceNo): void
+    {
+        if (empty($itemDates)) {
+            return;
+        }
+
+        foreach ($itemDates as $detailId => $date) {
+
+            $allowed = array_merge(
+                array_map('intval', $detailIds),
+                array_column(ReportTestDates::expandPackages(array_map('intval', $detailIds)), 'id')
+            );
+
+            if (!in_array((int) $detailId, $allowed, true)) {
+                continue;
+            }
+
+            DB::table('invoice_details')
+                ->where('id', (int) $detailId)
+                ->where('invoice_no', $invoiceNo)
+                ->update(['test_date' => $date ?: null]);
+        }
+    }
+
+    /**
+     * Test date + item-name line for a saved report: one date printed once
+     * when every item shares it, otherwise each date in brackets beside its
+     * item name (see ReportTestDates).
+     */
+    private function dateInfoFor(PathologyReportFinding $finding): array
+    {
+        $ids = $finding->items()->pluck('invoice_detail_id')->map(fn ($v) => (int) $v)->sort()->values()->all();
+
+        $names = DB::table('invoice_details')->whereIn('id', $ids)->pluck('item_description', 'id')->all();
+
+        return ReportTestDates::describe($ids, $names);
+    }
+
     private function loadReportContext(PathologyReportFinding $finding): array
     {
         $invoice = Invoice::where('invoice_no', $finding->invoice_no)->firstOrFail();

@@ -79,30 +79,45 @@
 
         <div class="row" id="summaryRow" style="display:none;">
 
-            <div class="col-md-4 mb-3">
+            <div class="col-md-2 mb-3">
                 <div class="card h-100"><div class="card-body text-center">
                     <h5 class="mb-0" id="summary-total_doctors">0</h5>
-                    <small class="text-muted">Doctors Settled</small>
+                    <small class="text-muted">Doctors</small>
                 </div></div>
             </div>
 
-            <div class="col-md-4 mb-3">
+            <div class="col-md-2 mb-3">
                 <div class="card h-100"><div class="card-body text-center">
                     <h5 class="mb-0" id="summary-total_invoices">0</h5>
                     <small class="text-muted">Invoices Settled</small>
                 </div></div>
             </div>
 
-            <div class="col-md-4 mb-3">
+            <div class="col-md-2 mb-3">
+                <div class="card h-100"><div class="card-body text-center">
+                    <h5 class="mb-0" id="summary-total_payable">&#8377;0.00</h5>
+                    <small class="text-muted">Total Doctor Payable</small>
+                </div></div>
+            </div>
+
+            <div class="col-md-3 mb-3">
                 <div class="card h-100 border border-success"><div class="card-body text-center">
                     <h5 class="mb-0 text-success" id="summary-total_amount">&#8377;0.00</h5>
                     <small class="text-muted fw-semibold">Total Amount Settled</small>
                 </div></div>
             </div>
 
+            <div class="col-md-3 mb-3">
+                <div class="card h-100 border border-warning"><div class="card-body text-center">
+                    <h5 class="mb-0 text-warning" id="summary-total_unsettled">&#8377;0.00</h5>
+                    <small class="text-muted fw-semibold">Payable Not Settled</small>
+                    <div class="small text-muted" id="summary-unsettled_count"></div>
+                </div></div>
+            </div>
+
         </div>
 
-        <div id="reportHeaderWrap" class="d-flex justify-content-between align-items-center mb-2" style="display:none;">
+        <div id="reportHeaderWrap" class="d-none d-flex justify-content-between align-items-center mb-2">
             <h5 class="mb-0" id="reportTitle">Daily Cash Settlement</h5>
             <a href="javascript:void(0)" id="printReportBtn" class="btn btn-success btn-sm" target="_blank">
                 <i class="ri-printer-line"></i>
@@ -113,7 +128,7 @@
         <div id="doctorGroupsWrap"></div>
 
         <div id="noDataWrap" class="alert alert-warning" style="display:none;">
-            No doctor payables were settled for this user on this day.
+            No doctor payables were settled, or are waiting to be settled, for this user on this day.
         </div>
 
     </div>

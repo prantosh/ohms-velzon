@@ -234,14 +234,14 @@ table td {
         </td>
         <td colspan="2">
             <span class="label-blue">Test Done on :</span>
-            {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
+            {{ \App\Support\ReportTestDates::textForLine($finding->invoice_detail_id ?? null, $invoice, $finding->test_date_override ?? null) }}
         </td>
     </tr>
 </table>
 
 </div>
 
-<h4 class="study-title">{!! usgBoldAllCaps('USG ' . $finding->item_description) !!}</h4>
+<h4 class="study-title">{!! usgBoldAllCaps(!empty($finding->report_title) ? $finding->report_title : 'USG ' . $finding->item_description) !!}</h4>
 
 @if(!empty($finding->clinical_history))
 <div class="report-section">
@@ -262,6 +262,8 @@ table td {
     <div class="report-section-body">{!! usgRenderClinicalField($finding->impression) !!}</div>
 </div>
 @endif
+
+@include('partials.report-correction-footnote', ['correctedFromSentAt' => $finding->corrected_from_sent_at ?? null])
 
 </body>
 

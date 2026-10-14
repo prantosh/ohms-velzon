@@ -102,6 +102,11 @@ table td {
     margin-bottom: 2px;
 }
 
+/* CONCLUSION: bold, underlined, all capitals (the text is upper-cased above) */
+.report-section-heading.conclusion-heading {
+    text-decoration: underline;
+}
+
 .report-section-body {
     min-height: 24px;
     white-space: pre-wrap;
@@ -212,7 +217,7 @@ table td {
         </td>
         <td colspan="2">
             <span class="label-blue">Test Done on :</span>
-            {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
+            {{ \App\Support\ReportTestDates::textForLine($finding->invoice_detail_id ?? null, $invoice, $finding->test_date_override ?? null) }}
         </td>
         <td colspan="3">
             <span class="label-blue">Patient ID :</span>
@@ -230,11 +235,13 @@ table td {
 @foreach($cardioFields as $key => $label)
     @if($key !== 'heading' && !empty($finding->{$key}))
     <div class="report-section">
-        <div class="report-section-heading">{{ $label }}</div>
+        <div class="report-section-heading{{ $key === 'conclusion' ? ' conclusion-heading' : '' }}">{{ $key === 'conclusion' ? strtoupper($label) : $label }}</div>
         <div class="report-section-body">{!! $finding->{$key} !!}</div>
     </div>
     @endif
 @endforeach
+
+@include('partials.report-correction-footnote', ['correctedFromSentAt' => $finding->corrected_from_sent_at ?? null])
 
 </body>
 

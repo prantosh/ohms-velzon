@@ -347,6 +347,11 @@ Route::post(
     [DoctorVisitInvoiceController::class, 'update']
 );
 
+Route::post(
+    '/doctor-visit-invoice/update-patient-name/{id}',
+    [DoctorVisitInvoiceController::class, 'updatePatientName']
+);
+
 Route::delete(
     '/doctor-visit-invoice/delete/{id}',
     [DoctorVisitInvoiceController::class, 'destroy']
@@ -1788,6 +1793,31 @@ Route::prefix('monthly-reconciliation-report')->group(function () {
 
 // Wrapped in auth (see the cash-submission-report group's comment above for
 // why unnamed sub-routes need this explicitly, not just CheckPageAccess).
+// Expenditure Report -- category-wise, any period (summary, detail, PDF)
+Route::middleware(['auth'])->prefix('expenditure-report')->group(function () {
+
+    Route::get('/', [\App\Http\Controllers\ExpenditureReportController::class, 'index'])
+        ->name('expenditure-report.index');
+
+    Route::get('/summary', [\App\Http\Controllers\ExpenditureReportController::class, 'summary']);
+    Route::get('/detail', [\App\Http\Controllers\ExpenditureReportController::class, 'detail']);
+    Route::get('/print', [\App\Http\Controllers\ExpenditureReportController::class, 'print']);
+
+});
+
+// User Reconciliation Dashboard -- month-by-month, cumulative since inception, per user
+Route::middleware(['auth'])->prefix('user-reconciliation')->group(function () {
+
+    Route::get('/', [\App\Http\Controllers\UserReconciliationController::class, 'index'])
+        ->name('user-reconciliation.index');
+
+    Route::get('/list', [\App\Http\Controllers\UserReconciliationController::class, 'list']);
+    Route::get('/detail', [\App\Http\Controllers\UserReconciliationController::class, 'detail']);
+    Route::get('/print', [\App\Http\Controllers\UserReconciliationController::class, 'print']);
+    Route::get('/print-detail', [\App\Http\Controllers\UserReconciliationController::class, 'printDetail']);
+
+});
+
 Route::middleware(['auth'])->prefix('reporting-group-summary-report')->group(function () {
 
     Route::get('/', [ReportingGroupSummaryReportController::class, 'index'])
@@ -1795,6 +1825,7 @@ Route::middleware(['auth'])->prefix('reporting-group-summary-report')->group(fun
 
     Route::get('/report', [ReportingGroupSummaryReportController::class, 'report']);
     Route::get('/print', [ReportingGroupSummaryReportController::class, 'print']);
+    Route::get('/mismatch-detail', [ReportingGroupSummaryReportController::class, 'mismatchDetail']);
 
 });
 

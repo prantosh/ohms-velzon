@@ -31,7 +31,7 @@ async function loadReport() {
     isAllUsersGlobal = (userId === 'ALL');
 
     document.getElementById('summaryRow').style.display = 'none';
-    document.getElementById('reportHeaderWrap').style.display = 'none';
+    document.getElementById('reportHeaderWrap').classList.add('d-none');
     document.getElementById('doctorGroupsWrap').innerHTML = '';
     document.getElementById('noDataWrap').style.display = 'none';
 
@@ -45,24 +45,32 @@ async function loadReport() {
         return;
     }
 
-    if (!result.groups.length) {
-        document.getElementById('noDataWrap').style.display = 'block';
-        return;
-    }
-
     let userLabel = isAllUsersGlobal
         ? 'All Users'
         : document.getElementById('user_id-field').selectedOptions[0].text;
     let dateFmt = new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
 
+    document.getElementById('reportTitle').innerText = 'Daily Cash Settlement — ' + userLabel + ' — ' + dateFmt;
+    document.getElementById('reportHeaderWrap').classList.remove('d-none');
+
+    if (!result.groups.length) {
+        // nothing to print for this user/day -- keep the title (it names the current selection)
+        document.getElementById('printReportBtn').style.display = 'none';
+        document.getElementById('noDataWrap').style.display = 'block';
+        return;
+    }
+
+    document.getElementById('printReportBtn').style.display = '';
+
     document.getElementById('summary-total_doctors').innerText = result.summary.total_doctors;
     document.getElementById('summary-total_invoices').innerText = result.summary.total_invoices;
     document.getElementById('summary-total_amount').innerText = '₹' + fmtMoney(result.summary.total_amount);
+    document.getElementById('summary-total_payable').innerText = '₹' + fmtMoney(result.summary.total_payable);
+    document.getElementById('summary-total_unsettled').innerText = '₹' + fmtMoney(result.summary.total_unsettled);
+    document.getElementById('summary-unsettled_count').innerText = result.summary.unsettled_count + ' invoice(s) not settled';
     document.getElementById('summaryRow').style.display = 'flex';
 
-    document.getElementById('reportTitle').innerText = 'Daily Cash Settlement — ' + userLabel + ' — ' + dateFmt;
     document.getElementById('printReportBtn').href = `/daily-cash-settlement/print?${params.toString()}`;
-    document.getElementById('reportHeaderWrap').style.display = 'flex';
 
     renderGroups(result.groups);
 }
@@ -75,14 +83,15 @@ function renderGroups(groups) {
     groups.forEach(group => {
 
         let rowsHtml = group.items.map(item => `
-            <tr>
+            <tr${item.is_settled ? '' : ' class="table-warning"'}>
                 <td>${escapeHtml(item.invoice_no)}</td>
                 <td>${escapeHtml(item.category)}</td>
                 ${isAllUsersGlobal ? `<td>${escapeHtml(item.user_name)}</td>` : ''}
                 <td>${escapeHtml(item.patient_name)}</td>
                 <td>${escapeHtml(item.item_description)}</td>
-                <td>${escapeHtml(item.last_settlement_no)}</td>
-                <td class="text-end">${fmtMoney(item.paid_amount)}</td>
+                <td>${item.is_settled ? escapeHtml(item.last_settlement_no) : '<span class="badge bg-warning text-dark">Not settled</span>'}</td>
+                <td class="text-end">${fmtMoney(item.payable_amount)}</td>
+                <td class="text-end">${fmtMoney(item.settled_amount)}</td>
             </tr>
         `).join('');
 
@@ -90,7 +99,10 @@ function renderGroups(groups) {
         <div class="card doctor-group-card">
             <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <h5 class="mb-0"><i class="ri-user-heart-line"></i> ${escapeHtml(group.doctor_name)}</h5>
-                <span class="badge bg-success">${group.invoice_count} Invoice(s) &mdash; ₹${fmtMoney(group.total_amount)}</span>
+                <span>
+                    <span class="badge bg-success">${group.invoice_count} Settled &mdash; ₹${fmtMoney(group.total_amount)}</span>
+                    ${group.unsettled_count ? `<span class="badge bg-warning text-dark ms-1">${group.unsettled_count} Not settled &mdash; ₹${fmtMoney(group.total_unsettled)}</span>` : ''}
+                </span>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -103,7 +115,8 @@ function renderGroups(groups) {
                                 <th>Patient</th>
                                 <th>Item</th>
                                 <th>Settlement No</th>
-                                <th width="110">Amount (&#8377;)</th>
+                                <th width="110">Payable (&#8377;)</th>
+                                <th width="110">Settled (&#8377;)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -112,6 +125,7 @@ function renderGroups(groups) {
                         <tfoot>
                             <tr class="table-light fw-bold">
                                 <td colspan="${isAllUsersGlobal ? 6 : 5}" class="text-end">Total for ${escapeHtml(group.doctor_name)}</td>
+                                <td class="text-end">${fmtMoney(group.total_payable)}</td>
                                 <td class="text-end">${fmtMoney(group.total_amount)}</td>
                             </tr>
                         </tfoot>

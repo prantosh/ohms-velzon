@@ -122,6 +122,167 @@ class ReportingGroupSummaryReportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | MISMATCH DETAIL -- why one user's Doctor Payable and Paid to Doctor differ
+    | in one Reporting Group on one day. Day-wise by the day the payable was
+    | CREATED, showing only the days where payable and paid do not agree:
+    |
+    |   - the selected day itself: payables this user created that day against
+    |     what this user paid out that day for them (unsettled payables, or
+    |     payables paid by someone else / on another day, and the other way
+    |     round: payables created by another user that this user paid)
+    |   - earlier days: what this user paid out today for payables created on
+    |     an earlier day (no payable that day counts in today's column)
+    |--------------------------------------------------------------------------
+    */
+
+    public function mismatchDetail(Request $request)
+    {
+        $request->validate([
+            'date' => 'required|date',
+            'user_id' => 'required|integer',
+            'group' => 'required|string',
+        ]);
+
+        $date = Carbon::parse($request->date)->toDateString();
+        $userId = (int) $request->user_id;
+        $groupLabel = $request->group;
+
+        [$itemToGroupId, $groupNames] = $this->resolveGroupLookup();
+
+        $labelOf = function ($itemCode, $invoiceType) use ($itemToGroupId, $groupNames) {
+            $code = $invoiceType === 'DOCTOR_VISIT'
+                ? self::FALLBACK_ITEM_CODE_BY_INVOICE_TYPE['DOCTOR_VISIT']
+                : $itemCode;
+
+            return $this->groupLabelForItemCode($code, $itemToGroupId, $groupNames);
+        };
+
+        $userName = optional(DB::table('users')->where('id', $userId)->first())->name ?? 'Unknown';
+
+        // same rows as the Doctor Payable column
+        $payables = DB::table('doctor_payables as dp')
+            ->leftJoin('invoices as inv', 'inv.id', '=', 'dp.invoice_id')
+            ->where('dp.payment_status', '!=', 'CANCELLED')
+            ->where(function ($q) {
+                $q->whereNull('inv.cancelled')
+                    ->orWhere('inv.cancelled', '!=', 'Y')
+                    ->orWhere('dp.payment_status', 'PAID');
+            })
+            ->whereDate('dp.created_at', $date)
+            ->where('dp.created_by', $userId)
+            ->get(['dp.id', 'dp.invoice_no', 'dp.invoice_type', 'dp.item_code', 'dp.doctor_name', 'dp.item_description', 'dp.payable_amount', 'dp.payment_status'])
+            ->filter(fn ($r) => $labelOf($r->item_code, $r->invoice_type) === $groupLabel)
+            ->values();
+
+        // same rows as the Paid to Doctor column
+        $paid = DB::table('doctor_settlement_items as dsi')
+            ->join('doctor_settlements as ds', 'ds.id', '=', 'dsi.settlement_id')
+            ->leftJoin('doctor_payables as dp', 'dp.id', '=', 'dsi.payable_id')
+            ->leftJoin('users as pu', 'pu.id', '=', 'dp.created_by')
+            ->where('ds.status', '!=', 'CANCELLED')
+            ->whereDate('ds.settlement_date', $date)
+            ->where('ds.created_by', $userId)
+            ->get([
+                'dsi.payable_id', 'dsi.invoice_no', 'dsi.invoice_type', 'dsi.item_code', 'dsi.item_description',
+                'dsi.settlement_amount', 'ds.doctor_name', 'ds.settlement_no',
+                'dp.created_at as payable_created', 'dp.payable_amount as original_payable', 'pu.name as payable_creator',
+            ])
+            ->filter(fn ($r) => $labelOf($r->item_code, $r->invoice_type) === $groupLabel)
+            ->values();
+
+        $paidToPayable = $paid->groupBy('payable_id')->map(fn ($g) => (float) $g->sum('settlement_amount'));
+        $ownPayableIds = $payables->pluck('id')->all();
+
+        $days = [];
+
+        $ensureDay = function (string $day) use (&$days) {
+            $days[$day] ??= ['date' => $day, 'payable' => 0.0, 'paid' => 0.0, 'lines' => []];
+        };
+
+        foreach ($payables as $p) {
+
+            $ensureDay($date);
+
+            $amount = (float) $p->payable_amount;
+            $settledToday = (float) ($paidToPayable[$p->id] ?? 0);
+
+            $days[$date]['payable'] += $amount;
+
+            if (abs($amount - $settledToday) > 0.004) {
+                $days[$date]['lines'][] = [
+                    'kind' => 'Payable',
+                    'invoice_no' => $p->invoice_no,
+                    'doctor' => $p->doctor_name,
+                    'item' => $p->item_description,
+                    'created_by' => $userName,
+                    'payable_amount' => $amount,
+                    'original_payable' => $amount,
+                    'paid_amount' => $settledToday,
+                    'note' => $p->payment_status === 'PAID'
+                        ? 'Paid out by someone else or on another day'
+                        : 'Not settled yet',
+                ];
+            }
+        }
+
+        foreach ($paid as $s) {
+
+            $day = $s->payable_created ? substr($s->payable_created, 0, 10) : 'unknown';
+
+            $ensureDay($day);
+
+            $amount = (float) $s->settlement_amount;
+            $days[$day]['paid'] += $amount;
+
+            // a payable this user created today is already shown above (when it differs)
+            if ($day === $date && in_array($s->payable_id, $ownPayableIds)) {
+                continue;
+            }
+
+            $days[$day]['lines'][] = [
+                'kind' => 'Paid',
+                'invoice_no' => $s->invoice_no,
+                'doctor' => $s->doctor_name,
+                'item' => $s->item_description,
+                'created_by' => $s->payable_creator ?? '-',
+                'payable_amount' => 0.0,
+                'original_payable' => (float) $s->original_payable,
+                'paid_amount' => $amount,
+                'note' => $day === 'unknown'
+                    ? 'Payable not found'
+                    : ($day < $date
+                        ? 'Payable of ' . Carbon::parse($day)->format('d-m-Y') . ' (already counted in that day\'s report) -- paid out on this day'
+                        : 'Payable created by another user, paid out by this user'),
+            ];
+        }
+
+        // only the days where payable and paid do not agree
+        $rows = collect($days)
+            ->filter(fn ($d) => abs($d['payable'] - $d['paid']) > 0.004)
+            ->sortByDesc('date')
+            ->map(function ($d) {
+                $d['payable'] = round($d['payable'], 2);
+                $d['paid'] = round($d['paid'], 2);
+                $d['difference'] = round($d['payable'] - $d['paid'], 2);
+                $d['date_fmt'] = $d['date'] === 'unknown' ? 'Unknown' : Carbon::parse($d['date'])->format('d-m-Y');
+                $d['lines'] = array_values($d['lines']);
+                return $d;
+            })
+            ->values();
+
+        return response()->json([
+            'status' => true,
+            'user_name' => $userName,
+            'group' => $groupLabel,
+            'date_fmt' => Carbon::parse($date)->format('d-m-Y'),
+            'total_payable' => round($payables->sum('payable_amount'), 2),
+            'total_paid' => round($paid->sum('settlement_amount'), 2),
+            'days' => $rows,
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | AGGREGATION
     |--------------------------------------------------------------------------
     */
@@ -248,7 +409,8 @@ class ReportingGroupSummaryReportController extends Controller
 
     /**
      * Doctor Payable (accrued that day) -- new payable rows created the
-     * selected day (invoices billed that day with a referring doctor).
+     * selected day (invoices billed that day with a referring doctor), leaving out
+     * payables of cancelled invoices that were never paid out.
      * Already per-line (item_code is real, not an invoice-level figure that
      * needs weighting), so no weight map needed here. Attributed to
      * created_by -- whichever staff member billed the invoice that
@@ -258,7 +420,17 @@ class ReportingGroupSummaryReportController extends Controller
     {
         $rows = DB::table('doctor_payables as dp')
             ->leftJoin('users as u', 'u.id', '=', 'dp.created_by')
+            ->leftJoin('invoices as inv', 'inv.id', '=', 'dp.invoice_id')
             ->where('dp.payment_status', '!=', 'CANCELLED')
+            // Cancelling an invoice does not mark its payable CANCELLED, so it must be
+            // checked on the invoice: a cancelled invoice's doctor share is never paid and
+            // must not count as payable (unless it was already paid out -- that payment is
+            // counted in Paid to Doctor, so the payable it settled stays in too).
+            ->where(function ($q) {
+                $q->whereNull('inv.cancelled')
+                    ->orWhere('inv.cancelled', '!=', 'Y')
+                    ->orWhere('dp.payment_status', 'PAID');
+            })
             ->whereDate('dp.created_at', $date)
             ->select('dp.item_code', 'dp.invoice_type', 'dp.created_by', 'u.name as user_name', 'dp.payable_amount')
             ->get();
@@ -351,11 +523,15 @@ class ReportingGroupSummaryReportController extends Controller
 
                 $cols['cash_to_deposit'] = $cols['collection_cash'] - $cols['refund'] - $cols['paid_to_doctor_cash'];
 
-                $row = ['user_name' => $userNames[$userId] ?? 'Unknown'];
+                $row = ['user_id' => $userId, 'user_name' => $userNames[$userId] ?? 'Unknown'];
                 foreach (self::COLUMNS as $col) {
                     $row[$col] = round($cols[$col], 2);
                     $subtotal[$col] += $cols[$col];
                 }
+
+                // Doctor Payable and Paid to Doctor do not agree -- the screen offers a
+                // day-wise explanation for such a row (see mismatchDetail()).
+                $row['mismatch'] = abs($row['doctor_payable'] - $row['paid_to_doctor']) > 0.004;
 
                 $rows[] = $row;
             }

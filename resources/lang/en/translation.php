@@ -88,6 +88,8 @@ return [
     "whatsappmessagereport" => "Whatsapp Message Detail",
     "itemwisereport" => "Category-wise Summary & Detail",
     "monthlyreconciliationreport" => "Monthly Reconciliation Statement",
+    "userreconciliationdashboard" => "User Reconciliation Dashboard",
+    "expenditurereport" => "Expenditure Report (Category-wise)",
     "reportinggroupsummaryreport" => "Group-wise Summary for All Users",
     "usermanagement" => "User Management",
     "usermaster" => "User Master",

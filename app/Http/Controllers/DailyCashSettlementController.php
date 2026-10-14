@@ -141,27 +141,61 @@ class DailyCashSettlementController extends Controller
         $rows = $query
             ->orderBy('doctor_payables.doctor_name')
             ->orderBy('doctor_payables.invoice_no')
-            ->get([
-                'doctor_payables.id', 'doctor_payables.payable_no', 'doctor_payables.invoice_no',
-                'doctor_payables.invoice_type', 'doctor_payables.doctor_id', 'doctor_payables.doctor_name',
-                'doctor_payables.patient_name', 'doctor_payables.item_description', 'doctor_payables.paid_amount',
-                'doctor_payables.last_settlement_no',
-                DB::raw('COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) as collected_by'),
-            ])
+            ->get($this->rowColumns())
             ->map(function ($row) use ($isAllUsers, $userMap) {
-                $row->category = self::INVOICE_TYPE_LABELS[$row->invoice_type] ?? $row->invoice_type;
-                $row->user_name = $isAllUsers ? ($userMap[$row->collected_by] ?? '-') : null;
-                return $row;
+                $row->is_settled = true;
+                $row->settled_amount = (float) $row->paid_amount;
+                return $this->decorateRow($row, $isAllUsers, $userMap);
             });
 
-        $groups = $rows->groupBy('doctor_id')
+        // Doctor payables that exist but are NOT settled: invoices fully paid
+        // (nothing due) whose final payment this user collected on the selected
+        // day, with the doctor's share still unpaid -- the doctor's money the
+        // user is holding.
+        $pendingQuery = DB::table('doctor_payables')
+            ->join('invoices', 'doctor_payables.invoice_id', '=', 'invoices.id')
+            ->joinSub($this->finalCollectorSubquery(), 'fc', 'fc.invoice_reference', '=', 'invoices.invoice_no')
+            ->where('invoices.due_amount', 0)
+            ->where('invoices.cancelled', '!=', 'Y')
+            ->whereNotIn('doctor_payables.payment_status', ['PAID', 'CANCELLED'])
+            ->where('doctor_payables.payable_amount', '>', 0)
+            ->whereDate('fc.final_collected_at', $date);
+
+        if (!$isAllUsers) {
+            $pendingQuery->whereRaw(
+                'COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) = ?',
+                [$userId]
+            );
+        }
+
+        $pending = $pendingQuery
+            ->orderBy('doctor_payables.doctor_name')
+            ->orderBy('doctor_payables.invoice_no')
+            ->get($this->rowColumns())
+            ->map(function ($row) use ($isAllUsers, $userMap) {
+                $row->is_settled = false;
+                $row->settled_amount = 0.0;
+                $row->last_settlement_no = null;
+                return $this->decorateRow($row, $isAllUsers, $userMap);
+            });
+
+        $all = $rows->concat($pending);
+
+        $groups = $all->groupBy('doctor_id')
             ->map(function ($group) {
+                $settled = $group->where('is_settled', true);
+                $unsettled = $group->where('is_settled', false);
+
                 return [
                     'doctor_id' => $group->first()->doctor_id,
                     'doctor_name' => $group->first()->doctor_name,
-                    'items' => $group->values(),
-                    'total_amount' => round($group->sum('paid_amount'), 2),
-                    'invoice_count' => $group->count(),
+                    // settled rows first, then the ones still unpaid
+                    'items' => $settled->concat($unsettled)->values(),
+                    'total_amount' => round($settled->sum('settled_amount'), 2),
+                    'total_payable' => round($group->sum('payable_amount'), 2),
+                    'total_unsettled' => round($unsettled->sum('payable_amount'), 2),
+                    'invoice_count' => $settled->count(),
+                    'unsettled_count' => $unsettled->count(),
                 ];
             })
             ->sortBy('doctor_name')
@@ -173,9 +207,32 @@ class DailyCashSettlementController extends Controller
             'summary' => [
                 'total_doctors' => $groups->count(),
                 'total_invoices' => $rows->count(),
-                'total_amount' => round($rows->sum('paid_amount'), 2),
+                'total_amount' => round($rows->sum('settled_amount'), 2),
+                'total_payable' => round($all->sum('payable_amount'), 2),
+                'total_unsettled' => round($pending->sum('payable_amount'), 2),
+                'unsettled_count' => $pending->count(),
             ],
         ];
+    }
+
+    private function rowColumns(): array
+    {
+        return [
+            'doctor_payables.id', 'doctor_payables.payable_no', 'doctor_payables.invoice_no',
+            'doctor_payables.invoice_type', 'doctor_payables.doctor_id', 'doctor_payables.doctor_name',
+            'doctor_payables.patient_name', 'doctor_payables.item_description', 'doctor_payables.paid_amount',
+            'doctor_payables.payable_amount', 'doctor_payables.last_settlement_no',
+            DB::raw('COALESCE(invoices.doctor_amount_collected_by, fc.final_collector_id) as collected_by'),
+        ];
+    }
+
+    private function decorateRow($row, bool $isAllUsers, $userMap)
+    {
+        $row->payable_amount = (float) $row->payable_amount;
+        $row->category = self::INVOICE_TYPE_LABELS[$row->invoice_type] ?? $row->invoice_type;
+        $row->user_name = $isAllUsers ? ($userMap[$row->collected_by] ?? '-') : null;
+
+        return $row;
     }
 
     /**
@@ -188,7 +245,7 @@ class DailyCashSettlementController extends Controller
     private function finalCollectorSubquery()
     {
         $ranked = DB::table('daily_transactions')
-            ->select('invoice_reference', 'operator_id')
+            ->select('invoice_reference', 'operator_id', 'created_at')
             ->selectRaw('ROW_NUMBER() OVER (PARTITION BY invoice_reference ORDER BY created_at DESC) as rn')
             ->where('transaction_type', 'RECEIVED')
             ->where('status', '!=', 'CANCELLED')
@@ -197,6 +254,6 @@ class DailyCashSettlementController extends Controller
         return DB::query()
             ->fromSub($ranked, 'ranked')
             ->where('rn', 1)
-            ->select('invoice_reference', 'operator_id as final_collector_id');
+            ->select('invoice_reference', 'operator_id as final_collector_id', 'created_at as final_collected_at');
     }
 }

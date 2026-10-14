@@ -17,9 +17,11 @@ class UsgReportFinding extends Model
         'clinical_history',
         'findings',
         'impression',
+        'report_title',
 
         'confirmed_by',
         'confirmed_at',
+        'corrected_from_sent_at',
 
         'created_by',
         'updated_by',
@@ -27,5 +29,6 @@ class UsgReportFinding extends Model
 
     protected $casts = [
         'confirmed_at' => 'datetime',
+        'corrected_from_sent_at' => 'datetime',
     ];
 }

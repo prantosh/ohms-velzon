@@ -344,6 +344,7 @@ async function searchInvoice(invoiceNo) {
         root.querySelector('.study-item-description').innerText = line.item_description ?? '';
         root.querySelector('.study-item-code-sub').innerText = line.item_code_sub ? `(${line.item_code_sub})` : '';
         root.querySelector('.study-doctor-name').innerText = line.doctor_name ?? '-';
+        root.querySelector('.study-test-date').value = line.test_date ?? '';
 
         wrap.appendChild(card);
 
@@ -356,6 +357,7 @@ async function searchInvoice(invoiceNo) {
 
         if (line.confirmed_at) {
 
+            root.querySelector('.study-test-date').disabled = true;
             lockStudyCard(root, line.finding_id);
 
         } else if (line.item_code_sub) {
@@ -547,7 +549,10 @@ if (deepLinkInvoiceNo) {
 
 function cardPayload(root) {
 
-    let payload = { invoice_detail_id: root.dataset.invoiceDetailId };
+    let payload = {
+        invoice_detail_id: root.dataset.invoiceDetailId,
+        test_date: root.querySelector('.study-test-date').value || ''
+    };
 
     cardioFieldKeys(root).forEach(key => {
         payload[key] = root.cardioEditors[key].getData();
@@ -825,7 +830,8 @@ document.addEventListener('click', async function (e) {
     let ask = await Swal.fire({
         icon: 'warning',
         title: 'Delete this Cardiology report?',
-        html: `<b>${escapeHtml(what)}</b><br>${isConfirmed ? 'This report is <b>confirmed</b>. ' : ''}It will be removed and the test becomes open again, so a new report can be written.`,
+        html: `<b>${escapeHtml(what)}</b><br>${isConfirmed ? 'This report is <b>confirmed</b>. ' : ''}It will be removed and the test becomes open again, so a new report can be written.`
+            + (isConfirmed ? '<br><br>If this report was already sent to the patient via WhatsApp, the next report written for this test will automatically note that the earlier one should be ignored.' : ''),
         showCancelButton: true,
         confirmButtonColor: '#d63939',
         confirmButtonText: 'Yes, delete it'

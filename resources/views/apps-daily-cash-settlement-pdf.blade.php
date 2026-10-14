@@ -134,11 +134,19 @@ function fmtMoney26($v)
 </tr>
 
 <tr>
-    <td class="label-blue">Doctors Settled</td>
+    <td class="label-blue">Doctors</td>
     <td>{{ $summary['total_doctors'] }}</td>
 
     <td class="label-blue">Invoices Settled</td>
     <td>{{ $summary['total_invoices'] }}</td>
+</tr>
+
+<tr>
+    <td class="label-blue">Total Doctor Payable</td>
+    <td>Rs. {{ fmtMoney26($summary['total_payable']) }}</td>
+
+    <td class="label-blue">Payable Not Settled</td>
+    <td>Rs. {{ fmtMoney26($summary['total_unsettled']) }} ({{ $summary['unsettled_count'] }} invoice(s))</td>
 </tr>
 
 </table>
@@ -151,8 +159,9 @@ function fmtMoney26($v)
 <table>
 <thead>
 <tr>
-    <th colspan="{{ $isAllUsers ? 6 : 5 }}" class="doctor-header">
-        {{ $group['doctor_name'] }} &mdash; {{ $group['invoice_count'] }} Invoice(s)
+    <th colspan="{{ $isAllUsers ? 7 : 6 }}" class="doctor-header">
+        {{ $group['doctor_name'] }} &mdash; {{ $group['invoice_count'] }} Settled
+        @if($group['unsettled_count']) &mdash; {{ $group['unsettled_count'] }} Not settled (Rs. {{ fmtMoney26($group['total_unsettled']) }}) @endif
     </th>
 </tr>
 <tr>
@@ -163,7 +172,8 @@ function fmtMoney26($v)
     @endif
     <th>Patient</th>
     <th>Item</th>
-    <th width="12%">Amount</th>
+    <th width="11%">Payable</th>
+    <th width="11%">Settled</th>
 </tr>
 </thead>
 
@@ -176,8 +186,9 @@ function fmtMoney26($v)
     <td>{{ $item->user_name }}</td>
     @endif
     <td>{{ $item->patient_name }}</td>
-    <td>{{ $item->item_description }}</td>
-    <td class="text-end">{{ fmtMoney26($item->paid_amount) }}</td>
+    <td>{{ $item->item_description }}@if(!$item->is_settled) <b>(Not settled)</b>@endif</td>
+    <td class="text-end">{{ fmtMoney26($item->payable_amount) }}</td>
+    <td class="text-end">{{ fmtMoney26($item->settled_amount) }}</td>
 </tr>
 @endforeach
 </tbody>
@@ -185,6 +196,7 @@ function fmtMoney26($v)
 <tfoot>
 <tr class="doctor-total-row">
     <td colspan="{{ $isAllUsers ? 5 : 4 }}" class="text-end">Total for {{ $group['doctor_name'] }}</td>
+    <td class="text-end">{{ fmtMoney26($group['total_payable']) }}</td>
     <td class="text-end">{{ fmtMoney26($group['total_amount']) }}</td>
 </tr>
 </tfoot>
@@ -192,7 +204,7 @@ function fmtMoney26($v)
 @empty
 <table>
 <tr>
-    <td class="text-center">No doctor payables were settled for this user on this day.</td>
+    <td class="text-center">No doctor payables were settled, or are waiting to be settled, for this user on this day.</td>
 </tr>
 </table>
 @endforelse
@@ -204,8 +216,16 @@ function fmtMoney26($v)
 @if(count($groups))
 <table class="grand-total-table">
 <tr>
-    <td width="70%" class="text-end">Grand Total ({{ $summary['total_doctors'] }} Doctor(s), {{ $summary['total_invoices'] }} Invoice(s))</td>
+    <td width="70%" class="text-end">Grand Total Settled ({{ $summary['total_doctors'] }} Doctor(s), {{ $summary['total_invoices'] }} Invoice(s))</td>
     <td class="text-end">Rs. {{ fmtMoney26($summary['total_amount']) }}</td>
+</tr>
+<tr>
+    <td class="text-end">Total Doctor Payable</td>
+    <td class="text-end">Rs. {{ fmtMoney26($summary['total_payable']) }}</td>
+</tr>
+<tr>
+    <td class="text-end">Payable Not Settled</td>
+    <td class="text-end">Rs. {{ fmtMoney26($summary['total_unsettled']) }}</td>
 </tr>
 </table>
 @endif

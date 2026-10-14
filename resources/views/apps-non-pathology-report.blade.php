@@ -238,6 +238,15 @@
 
         <div class="card-body">
 
+            <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Report Heading <small class="text-muted fw-normal">(printed as the main heading -- edit if needed)</small></label>
+                <input type="text" class="form-control nonpath-report-title" maxlength="255" autocomplete="off">
+            </div>
+            <div class="mb-3 d-flex align-items-center gap-2">
+                <label class="form-label fw-semibold mb-0">Test Date</label>
+                <input type="date" class="form-control form-control-sm nonpath-test-date" style="width:auto">
+            </div>
+
             <div class="mb-3 nonpath-template-picker-wrap">
                 <select class="form-select form-select-sm nonpath-template-picker" style="max-width:260px">
                     <option value="">-- Load Template --</option>

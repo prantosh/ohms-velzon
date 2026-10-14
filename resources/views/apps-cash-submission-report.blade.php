@@ -133,7 +133,7 @@
             <div class="col-md-4 col-xl-2 mb-3">
                 <div class="card h-100"><div class="card-body text-center">
                     <h5 class="mb-0 text-danger" id="summary-cash_paid_to_doctors">&#8377;0.00</h5>
-                    <small class="text-muted">Cash Paid To Doctors</small>
+                    <small class="text-muted">Cash Payable/Paid To Doctors</small>
                 </div></div>
             </div>
 

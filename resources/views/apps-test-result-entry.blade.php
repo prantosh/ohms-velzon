@@ -342,6 +342,15 @@
 
         <div class="card-body">
 
+            <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Report Heading <small class="text-muted fw-normal">(printed as the main heading -- edit if needed)</small></label>
+                <input type="text" class="form-control pathology-report-title" maxlength="255" autocomplete="off">
+            </div>
+            <!-- One test date per test on this report (filled by the page script),
+                 editable until the report is confirmed. A single date prints once;
+                 different dates print in brackets beside each test name. -->
+            <div class="pathology-item-dates d-flex flex-wrap gap-3 mb-3"></div>
+
             <textarea class="form-control pathology-content"></textarea>
 
             <div class="d-flex justify-content-end gap-2 mt-3">

@@ -235,6 +235,8 @@ class InvoiceItemDetailController extends Controller
 
             'member_other_lab_discount' => 'nullable|numeric',
 
+            'senior_citizen_discount' => 'nullable|numeric|min:0|max:100',
+
             'report_days' => 'nullable|integer',
 
             'test_group_code' => 'nullable|exists:test_group_masters,id',
@@ -259,6 +261,14 @@ class InvoiceItemDetailController extends Controller
             ]);
 
         }
+
+        // Creating a NEW package is Admin-only (editing an existing one is
+        // unchanged) -- a package bills its components instead of itself,
+        // so getting this wrong has real billing consequences.
+        if ($request->boolean('is_package') && ($denied = $this->denyUnlessAdmin('Only an Admin can create a package.'))) {
+            return $denied;
+        }
+
         if (
             InvoiceItemDetail::where('item_code', $request->item_code)
                 ->where('item_description_sub', $request->item_description_sub)
@@ -312,6 +322,8 @@ class InvoiceItemDetailController extends Controller
                 'discount_other_lab' => $request->other_lab_discount,
 
                 'discount_member_other_lab' => $request->member_other_lab_discount,
+
+                'discount_senior_citizen' => $request->senior_citizen_discount ?: 0,
 
                 'test_group_code' => $request->test_group_code,
 
@@ -456,6 +468,8 @@ class InvoiceItemDetailController extends Controller
 
             'discount_member_other_lab' => $request->member_other_lab_discount,
 
+            'discount_senior_citizen' => $request->senior_citizen_discount ?: 0,
+
             'test_group_code' => $request->test_group_code,
 
             'uom' => $request->uom,
@@ -573,6 +587,7 @@ class InvoiceItemDetailController extends Controller
                 'invoice_item_details.member_discount',
                 'invoice_item_details.discount_other_lab',
                 'invoice_item_details.discount_member_other_lab',
+                'invoice_item_details.discount_senior_citizen',
                 'invoice_item_details.status',
                 'invoice_item_details.created_by',
                 'invoice_item_details.created_dt',
@@ -606,6 +621,7 @@ class InvoiceItemDetailController extends Controller
                 'Member Discount',
                 'Other Lab Discount',
                 'Member + Other Lab',
+                'Only Senior Citizen',
                 'Status',
                 'Created By',
                 'Created Date',
@@ -628,6 +644,7 @@ class InvoiceItemDetailController extends Controller
                     $row->member_discount,
                     $row->discount_other_lab,
                     $row->discount_member_other_lab,
+                    $row->discount_senior_citizen,
                     $row->status === 'Y' ? 'Active' : 'Inactive',
                     $row->created_by,
                     $row->created_dt

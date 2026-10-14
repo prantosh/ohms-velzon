@@ -17,7 +17,8 @@ use Illuminate\Support\Facades\Validator;
 use Exception;
 
 /**
- * Admin CRUD for the narrative Pathology report templates that replace the
+ * CRUD, open to any authorized staff role, for the narrative Pathology
+ * report templates that replace the
  * old structured analyte-grid entry (see TestResultEntryController /
  * TestReportRowBuilder, both untouched -- historical confirmed invoices
  * keep working through them). A template can cover one Pathology sub-item
@@ -288,11 +289,6 @@ class PathologyReportTemplateController extends Controller
 
     public function store(Request $request, AuditService $auditService)
     {
-        // Creating a template is Admin-only (editing/deleting is unchanged).
-        if ($denied = $this->denyUnlessAdmin('Only an Admin can create templates.')) {
-            return $denied;
-        }
-
         $data = $this->validateTemplate($request);
 
         DB::beginTransaction();

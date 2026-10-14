@@ -155,12 +155,12 @@ table td {
         </td>
         <td width="30%">
             <span class="label-blue">Test Date :</span>
-            {{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}
+            {{ \App\Support\ReportTestDates::textForLine($finding->invoice_detail_id ?? null, $invoice, $finding->test_date_override ?? null) }}
         </td>
     </tr>
 </table>
 
-<h4 class="study-title">{{ $finding->item_description }}</h4>
+<h4 class="study-title">{{ !empty($finding->report_title) ? $finding->report_title : $finding->item_description }}</h4>
 
 @if(!empty($finding->clinical_history))
 <div class="report-section">
@@ -186,6 +186,8 @@ table td {
         Doctor's Signature
     </div>
 </div>
+
+@include('partials.report-correction-footnote', ['correctedFromSentAt' => $finding->corrected_from_sent_at ?? null])
 
 </body>
 
