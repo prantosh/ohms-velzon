@@ -244,7 +244,7 @@ class EquipmentRentalController extends Controller
 
             $invoiceNo = $this->generateInvoiceNo($request->rental_type);
 
-            $netAdvance = round($request->advance_amount - $discountAmount, 2);
+            $netAdvance = $this->roundToNearestTen($request->advance_amount - $discountAmount);
 
             $invoice = Invoice::create([
 
@@ -510,7 +510,7 @@ class EquipmentRentalController extends Controller
                 ], 422);
             }
 
-            $netFinalAmount = round($finalAmount - $discountAmount, 2);
+            $netFinalAmount = $this->roundToNearestTen($finalAmount - $discountAmount);
 
             $settlement = round($netFinalAmount - $invoice->paid_amount, 2);
 
@@ -829,6 +829,16 @@ class EquipmentRentalController extends Controller
         $invoice = Invoice::whereIn('invoice_type', self::RENTAL_TYPES)
             ->findOrFail($id);
 
+        if (!WhatsappAutoSendSetting::isEnabled('INVOICE')) {
+
+            WhatsappAutoSendSetting::logSkipped('INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'WhatsApp sending for Invoice is currently disabled by Admin. Enable it in WhatsApp Auto-Send settings to send.'
+            ]);
+        }
+
         $isFinal = !empty($invoice->reference_no);
 
         $advanceAmount = 0;
@@ -1073,5 +1083,13 @@ class EquipmentRentalController extends Controller
         ]);
 
         app(CashInHandService::class)->apply(Auth::id(), $type, $paymentMode, $amount);
+    }
+
+    // Rental charges are set in multiples of 10, so the amount after
+    // discount is rounded to the nearest multiple of 10 too (standard
+    // round-half-up).
+    private function roundToNearestTen(float $value): float
+    {
+        return round($value / 10) * 10;
     }
 }

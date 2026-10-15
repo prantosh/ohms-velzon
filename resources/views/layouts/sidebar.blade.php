@@ -635,6 +635,11 @@
                                         <a href="{{ route('test-report-delivery-report.index') }}" class="nav-link">@lang('translation.testreportdeliveryreport')</a>
                                         </li>
                             @endif
+                            @if(is_null($allowedPages) || in_array('doctor-visit-collection-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('doctor-visit-collection-report.index') }}" class="nav-link">@lang('translation.doctorvisitcollectionreport')</a>
+                                        </li>
+                            @endif
                             
                                                      
                             

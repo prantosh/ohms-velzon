@@ -101,4 +101,5 @@ return [
     'xray-report-upload' => 'Upload X-Ray Report',
     'whatsapp-auto-send-settings' => 'WhatsApp Auto-Send Settings',
     'whatsapp-message-report' => 'WhatsApp Message Report',
+    'doctor-visit-collection-report' => 'Doctor Visit Collection Report',
 ];

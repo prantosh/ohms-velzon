@@ -501,6 +501,19 @@ class MembershipFeeController extends Controller
 
     public function sendWhatsapp($id)
     {
+        if (!WhatsappAutoSendSetting::isEnabled('INVOICE')) {
+
+            $invoice = Invoice::find($id);
+            if ($invoice) {
+                WhatsappAutoSendSetting::logSkipped('INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+            }
+
+            return response()->json([
+                'status' => false,
+                'message' => 'WhatsApp sending for Invoice is currently disabled by Admin. Enable it in WhatsApp Auto-Send settings to send.'
+            ]);
+        }
+
         $sent = $this->generateAndSendInvoice($id);
 
         return response()->json([

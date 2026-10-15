@@ -92,6 +92,7 @@ use App\Http\Controllers\DoctorPayableNonCashReportController;
 use App\Http\Controllers\DoctorWisePaymentReportController;
 use App\Http\Controllers\DailyTransactionReportController;
 use App\Http\Controllers\WhatsappMessageReportController;
+use App\Http\Controllers\DoctorVisitCollectionReportController;
 use App\Http\Controllers\ItemWiseReportController;
 use App\Http\Controllers\MonthlyReconciliationReportController;
 use App\Http\Controllers\ReportingGroupSummaryReportController;
@@ -1760,6 +1761,31 @@ Route::middleware(['auth'])->prefix('whatsapp-message-report')->group(function (
     Route::get('/print-detail', [WhatsappMessageReportController::class, 'printDetail'])
         ->name('whatsapp-message-report.print-detail');
 
+    Route::get('/held-summary', [WhatsappMessageReportController::class, 'heldSummary'])
+        ->name('whatsapp-message-report.held-summary');
+
+    Route::get('/held-detail', [WhatsappMessageReportController::class, 'heldDetail'])
+        ->name('whatsapp-message-report.held-detail');
+
+});
+
+Route::middleware(['auth'])->prefix('doctor-visit-collection-report')->group(function () {
+
+    Route::get('/', [DoctorVisitCollectionReportController::class, 'index'])
+        ->name('doctor-visit-collection-report.index');
+
+    Route::get('/summary', [DoctorVisitCollectionReportController::class, 'summary'])
+        ->name('doctor-visit-collection-report.summary');
+
+    Route::get('/print-summary', [DoctorVisitCollectionReportController::class, 'printSummary'])
+        ->name('doctor-visit-collection-report.print-summary');
+
+    Route::get('/detail', [DoctorVisitCollectionReportController::class, 'detail'])
+        ->name('doctor-visit-collection-report.detail');
+
+    Route::get('/print-detail', [DoctorVisitCollectionReportController::class, 'printDetail'])
+        ->name('doctor-visit-collection-report.print-detail');
+
 });
 
 // Merged former item-wise-report + item-wise-summary-report pages into one
@@ -3091,6 +3117,35 @@ Route::middleware(['auth'])->prefix('test-report-dashboard')->group(function () 
 
 
 
+
+Route::get('/__deploy_check_whatsapp_sent_breakdown', function () {
+
+    $date = request()->query('date', '2026-10-14');
+
+    $byTypeAndStatus = \Illuminate\Support\Facades\DB::table('whatsapp_message_logs')
+        ->whereDate('created_at', $date)
+        ->selectRaw('message_type, status, COUNT(*) as cnt')
+        ->groupBy('message_type', 'status')
+        ->orderBy('message_type')
+        ->orderBy('status')
+        ->get();
+
+    $totalSent = \Illuminate\Support\Facades\DB::table('whatsapp_message_logs')
+        ->whereDate('created_at', $date)
+        ->where('status', 'SENT')
+        ->count();
+
+    $totalAll = \Illuminate\Support\Facades\DB::table('whatsapp_message_logs')
+        ->whereDate('created_at', $date)
+        ->count();
+
+    return response()->json([
+        'date' => $date,
+        'total_sent' => $totalSent,
+        'total_all_statuses' => $totalAll,
+        'by_type_and_status' => $byTypeAndStatus,
+    ]);
+});
 
 Route::get('{any}', [App\Http\Controllers\HomeController::class, 'index'])
     ->where('any', '.*')

@@ -15,6 +15,25 @@ function successRate(sent, failed) {
     return Math.round((sent / attempted) * 100) + '%';
 }
 
+// A category cell's headline number is always its SENT count -- so summing
+// every category cell in a row equals that row's own Sent column, the same
+// way summing Sent+Failed+Skipped equals Total. Anything that didn't go out
+// (Failed/Skipped) is named in small text underneath instead of being
+// folded silently into the headline number.
+function renderTypeCell(stats) {
+    stats = stats || { sent: 0, failed: 0, skipped: 0 };
+    let notes = [];
+    if (stats.failed) notes.push(`<span class="text-danger">${stats.failed} failed</span>`);
+    if (stats.skipped) notes.push(`<span class="text-secondary">${stats.skipped} skipped</span>`);
+    let noteHtml = notes.length ? `<div class="small">${notes.join(', ')}</div>` : '';
+    // Labelling "sent" inline (not relying on the column header alone) so
+    // the number is self-explanatory without reading the legend above.
+    let sentHtml = stats.sent
+        ? `<div class="fw-semibold text-success">${stats.sent} <span class="small fw-normal text-muted">sent</span></div>`
+        : `<div class="text-muted">0</div>`;
+    return `<td class="text-end">${sentHtml}${noteHtml}</td>`;
+}
+
 /* ==========================================================
    SUMMARY TAB
 ========================================================== */
@@ -78,13 +97,14 @@ async function loadSummary() {
     tbody.innerHTML = '';
 
     result.rows.forEach(row => {
-        let typeCells = typeColumns.map(col => `<td class="text-end">${row.types[col.key] ?? 0}</td>`).join('');
+        let typeCells = typeColumns.map(col => renderTypeCell(row.types[col.key])).join('');
         tbody.innerHTML += `
         <tr>
             <td class="fw-semibold">${escapeHtml(row.date_fmt)}</td>
             <td class="text-end">${row.total_count}</td>
             <td class="text-end text-success">${row.sent_count}</td>
             <td class="text-end ${row.failed_count > 0 ? 'text-danger fw-semibold' : ''}">${row.failed_count}</td>
+            <td class="text-end">${row.skipped_count}</td>
             ${typeCells}
             <td class="text-center">
                 <button type="button" class="btn btn-sm btn-soft-primary view-day-btn" data-date="${row.log_date}">
@@ -95,13 +115,14 @@ async function loadSummary() {
         `;
     });
 
-    let totalTypeCells = typeColumns.map(col => `<td class="text-end">${g.types[col.key] ?? 0}</td>`).join('');
+    let totalTypeCells = typeColumns.map(col => renderTypeCell(g.types[col.key])).join('');
     tbody.innerHTML += `
     <tr class="table-light fw-bold">
         <td>Total</td>
         <td class="text-end">${g.total_count}</td>
         <td class="text-end">${g.sent_count}</td>
         <td class="text-end">${g.failed_count}</td>
+        <td class="text-end">${g.skipped_count}</td>
         ${totalTypeCells}
         <td></td>
     </tr>
@@ -188,8 +209,6 @@ async function loadDetail() {
         'SENT': 'bg-success',
         'FAILED': 'bg-danger',
         'SKIPPED': 'bg-secondary',
-        'HELD_DUE': 'bg-warning',
-        'RELEASED': 'bg-info',
     };
 
     let tbody = document.getElementById('detailTableBody');
@@ -219,9 +238,134 @@ async function loadDetail() {
 document.getElementById('loadDetailBtn').addEventListener('click', loadDetail);
 
 /* ==========================================================
+   HELD & RELEASED TAB (day-wise -> item-wise, same shape as
+   Summary -> Detail above, but entirely separate data/UI since
+   it's an admin-only due-payment-hold bookkeeping trail, not a
+   real send count)
+========================================================== */
+
+let heldSummaryRequestSeq = 0;
+
+async function loadHeldSummary() {
+
+    let fromDate = document.getElementById('held_from_date-field').value;
+    let toDate = document.getElementById('held_to_date-field').value;
+
+    if (!fromDate || !toDate) {
+        Swal.fire({ icon: 'warning', title: 'Missing Dates', text: 'Please select both From Date and To Date.' });
+        return;
+    }
+
+    const mySeq = ++heldSummaryRequestSeq;
+
+    const params = new URLSearchParams({ from_date: fromDate, to_date: toDate });
+
+    const response = await fetch(`/whatsapp-message-report/held-summary?${params.toString()}`);
+    const result = await response.json();
+
+    if (mySeq !== heldSummaryRequestSeq) return;
+
+    document.getElementById('heldSummaryTotalsRow').style.display = 'none';
+    document.getElementById('heldSummaryCard').style.display = 'none';
+    document.getElementById('heldSummaryNoDataWrap').style.display = 'none';
+    document.getElementById('heldDetailCard').style.display = 'none';
+
+    if (!result.status || !result.rows.length) {
+        document.getElementById('heldSummaryNoDataWrap').style.display = 'block';
+        return;
+    }
+
+    let g = result.grand_total;
+
+    document.getElementById('held-held_count').innerText = g.held_count;
+    document.getElementById('held-released_count').innerText = g.released_count;
+
+    document.getElementById('heldSummaryTotalsRow').style.display = 'flex';
+
+    let tbody = document.getElementById('heldSummaryTableBody');
+    tbody.innerHTML = '';
+
+    result.rows.forEach(row => {
+        tbody.innerHTML += `
+        <tr>
+            <td class="fw-semibold">${escapeHtml(row.date_fmt)}</td>
+            <td class="text-end">${row.held_count}</td>
+            <td class="text-end">${row.released_count}</td>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-soft-primary view-held-day-btn" data-date="${row.log_date}">
+                    <i class="ri-eye-line"></i> View
+                </button>
+            </td>
+        </tr>
+        `;
+    });
+
+    tbody.innerHTML += `
+    <tr class="table-light fw-bold">
+        <td>Total</td>
+        <td class="text-end">${g.held_count}</td>
+        <td class="text-end">${g.released_count}</td>
+        <td></td>
+    </tr>
+    `;
+
+    document.getElementById('heldSummaryCard').style.display = 'block';
+}
+
+document.getElementById('loadHeldSummaryBtn').addEventListener('click', loadHeldSummary);
+
+document.getElementById('heldSummaryTableBody').addEventListener('click', function (e) {
+
+    let btn = e.target.closest('.view-held-day-btn');
+    if (!btn) return;
+
+    loadHeldDetail(btn.dataset.date);
+});
+
+let heldStatusLabel = { 'HELD_DUE': 'Held (Pending)', 'RELEASED': 'Released' };
+let heldStatusBadgeClass = { 'HELD_DUE': 'bg-warning', 'RELEASED': 'bg-info' };
+
+async function loadHeldDetail(date) {
+
+    const params = new URLSearchParams({ date: date });
+
+    const response = await fetch(`/whatsapp-message-report/held-detail?${params.toString()}`);
+    const result = await response.json();
+
+    document.getElementById('heldDetailCard').style.display = 'none';
+
+    if (!result.status || !result.rows.length) return;
+
+    document.getElementById('heldDetailCardTitle').innerText = `Held / Released Detail -- ${date}`;
+
+    let tbody = document.getElementById('heldDetailTableBody');
+    tbody.innerHTML = '';
+
+    result.rows.forEach(row => {
+        tbody.innerHTML += `
+        <tr>
+            <td class="fw-semibold">${escapeHtml(row.invoice_no)}</td>
+            <td>${escapeHtml(row.patient_name) || '-'}</td>
+            <td>${escapeHtml(row.mobile_no)}</td>
+            <td>${escapeHtml(row.type_label)}</td>
+            <td><span class="badge ${heldStatusBadgeClass[row.status] ?? 'bg-secondary'}">${heldStatusLabel[row.status] ?? escapeHtml(row.status)}</span></td>
+            <td>${escapeHtml(row.held_at_fmt)}</td>
+            <td>${row.released_at_fmt ? escapeHtml(row.released_at_fmt) : '-'}</td>
+            <td class="text-end">${Number(row.due_amount_now).toFixed(2)}</td>
+        </tr>
+        `;
+    });
+
+    document.getElementById('heldDetailCard').style.display = 'block';
+    document.getElementById('heldDetailCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/* ==========================================================
    INIT (default: last 7 days for summary, today for detail)
 ========================================================== */
 
 document.getElementById('summary_to_date-field').value = new Date().toISOString().substring(0, 10);
 document.getElementById('summary_from_date-field').value = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10);
 document.getElementById('detail_date-field').value = new Date().toISOString().substring(0, 10);
+document.getElementById('held_to_date-field').value = new Date().toISOString().substring(0, 10);
+document.getElementById('held_from_date-field').value = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10);

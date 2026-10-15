@@ -833,6 +833,16 @@ class TestResultEntryController extends Controller
             return response()->json(['status' => false, 'message' => $blocked]);
         }
 
+        if (!WhatsappAutoSendSetting::isEnabled('TEST_REPORT')) {
+
+            WhatsappAutoSendSetting::logSkipped('TEST_REPORT', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'WhatsApp sending for Test Report is currently disabled by Admin. Enable it in WhatsApp Auto-Send settings to send.'
+            ]);
+        }
+
         $sent = $this->sendReportWhatsapp($invoice, $rowBuilder, $wati, $auditService);
 
         return response()->json([
@@ -956,6 +966,9 @@ class TestResultEntryController extends Controller
     /**
      * Sends the test report whose automatic WhatsApp was held for a
      * payment due, once the invoice is fully paid (see ReportWhatsappDueGate).
+     * Still subject to the auto-send toggle -- a due clearing while the
+     * category is switched off logs SKIPPED instead of sending, same as
+     * any other automatic trigger.
      */
     public function releaseHeldWhatsapp(string $invoiceNo): void
     {
@@ -965,8 +978,15 @@ class TestResultEntryController extends Controller
 
         $invoice = Invoice::where('invoice_no', $invoiceNo)->first();
 
-        if ($invoice && TestReportConfirmation::where('invoice_no', $invoiceNo)->exists()) {
-            $this->sendReportWhatsapp($invoice, app(TestReportRowBuilder::class), app(WatiService::class), app(AuditService::class));
+        if (!$invoice || !TestReportConfirmation::where('invoice_no', $invoiceNo)->exists()) {
+            return;
         }
+
+        if (!WhatsappAutoSendSetting::isEnabled('TEST_REPORT')) {
+            WhatsappAutoSendSetting::logSkipped('TEST_REPORT', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+            return;
+        }
+
+        $this->sendReportWhatsapp($invoice, app(TestReportRowBuilder::class), app(WatiService::class), app(AuditService::class));
     }
 }

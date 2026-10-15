@@ -2163,6 +2163,14 @@ $(document).on(
 
         amount = Math.max(0, amount);
 
+        // The post-discount amount itself is also rounded to the nearest
+        // multiple of 10 -- a safety net beyond rounding the discount
+        // components above, since additionalDiscountAmount is a free-typed
+        // flat figure that can land anywhere. The floor/waiver adjustments
+        // below are hard business rules that take priority over this
+        // cosmetic rounding, so they're applied after, not re-rounded.
+        amount = roundToNearestTen(amount);
+
         // The doctor's payable for this item is fixed regardless of
         // discount, so the discount can never push the payable amount
         // below what's owed to the doctor -- mirrors the server-side

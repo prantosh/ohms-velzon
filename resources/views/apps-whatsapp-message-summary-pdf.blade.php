@@ -16,6 +16,19 @@ function whatsappSuccessRate($sent, $failed)
     if (!$attempted) return '0%';
     return round(($sent / $attempted) * 100) . '%';
 }
+
+// Mirrors the on-screen report: each category's headline number is its own
+// Sent count (so they sum to the Sent total), with Failed/Skipped named
+// underneath instead of being folded into a single raw total.
+function whatsappTypeCell($stats)
+{
+    $stats = $stats ?? ['sent' => 0, 'failed' => 0, 'skipped' => 0];
+    $notes = [];
+    if (!empty($stats['failed'])) $notes[] = $stats['failed'] . ' failed';
+    if (!empty($stats['skipped'])) $notes[] = $stats['skipped'] . ' skipped';
+    $noteHtml = $notes ? '<div style="font-size:7px; color:#555;">' . implode(', ', $notes) . '</div>' : '';
+    return '<b>' . ($stats['sent'] ?? 0) . '</b>' . $noteHtml;
+}
 @endphp
 
                 <style>
@@ -132,13 +145,18 @@ function whatsappSuccessRate($sent, $failed)
 
 </table>
 
+<p style="font-size:7.5px; color:#555; margin-top:4px;">
+    <b>How to read the table below:</b> Total = Sent + Failed + Skipped on every row. Each category
+    column shows that category's own Sent count, so those always add up to the row's Sent total.
+</p>
+
 <!-- =======================================================
      DAY-WISE BREAKDOWN
 ======================================================= -->
 
 <table>
 
-@php $colCount = 4 + count($typeColumns); @endphp
+@php $colCount = 5 + count($typeColumns); @endphp
 
 <thead>
 <tr>
@@ -148,9 +166,10 @@ function whatsappSuccessRate($sent, $failed)
 </tr>
 <tr>
     <th width="14%">Date</th>
-    <th width="10%">Total</th>
-    <th width="10%">Sent</th>
-    <th width="10%">Failed</th>
+    <th width="9%">Total</th>
+    <th width="9%">Sent</th>
+    <th width="9%">Failed</th>
+    <th width="9%">Skipped</th>
     @foreach($typeColumns as $col)
     <th>{{ $col['label'] }}</th>
     @endforeach
@@ -165,8 +184,9 @@ function whatsappSuccessRate($sent, $failed)
     <td class="text-end">{{ $row['total_count'] }}</td>
     <td class="text-end">{{ $row['sent_count'] }}</td>
     <td class="text-end">{{ $row['failed_count'] }}</td>
+    <td class="text-end">{{ $row['skipped_count'] }}</td>
     @foreach($typeColumns as $col)
-    <td class="text-end">{{ $row['types'][$col['key']] ?? 0 }}</td>
+    <td class="text-end">{!! whatsappTypeCell($row['types'][$col['key']] ?? null) !!}</td>
     @endforeach
 </tr>
 @empty
@@ -180,8 +200,9 @@ function whatsappSuccessRate($sent, $failed)
     <td class="text-end">{{ $grandTotal['total_count'] }}</td>
     <td class="text-end">{{ $grandTotal['sent_count'] }}</td>
     <td class="text-end">{{ $grandTotal['failed_count'] }}</td>
+    <td class="text-end">{{ $grandTotal['skipped_count'] }}</td>
     @foreach($typeColumns as $col)
-    <td class="text-end">{{ $grandTotal['types'][$col['key']] ?? 0 }}</td>
+    <td class="text-end">{!! whatsappTypeCell($grandTotal['types'][$col['key']] ?? null) !!}</td>
     @endforeach
 </tr>
 

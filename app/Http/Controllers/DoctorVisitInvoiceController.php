@@ -475,11 +475,11 @@ class DoctorVisitInvoiceController extends Controller
         |--------------------------------------------------------------------------
         */
          $paidAmount =
-                    max(
+                    $this->roundToNearestTen(max(
                         0,
                         ($request->consultation_fee ?? 0)
                         - ($request->discount ?? 0)
-                    );
+                    ));
         $invoice =
             Invoice::create([
 
@@ -974,6 +974,16 @@ class DoctorVisitInvoiceController extends Controller
                 ]);
             }
 
+            if (!WhatsappAutoSendSetting::isEnabled('DOCTOR_VISIT_INVOICE')) {
+
+                WhatsappAutoSendSetting::logSkipped('DOCTOR_VISIT_INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'WhatsApp sending for Doctor Visit Invoice is currently disabled by Admin. Enable it in WhatsApp Auto-Send settings to send.'
+                ]);
+            }
+
             $result = $this->sendInvoiceWhatsapp($invoice);
 
             if (!$result['sent']) {
@@ -1211,5 +1221,14 @@ class DoctorVisitInvoiceController extends Controller
         return $pdf->stream(
             'Prescription-' . str_replace('/', '_', $invoice->invoice_no) . '.pdf'
         );
+    }
+
+    // Consultation rates are set in multiples of 10, so the amount after
+    // discount is rounded to the nearest multiple of 10 too (standard
+    // round-half-up). Mirrors roundToNearestTen() in
+    // doctor-visit-invoice.init.js.
+    private function roundToNearestTen(float $value): float
+    {
+        return round($value / 10) * 10;
     }
 }

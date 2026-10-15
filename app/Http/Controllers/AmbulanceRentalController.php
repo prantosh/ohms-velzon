@@ -187,7 +187,7 @@ class AmbulanceRentalController extends Controller
                 ], 422);
             }
 
-            $netPayable = round($actualAmount - $discountAmount, 2);
+            $netPayable = $this->roundToNearestTen($actualAmount - $discountAmount);
 
             $receivedAmount = (float) $request->received_amount;
 
@@ -474,6 +474,19 @@ class AmbulanceRentalController extends Controller
 
     public function sendWhatsapp($id)
     {
+        if (!WhatsappAutoSendSetting::isEnabled('INVOICE')) {
+
+            $invoice = Invoice::find($id);
+            if ($invoice) {
+                WhatsappAutoSendSetting::logSkipped('INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+            }
+
+            return response()->json([
+                'status' => false,
+                'message' => 'WhatsApp sending for Invoice is currently disabled by Admin. Enable it in WhatsApp Auto-Send settings to send.'
+            ]);
+        }
+
         $sent = $this->generateAndSendInvoice($id);
 
         return response()->json([
@@ -652,5 +665,12 @@ class AmbulanceRentalController extends Controller
         ]);
 
         app(CashInHandService::class)->apply(Auth::id(), $type, $paymentMode, $amount);
+    }
+
+    // Fares are set in multiples of 10, so the amount after discount is
+    // rounded to the nearest multiple of 10 too (standard round-half-up).
+    private function roundToNearestTen(float $value): float
+    {
+        return round($value / 10) * 10;
     }
 }

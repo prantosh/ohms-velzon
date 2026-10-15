@@ -265,6 +265,14 @@ document.getElementById('discount_amount-field').addEventListener('input', funct
     recalculateAmount();
 });
 
+// Fares are set in multiples of 10, so the amount after discount is
+// rounded to the nearest multiple of 10 too (standard round-half-up) --
+// matches roundToNearestTen() computed server-side in
+// AmbulanceRentalController, so this preview matches what actually saves.
+function roundToNearestTen(value) {
+    return Math.round(value / 10) * 10;
+}
+
 function recalculateAmount() {
 
     let select = document.querySelector('#destination_id-field');
@@ -290,7 +298,7 @@ function recalculateAmount() {
 
     let actualAmount = fare + waitingCharge;
 
-    let netPayable = actualAmount - discountAmount;
+    let netPayable = roundToNearestTen(actualAmount - discountAmount);
 
     let dueAmount = Math.max(0, netPayable - receivedAmount);
 

@@ -489,7 +489,12 @@ class DiagnosticInvoiceController extends Controller
                 // by design.
                 $doctorPayable = (float) ($test['payment_value'] ?? 0);
 
-                $itemAmount = (float) ($test['amount'] ?? 0);
+                $isManualTest = $this->isManualDiagnosticItem($test['item_code'] ?? null);
+
+                // Recomputed from rate/discounts (rounded to the nearest 10)
+                // rather than trusting the submitted 'amount' -- see
+                // computeDiagnosticLineAmount().
+                $itemAmount = $this->computeDiagnosticLineAmount($test, $isManualTest);
 
                 $isWaived = !empty($test['doctor_payment_waived']);
 
@@ -870,21 +875,21 @@ class DiagnosticInvoiceController extends Controller
             $lineNo = 1;
             foreach ($request->tests as $row) {
 
-                $amount = (float) ($row['amount'] ?? 0);
-
                 $isWaived = !empty($row['doctor_payment_waived']);
 
-                $isManual = false;
+                $isManual = $this->isManualDiagnosticItem($row['item_code'] ?? null);
 
-                $itemMaster = DB::table('invoice_item_masters')
-                    ->where('item_code', $row['item_code'])
-                    ->first();
+                // Recomputed from rate/discounts (rounded to the nearest
+                // 10) rather than trusting the submitted 'amount' -- see
+                // computeDiagnosticLineAmount(). The doctor-payable floor
+                // was already enforced (and this request rejected if
+                // violated) by the validation loop above using the same
+                // formula; a waived doctor fee reduces the patient's
+                // payable by that fee on top of it, same as the browser.
+                $amount = $this->computeDiagnosticLineAmount($row, $isManual);
 
-                if (
-                    $itemMaster &&
-                    stripos($itemMaster->item_name, 'manual') !== false
-                ) {
-                    $isManual = true;
+                if (!$isManual && $isWaived) {
+                    $amount = max(0, $amount - (float) ($row['payment_value'] ?? 0));
                 }
 
                 DB::table('invoice_details')->insert([
@@ -1510,6 +1515,19 @@ class DiagnosticInvoiceController extends Controller
     }
     public function sendWhatsapp($id)
     {
+        if (!WhatsappAutoSendSetting::isEnabled('INVOICE')) {
+
+            $invoice = Invoice::find($id);
+            if ($invoice) {
+                WhatsappAutoSendSetting::logSkipped('INVOICE', $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'WhatsApp sending for Invoice is currently disabled by Admin. Enable it in WhatsApp Auto-Send settings to send.'
+            ], 500);
+        }
+
         $result = $this->sendInvoiceWhatsapp($id);
 
         return response()->json([
@@ -2543,21 +2561,23 @@ class DiagnosticInvoiceController extends Controller
 
             if ($index == ($details->count() - 1)) {
 
+                // Absorbs whatever remainder keeps the sum of every item's
+                // allocation equal to the actual amount collected -- since
+                // every earlier item was just rounded to the nearest 10,
+                // this naturally comes out to a multiple of 10 too whenever
+                // the payment itself is one. round(..., 2) here is only a
+                // floating-point-noise guard, not a real rounding rule.
                 $allocated =
-                    round(
-                        $paymentAmount - $allocatedTotal,
-                        2
-                    );
+                    round($paymentAmount - $allocatedTotal, 2);
 
             } else {
 
                 $allocated =
-                    round(
+                    $this->roundToNearestTen(
                         (
                             $detail->amount /
                             $totalAmount
-                        ) * $paymentAmount,
-                        2
+                        ) * $paymentAmount
                     );
 
                 $allocatedTotal += $allocated;
@@ -2764,6 +2784,55 @@ class DiagnosticInvoiceController extends Controller
     private function roundToNearestTen(float $value): float
     {
         return round($value / 10) * 10;
+    }
+
+    /**
+     * A "manual" category item has no discount concept at all -- its rate
+     * IS the staff-typed amount (see store()'s insert loop). Shared by the
+     * floor-validation loop and the insert loop so both agree on which
+     * items skip the discount formula.
+     */
+    private function isManualDiagnosticItem(?string $itemCode): bool
+    {
+        if (!$itemCode) {
+            return false;
+        }
+
+        $itemMaster = DB::table('invoice_item_masters')
+            ->where('item_code', $itemCode)
+            ->first();
+
+        return $itemMaster && stripos($itemMaster->item_name, 'manual') !== false;
+    }
+
+    /**
+     * Server-side mirror of the amount formula in
+     * apps-diagnostic-invoice.init.js's ".standardDiscount, ..." change
+     * handler -- recomputed independently rather than trusting the
+     * submitted 'amount', so a stale page or a request that bypasses the
+     * browser entirely can't save an un-rounded or arithmetically wrong
+     * line amount. Returns the discount-formula result only, rounded to
+     * the nearest 10 -- the doctor-payable floor/waiver adjustment is
+     * applied separately by the caller (store()), since the floor check
+     * needs this "natural" figure to decide whether to reject the request.
+     */
+    private function computeDiagnosticLineAmount(array $row, bool $isManual): float
+    {
+        if ($isManual) {
+            return (float) ($row['amount'] ?? 0);
+        }
+
+        $rate = (float) ($row['rate'] ?? 0);
+        $standardDiscount = (float) ($row['standard_discount'] ?? 0);
+        $additionalPercent = (float) ($row['additional_discount_percent'] ?? 0);
+        $additionalAmount = (float) ($row['additional_discount_amount'] ?? 0);
+
+        $standardDiscountAmount = $this->roundToNearestTen($rate * $standardDiscount / 100);
+        $percentAmount = $this->roundToNearestTen($rate * $additionalPercent / 100);
+
+        $amount = max(0, $rate - $standardDiscountAmount - $percentAmount - $additionalAmount);
+
+        return $this->roundToNearestTen($amount);
     }
 
 }

@@ -119,6 +119,7 @@ return [
     'doctor-wise-payment-report.index' => 'doctor-wise-payment-report',
     'daily-transaction-report.index' => 'daily-transaction-report',
     'whatsapp-message-report.index' => 'whatsapp-message-report',
+    'doctor-visit-collection-report.index' => 'doctor-visit-collection-report',
     'item-wise-report.index' => 'item-wise-report',
     'monthly-reconciliation-report.index' => 'monthly-reconciliation-report',
     'reporting-group-summary-report.index' => 'reporting-group-summary-report',

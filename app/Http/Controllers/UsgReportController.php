@@ -620,6 +620,17 @@ class UsgReportController extends Controller
             return response()->json(['status' => false, 'message' => $blocked]);
         }
 
+        if (!WhatsappAutoSendSetting::isEnabled('USG_REPORT')) {
+
+            [$invoice] = $this->loadReportContext($finding);
+            WhatsappAutoSendSetting::logSkipped('USG_REPORT', $finding->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'WhatsApp sending for USG Report is currently disabled by Admin. Enable it in WhatsApp Auto-Send settings to send.'
+            ]);
+        }
+
         $sent = $this->sendReportWhatsapp($finding, $wati, $auditService);
 
         return response()->json([
@@ -739,7 +750,10 @@ class UsgReportController extends Controller
 
     /**
      * Sends reports whose automatic WhatsApp was held for a payment due,
-     * once the invoice is fully paid (see ReportWhatsappDueGate).
+     * once the invoice is fully paid (see ReportWhatsappDueGate). Still
+     * subject to the auto-send toggle -- a due clearing while the category
+     * is switched off logs SKIPPED instead of sending, same as any other
+     * automatic trigger.
      */
     public function releaseHeldWhatsapp(string $invoiceNo): void
     {
@@ -747,9 +761,17 @@ class UsgReportController extends Controller
 
             $finding = $findingId ? UsgReportFinding::find($findingId) : null;
 
-            if ($finding && $finding->confirmed_at) {
-                $this->sendReportWhatsapp($finding, app(WatiService::class), app(AuditService::class));
+            if (!$finding || !$finding->confirmed_at) {
+                continue;
             }
+
+            if (!WhatsappAutoSendSetting::isEnabled('USG_REPORT')) {
+                [$invoice] = $this->loadReportContext($finding);
+                WhatsappAutoSendSetting::logSkipped('USG_REPORT', $finding->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+                continue;
+            }
+
+            $this->sendReportWhatsapp($finding, app(WatiService::class), app(AuditService::class));
         }
     }
 

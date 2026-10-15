@@ -1254,6 +1254,17 @@ class PathologyReportController extends Controller
             return response()->json(['status' => false, 'message' => $blocked]);
         }
 
+        if (!WhatsappAutoSendSetting::isEnabled('PATHOLOGY_REPORT')) {
+
+            $invoice = Invoice::where('invoice_no', $invoiceNo)->first();
+            WhatsappAutoSendSetting::logSkipped('PATHOLOGY_REPORT', $invoiceNo, $invoice->patient_mobile_no ?? null, $invoice->patient_name ?? null);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'WhatsApp sending for Pathology Report is currently disabled by Admin. Enable it in WhatsApp Auto-Send settings to send.'
+            ]);
+        }
+
         $sent = $this->sendCombinedInvoiceWhatsapp($invoiceNo, $wati, $auditService);
 
         return response()->json([
@@ -1336,6 +1347,9 @@ class PathologyReportController extends Controller
     /**
      * Sends the combined report whose automatic WhatsApp was held for a
      * payment due, once the invoice is fully paid (see ReportWhatsappDueGate).
+     * Still subject to the auto-send toggle -- a due clearing while the
+     * category is switched off logs SKIPPED instead of sending, same as
+     * any other automatic trigger.
      */
     public function releaseHeldWhatsapp(string $invoiceNo): void
     {
@@ -1343,9 +1357,17 @@ class PathologyReportController extends Controller
             return;
         }
 
-        if ($this->isInvoicePathologyFullyConfirmed($invoiceNo)) {
-            $this->sendCombinedInvoiceWhatsapp($invoiceNo, app(WatiService::class), app(AuditService::class));
+        if (!$this->isInvoicePathologyFullyConfirmed($invoiceNo)) {
+            return;
         }
+
+        if (!WhatsappAutoSendSetting::isEnabled('PATHOLOGY_REPORT')) {
+            $invoice = Invoice::where('invoice_no', $invoiceNo)->first();
+            WhatsappAutoSendSetting::logSkipped('PATHOLOGY_REPORT', $invoiceNo, $invoice->patient_mobile_no ?? null, $invoice->patient_name ?? null);
+            return;
+        }
+
+        $this->sendCombinedInvoiceWhatsapp($invoiceNo, app(WatiService::class), app(AuditService::class));
     }
 
     /**

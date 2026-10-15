@@ -1226,6 +1226,13 @@ $(document).on(
 |--------------------------------------------------------------------------
 */
 
+// Consultation rates are set in multiples of 10, so the amount after
+// discount is rounded to the nearest multiple of 10 too (standard
+// round-half-up).
+function roundToNearestTen(value) {
+    return Math.round(value / 10) * 10;
+}
+
 function calculatePayable() {
 
     let fee =
@@ -1239,6 +1246,8 @@ function calculatePayable() {
     if (payable < 0) {
         payable = 0;
     }
+
+    payable = roundToNearestTen(payable);
 
     $("#paid_amount").val(payable);
 }

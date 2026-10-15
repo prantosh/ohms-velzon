@@ -574,13 +574,21 @@ document.getElementById('issueForm').addEventListener('submit', async function (
     window.open(`/equipment-rental/print/${result.invoice_id}`, '_blank');
 });
 
+// Rental charges are set in multiples of 10, so the amount after discount
+// is rounded to the nearest multiple of 10 too (standard round-half-up) --
+// matches roundToNearestTen() computed server-side in
+// EquipmentRentalController, so this preview matches what actually saves.
+function roundToNearestTen(value) {
+    return Math.round(value / 10) * 10;
+}
+
 function computeCurrentBalance() {
 
     if (!lastSettlementPreview) return null;
 
     let discount = parseFloat(document.querySelector('#return_discount_amount-field').value) || 0;
 
-    let netRent = lastSettlementPreview.rent_amount - discount;
+    let netRent = roundToNearestTen(lastSettlementPreview.rent_amount - discount);
 
     return Math.round((netRent - lastSettlementPreview.advance_amount) * 100) / 100;
 }

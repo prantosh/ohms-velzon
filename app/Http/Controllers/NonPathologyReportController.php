@@ -583,6 +583,17 @@ class NonPathologyReportController extends Controller
             return response()->json(['status' => false, 'message' => $blocked]);
         }
 
+        if (!WhatsappAutoSendSetting::isEnabled('NON_PATHOLOGY_REPORT')) {
+
+            [$invoice] = $this->loadReportContext($finding);
+            WhatsappAutoSendSetting::logSkipped('NON_PATHOLOGY_REPORT', $finding->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'WhatsApp sending for this report category is currently disabled by Admin. Enable it in WhatsApp Auto-Send settings to send.'
+            ]);
+        }
+
         $sent = $this->sendReportWhatsapp($finding, $wati, $auditService);
 
         return response()->json([
@@ -705,7 +716,10 @@ class NonPathologyReportController extends Controller
 
     /**
      * Sends reports whose automatic WhatsApp was held for a payment due,
-     * once the invoice is fully paid (see ReportWhatsappDueGate).
+     * once the invoice is fully paid (see ReportWhatsappDueGate). Still
+     * subject to the auto-send toggle -- a due clearing while the category
+     * is switched off logs SKIPPED instead of sending, same as any other
+     * automatic trigger.
      */
     public function releaseHeldWhatsapp(string $invoiceNo): void
     {
@@ -713,9 +727,17 @@ class NonPathologyReportController extends Controller
 
             $finding = $findingId ? NonPathologyReportFinding::find($findingId) : null;
 
-            if ($finding && $finding->confirmed_at) {
-                $this->sendReportWhatsapp($finding, app(WatiService::class), app(AuditService::class));
+            if (!$finding || !$finding->confirmed_at) {
+                continue;
             }
+
+            if (!WhatsappAutoSendSetting::isEnabled('NON_PATHOLOGY_REPORT')) {
+                [$invoice] = $this->loadReportContext($finding);
+                WhatsappAutoSendSetting::logSkipped('NON_PATHOLOGY_REPORT', $finding->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+                continue;
+            }
+
+            $this->sendReportWhatsapp($finding, app(WatiService::class), app(AuditService::class));
         }
     }
 

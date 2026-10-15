@@ -310,6 +310,16 @@ class XrayReportUploadController extends Controller
             return response()->json(['status' => false, 'message' => $blocked]);
         }
 
+        if (!WhatsappAutoSendSetting::isEnabled(self::MESSAGE_TYPE)) {
+
+            WhatsappAutoSendSetting::logSkipped(self::MESSAGE_TYPE, $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'WhatsApp sending for X-Ray Report is currently disabled by Admin. Enable it in WhatsApp Auto-Send settings to send.'
+            ]);
+        }
+
         $result = $this->sendWhatsapp($invoice, $upload, $wati, $auditService);
 
         return response()->json([
@@ -322,7 +332,9 @@ class XrayReportUploadController extends Controller
 
     /**
      * Sends held X-Ray reports once the invoice is fully paid (called from
-     * ReportWhatsappDueGate::releaseAll()).
+     * ReportWhatsappDueGate::releaseAll()). Still subject to the auto-send
+     * toggle -- a due clearing while the category is switched off logs
+     * SKIPPED instead of sending, same as any other automatic trigger.
      */
     public function releaseHeldWhatsapp(string $invoiceNo): void
     {
@@ -332,6 +344,11 @@ class XrayReportUploadController extends Controller
 
         $invoice = Invoice::where('invoice_no', $invoiceNo)->first();
         $upload = XrayReportUpload::where('invoice_no', $invoiceNo)->first();
+
+        if ($invoice && !WhatsappAutoSendSetting::isEnabled(self::MESSAGE_TYPE)) {
+            WhatsappAutoSendSetting::logSkipped(self::MESSAGE_TYPE, $invoice->invoice_no, $invoice->patient_mobile_no, $invoice->patient_name);
+            return;
+        }
 
         if ($invoice && $upload && $upload->fileExists()) {
             $this->sendWhatsapp($invoice, $upload, app(WatiService::class), app(AuditService::class));
