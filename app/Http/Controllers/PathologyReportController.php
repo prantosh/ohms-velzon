@@ -14,6 +14,7 @@ use App\Services\ReportWhatsappDueGate;
 use App\Support\ReportTestDates;
 use App\Support\PdfPageNumbers;
 use App\Services\HtmlSanitizerService;
+use App\Services\KeyParameterService;
 use App\Services\PdfPasswordProtectionService;
 use App\Services\WatiService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -293,6 +294,7 @@ class PathologyReportController extends Controller
                     return [
                         'id' => $finding->id,
                         'content' => $finding->content,
+                        'key_parameter_values' => $finding->key_parameter_values ?: [],
                         'template_id' => $finding->pathology_report_template_id,
                         'template_title' => $templateTitles->get($finding->pathology_report_template_id),
                         'report_title' => $finding->report_title,
@@ -363,6 +365,55 @@ class PathologyReportController extends Controller
             ->sortBy('test_group_name')
             ->values();
 
+        // Every key parameter triggered by anything billed on this invoice
+        // (claimed or still unclaimed) -- the card-building JS intersects
+        // each report's own item_code_subs against this list, rather than
+        // this being precomputed per group/card here, since an unclaimed
+        // line's eventual report doesn't exist yet to scope it to.
+        $keyParameterService = app(KeyParameterService::class);
+
+        $allBilledItemCodeSubs = $lines->pluck('item_code_sub')->unique()->values()->all();
+
+        $triggeredParams = $keyParameterService
+            ->triggeredParametersForItemCodeSubs($allBilledItemCodeSubs)
+            ->flatten(1);
+
+        // Gender-adjusted range, same source/logic as
+        // KeyParameterService::recordConfirmedValues() -- shown alongside
+        // the field so the auto-inserted report row carries it too.
+        $isFemale = strtolower((string) $invoice->patient_gender) === 'female';
+
+        $itemMasterByCode = DB::table('invoice_item_details')
+            ->whereIn('item_code_sub', $triggeredParams->pluck('item_code_sub'))
+            ->get()
+            ->keyBy('item_code_sub');
+
+        $keyParameters = $triggeredParams
+            ->map(function ($p) use ($itemMasterByCode, $isFemale) {
+
+                $item = $itemMasterByCode->get($p->item_code_sub);
+
+                $range = $item
+                    ? (($isFemale ? $item->range_female : $item->range_male) ?: $item->range_common)
+                    : null;
+
+                return [
+                    'item_code_sub' => $p->item_code_sub,
+                    'parameter_name' => $p->parameter_name,
+                    'group_label' => $p->group_label,
+                    'uom' => $p->uom,
+                    'reference_range' => $range,
+                    'triggers' => json_decode($p->trigger_item_code_subs, true) ?: [],
+                ];
+            })
+            ->values();
+
+        $keyParameterHistory = $keyParameterService->recentValuesForPatient(
+            $invoice->patient_id,
+            $keyParameters->pluck('item_code_sub')->all(),
+            $invoice->invoice_no
+        );
+
         return response()->json([
             'status' => true,
             'invoice' => $this->invoicePayload($invoice),
@@ -370,6 +421,8 @@ class PathologyReportController extends Controller
             'groups' => $groups,
             'pathology_whatsapp' => $this->pathologyWhatsappStatus($invoice->invoice_no),
             'can_delete_reports' => optional(Auth::user())->role === 'Admin',
+            'key_parameters' => $keyParameters,
+            'key_parameter_history' => $keyParameterHistory,
         ]);
     }
 
@@ -444,6 +497,8 @@ class PathologyReportController extends Controller
                 'item_dates.*' => 'nullable|date_format:Y-m-d',
                 'report_title' => 'nullable|string|max:255',
                 'content' => 'nullable|string',
+                'key_parameter_values' => 'nullable|array',
+                'key_parameter_values.*' => 'nullable|string|max:100',
             ]
         );
 
@@ -487,6 +542,7 @@ class PathologyReportController extends Controller
 
                 $finding->update([
                     'content' => $content,
+                    'key_parameter_values' => $this->sanitizeKeyParameterValues($request->input('key_parameter_values')),
                     'updated_by' => Auth::id(),
                 ] + ($request->has('report_title') ? [
                     // the heading typed on the card (null = the default, the test descriptions)
@@ -594,6 +650,7 @@ class PathologyReportController extends Controller
                 'invoice_no' => $invoiceNo,
                 'pathology_report_template_id' => $request->template_id,
                 'content' => $content,
+                'key_parameter_values' => $this->sanitizeKeyParameterValues($request->input('key_parameter_values')),
                 'report_title' => $request->has('report_title')
                     ? \App\Support\ReportTitle::normalise($request->report_title, $lines->sortBy('id')->pluck('item_description')->implode(', '))
                     : null,
@@ -811,6 +868,8 @@ class PathologyReportController extends Controller
             ]);
 
             $auditService->logAction(self::MODULE_CODE, $finding, 'CONFIRM', 'Pathology report confirmed and locked (group confirm)');
+
+            app(KeyParameterService::class)->recordConfirmedValues($finding);
         }
 
         // WhatsApp is invoice-scoped, not per-group -- the patient gets
@@ -875,6 +934,8 @@ class PathologyReportController extends Controller
         ]);
 
         $auditService->logAction(self::MODULE_CODE, $finding, 'CONFIRM', 'Pathology report confirmed and locked (individual item confirm)');
+
+        app(KeyParameterService::class)->recordConfirmedValues($finding);
 
         $whatsappStatus = $this->isInvoicePathologyFullyConfirmed($finding->invoice_no)
             ? $this->autoSendInvoiceWhatsapp($finding->invoice_no, $wati, $auditService)
@@ -1083,14 +1144,53 @@ class PathologyReportController extends Controller
 
         $dateInfo = $this->dateInfoFor($finding);
 
+        $keyParameterHistory = $this->keyParameterHistoryFor($finding, $invoice);
+
         $pdf = Pdf::loadView(
             'apps-pathology-report-pdf',
-            compact('finding', 'invoice', 'itemDescriptions', 'dateInfo')
+            compact('finding', 'invoice', 'itemDescriptions', 'dateInfo', 'keyParameterHistory')
         );
 
         PdfPageNumbers::add($pdf);
 
         return $pdf;
+    }
+
+    /**
+     * This report's own Key Parameters (whatever was captured on it, if
+     * any) alongside the patient's PRIOR values for those same parameters
+     * -- "Previous Values" on the printed report. Empty when this report
+     * didn't trigger any tracked parameter at all (the common case).
+     *
+     * @return array<int, array{parameter_name: string, uom: ?string, current: ?string, history: array}>
+     */
+    private function keyParameterHistoryFor(PathologyReportFinding $finding, Invoice $invoice): array
+    {
+        $current = $finding->key_parameter_values;
+
+        if (empty($current)) {
+            return [];
+        }
+
+        $itemCodeSubs = array_keys($current);
+
+        $paramMeta = DB::table('key_parameters')
+            ->whereIn('item_code_sub', $itemCodeSubs)
+            ->orderBy('sort_order')
+            ->get();
+
+        $history = app(KeyParameterService::class)->recentValuesForPatient(
+            $invoice->patient_id,
+            $itemCodeSubs,
+            $invoice->invoice_no
+        );
+
+        return $paramMeta->map(fn ($meta) => [
+            'parameter_name' => $meta->parameter_name,
+            'uom' => $meta->uom,
+            'current' => $current[$meta->item_code_sub] ?? null,
+            'history' => $history[$meta->item_code_sub] ?? [],
+        ])->filter(fn ($row) => !empty($row['history']))->values()->all();
     }
 
     /*
@@ -1612,6 +1712,32 @@ class PathologyReportController extends Controller
      * @param array<int,int>        $detailIds the lines this report covers
      * @param array<int,?string>|null $itemDates invoice_detail id => Y-m-d or ''
      */
+    /**
+     * Drops blank entries from the submitted key-parameter draft so an
+     * untouched field never gets stored as an empty string -- null when
+     * nothing was entered at all, so the column stays genuinely empty
+     * rather than `{}`.
+     */
+    private function sanitizeKeyParameterValues(?array $values): ?array
+    {
+        if (empty($values)) {
+            return null;
+        }
+
+        $clean = [];
+
+        foreach ($values as $itemCodeSub => $value) {
+
+            $value = trim((string) $value);
+
+            if ($value !== '') {
+                $clean[$itemCodeSub] = $value;
+            }
+        }
+
+        return empty($clean) ? null : $clean;
+    }
+
     private function applyItemDates(array $detailIds, ?array $itemDates, string $invoiceNo): void
     {
         if (empty($itemDates)) {

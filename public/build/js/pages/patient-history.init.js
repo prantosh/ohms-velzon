@@ -30,6 +30,21 @@ function printLink(url) {
     </a>`;
 }
 
+// One combined PDF covering every report on the invoice (Pathology, USG,
+// Cardiology, Non-Pathology, X-Ray -- whatever it actually billed),
+// server-side gated so it only ever opens when every one of them is
+// confirmed. Only shown at all once report_status is "Complete", so
+// there's no redirect/guesswork here -- a direct PDF link, same as the
+// invoice print link right next to it.
+function reportPrintLink(reportStatus, invoiceId) {
+
+    if (reportStatus !== 'Complete') return '';
+
+    return `<a href="/test-report-dashboard/print-all/${invoiceId}" target="_blank" class="print-link bg-success-subtle text-success ms-1" title="Print All Reports">
+        <i class="ri-file-text-line"></i>
+    </a>`;
+}
+
 document.getElementById('mobileInput').addEventListener('input', function () {
     this.value = this.value.replace(/\D/g, '').substring(0, 10);
 });
@@ -41,18 +56,26 @@ document.getElementById('mobileInput').addEventListener('keypress', function (e)
     }
 });
 
+document.getElementById('nameInput').addEventListener('keypress', function (e) {
+    if (e.which === 13) {
+        e.preventDefault();
+        searchMobile();
+    }
+});
+
 document.getElementById('btnSearchMobile').addEventListener('click', searchMobile);
 
 async function searchMobile() {
 
     let mobile = document.querySelector('#mobileInput').value.trim();
+    let name = document.querySelector('#nameInput').value.trim();
 
     document.querySelector('#noPatientMsg').style.display = 'none';
     document.querySelector('#patientSelectWrap').style.display = 'none';
     document.querySelector('#historyWrap').style.display = 'none';
     currentPatient = null;
 
-    if (!mobile) return;
+    if (!mobile && !name) return;
 
     const response = await fetch('/patient-history/search-by-mobile', {
         method: 'POST',
@@ -61,7 +84,7 @@ async function searchMobile() {
             'X-CSRF-TOKEN': csrfToken(),
             'Accept': 'application/json'
         },
-        body: JSON.stringify({ mobile_no: mobile })
+        body: JSON.stringify({ mobile_no: mobile, patient_name: name })
     });
 
     const result = await response.json();
@@ -82,11 +105,12 @@ async function searchMobile() {
     result.patients.forEach(p => {
         let option = document.createElement('option');
         option.value = p.id;
-        option.textContent = `${p.patient_name} (${p.patient_id ?? 'N/A'}) - Age ${p.age ?? '-'}, ${p.gender ?? '-'}`;
+        option.textContent = `${p.patient_name} (${p.patient_id ?? 'N/A'}) - Age ${p.age ?? '-'}, ${p.gender ?? '-'}, Mobile ${p.mobile_no ?? '-'}`;
         option.dataset.patientId = p.patient_id ?? '';
         option.dataset.patientName = p.patient_name;
         option.dataset.age = p.age ?? '';
         option.dataset.gender = p.gender ?? '';
+        option.dataset.mobileNo = p.mobile_no ?? '';
         select.appendChild(option);
     });
 
@@ -103,24 +127,26 @@ document.getElementById('patientSelect').addEventListener('change', function () 
         return;
     }
 
-    let mobile = document.querySelector('#mobileInput').value.trim();
-    selectPatient(mobile);
+    selectPatient();
 });
 
-function selectPatient(mobile) {
+function selectPatient() {
 
     let select = document.querySelector('#patientSelect');
     let option = select.options[select.selectedIndex];
 
     if (!option) return;
 
+    // The selected patient's OWN mobile number -- not whatever happens to
+    // be sitting in the search field, which may be blank (a name-only
+    // search) or belong to a different result in a multi-match list.
     currentPatient = {
         id: option.value,
         patient_id: option.dataset.patientId,
         patient_name: option.dataset.patientName,
         age: option.dataset.age,
         gender: option.dataset.gender,
-        mobile_no: mobile
+        mobile_no: option.dataset.mobileNo
     };
 
     document.querySelector('#info-name').textContent = currentPatient.patient_name;
@@ -223,7 +249,7 @@ document.getElementById('btnEditPatient').addEventListener('click', function () 
                     option.dataset.patientName = currentPatient.patient_name;
                     option.dataset.age = currentPatient.age ?? '';
                     option.dataset.gender = currentPatient.gender ?? '';
-                    option.textContent = `${currentPatient.patient_name} (${currentPatient.patient_id ?? 'N/A'}) - Age ${currentPatient.age ?? '-'}, ${currentPatient.gender ?? '-'}`;
+                    option.textContent = `${currentPatient.patient_name} (${currentPatient.patient_id ?? 'N/A'}) - Age ${currentPatient.age ?? '-'}, ${currentPatient.gender ?? '-'}, Mobile ${currentPatient.mobile_no ?? '-'}`;
                 }
 
                 document.querySelector('#info-name').textContent = currentPatient.patient_name;
@@ -369,6 +395,7 @@ document.getElementById('btnDeactivatePatient').addEventListener('click', functi
                 document.querySelector('#historyWrap').style.display = 'none';
                 document.querySelector('#patientSelectWrap').style.display = 'none';
                 document.querySelector('#mobileInput').value = '';
+                document.querySelector('#nameInput').value = '';
             })
             .catch(function () {
                 Swal.fire({ icon: 'error', title: 'Error', text: 'Could not deactivate the patient.' });
@@ -505,7 +532,7 @@ function renderDiagnosticInvoices(rows) {
             <td>₹ ${fmtMoney(r.paid_amount)}</td>
             <td>₹ ${fmtMoney(r.due_amount)}</td>
             <td>${statusBadge(r.due_amount)}</td>
-            <td>${printLink('/diagnostic-invoice/print/' + r.id)}</td>
+            <td>${printLink('/diagnostic-invoice/print/' + r.id)}${reportPrintLink(r.report_status, r.id)}</td>
         </tr>
         `;
     }).join('');

@@ -351,6 +351,17 @@
                  different dates print in brackets beside each test name. -->
             <div class="pathology-item-dates d-flex flex-wrap gap-3 mb-3"></div>
 
+            <!-- Key Parameters: a small structured capture box for a curated
+                 subset of results (FBS, PPBS, Creatinine, Lipid/LFT
+                 components, electrolytes, Hb/RBC/Platelet, Vitamin D, ...),
+                 filled by the page script only when this report's own tests
+                 trigger one or more of them (see KeyParameterService). Kept
+                 alongside, not instead of, the free-text content below --
+                 values typed here are what gets remembered for this
+                 patient's next visit; the narrative content is unaffected
+                 either way. -->
+            <div class="pathology-key-parameters mb-3" style="display:none;"></div>
+
             <textarea class="form-control pathology-content"></textarea>
 
             <div class="d-flex justify-content-end gap-2 mt-3">

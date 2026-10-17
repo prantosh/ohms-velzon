@@ -12,6 +12,14 @@ try {
     testGroups = [];
 }
 
+let keyParameters = [];
+try {
+    let kpEl = document.getElementById('keyParametersData');
+    keyParameters = kpEl ? JSON.parse(kpEl.textContent || '[]') : [];
+} catch (e) {
+    keyParameters = [];
+}
+
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]').content;
 }
@@ -39,14 +47,14 @@ function testGroupName(testGroupCode) {
 
 const {
     ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, FontColor, Heading, List, Undo,
-    Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
+    Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock, GeneralHtmlSupport
 } = CKEDITOR;
 
 const RICH_EDITOR_CONFIG = {
     licenseKey: 'GPL',
     plugins: [
         Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, FontColor, Heading, List, Undo,
-        Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
+        Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock, GeneralHtmlSupport
     ],
     toolbar: [
         'heading', '|',
@@ -62,6 +70,19 @@ const RICH_EDITOR_CONFIG = {
         contentToolbar: [
             'tableColumn', 'tableRow', 'mergeTableCells',
             'tableProperties', 'tableCellProperties'
+        ]
+    },
+    // Preserves the data-key-param-result marker the "Insert Result Field"
+    // button writes into the content -- without this, CKEditor strips any
+    // attribute it doesn't recognize on its own save/load round-trip, and
+    // the marker would silently vanish the next time this template is
+    // opened and saved again.
+    htmlSupport: {
+        allow: [
+            {
+                name: 'span',
+                attributes: { 'data-key-param-result': true },
+            },
         ]
     }
 };
@@ -148,6 +169,8 @@ async function loadItemsCheckboxList(testGroupCode, checkedItemCodeSubs = [], pa
         </label>
     </div>
     `).join('');
+
+    refreshKeyParamInsertBar();
 }
 
 function reloadItemsCheckboxList() {
@@ -160,6 +183,87 @@ function reloadItemsCheckboxList() {
 
 document.getElementById('test_group_code-field').addEventListener('change', reloadItemsCheckboxList);
 document.getElementById('package_id-field').addEventListener('change', reloadItemsCheckboxList);
+
+/*
+|--------------------------------------------------------------------------
+| KEY PARAMETER RESULT MARKER -- lets the admin drop a
+| data-key-param-result="ITEM_CODE_SUB" marker into this template's own
+| Result cell/line, for any parameter the result-entry screen tracks
+| history for (KeyParameterService). Only offered for parameters that
+| actually become capturable from the items currently checked above (a
+| parameter's own trigger_item_code_subs intersecting the checked list) --
+| see the key_parameters migration docblock for why a tracked parameter's
+| own identity can differ from what has to be billed to surface it (e.g.
+| SGOT/SGPT trigger on LFT's single bundled line, not their own code).
+|--------------------------------------------------------------------------
+*/
+
+function checkedItemCodeSubs() {
+    return Array.from(document.querySelectorAll('#itemsCheckboxList .item-checkbox:checked')).map(cb => cb.value);
+}
+
+function availableKeyParametersForCheckedItems() {
+    let checked = checkedItemCodeSubs();
+    if (!checked.length) return [];
+
+    return keyParameters.filter(kp => {
+        let triggers = [];
+        try {
+            triggers = JSON.parse(kp.trigger_item_code_subs || '[]');
+        } catch (e) {
+            triggers = [];
+        }
+        return triggers.some(t => checked.includes(t));
+    });
+}
+
+function refreshKeyParamInsertBar() {
+
+    let bar = document.getElementById('keyParamInsertBar');
+    let select = document.getElementById('keyParamResultSelect');
+
+    let available = availableKeyParametersForCheckedItems();
+
+    if (!available.length) {
+        bar.style.setProperty('display', 'none', 'important');
+        select.innerHTML = '';
+        return;
+    }
+
+    select.innerHTML = available.map(kp => `
+        <option value="${escapeHtml(kp.item_code_sub)}">
+            ${escapeHtml(kp.parameter_name)}${kp.uom ? ' (' + escapeHtml(kp.uom) + ')' : ''}
+        </option>
+    `).join('');
+
+    bar.style.setProperty('display', 'flex', 'important');
+}
+
+document.addEventListener('change', function (e) {
+    if (e.target.classList && e.target.classList.contains('item-checkbox')) {
+        refreshKeyParamInsertBar();
+    }
+});
+
+document.getElementById('insertKeyParamResultBtn').addEventListener('click', async function () {
+
+    await contentEditorReady;
+    if (!contentEditor) return;
+
+    let select = document.getElementById('keyParamResultSelect');
+    let itemCodeSub = select.value;
+    if (!itemCodeSub) return;
+
+    let html = `<span data-key-param-result="${itemCodeSub}">[Result]</span>`;
+    let viewFragment = contentEditor.data.processor.toView(html);
+    let modelFragment = contentEditor.data.toModel(viewFragment);
+
+    contentEditor.model.change(() => {
+        contentEditor.model.insertContent(modelFragment, contentEditor.model.document.selection);
+    });
+
+    contentEditor.editing.view.focus();
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -369,6 +473,8 @@ document.getElementById('showModal').addEventListener('hidden.bs.modal', functio
 
     document.getElementById('itemsCheckboxList').innerHTML =
         '<span class="text-muted small">Select a Test Group above to list its items.</span>';
+
+    refreshKeyParamInsertBar();
 
     document.querySelector('#edit-id').value = '';
 

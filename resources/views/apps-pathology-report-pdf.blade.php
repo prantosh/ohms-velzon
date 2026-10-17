@@ -26,6 +26,7 @@
 body {
     font-family: DejaVu Sans, sans-serif;
     font-size: 12px;
+    line-height: 1.35;
     color: #000;
     margin: 0;
     padding: 0;
@@ -41,23 +42,51 @@ table {
     padding: 4px 0;
 }
 
+/* One brand navy used throughout -- matches the #1F4E78 header color
+   already baked into every pathology template's own table headers
+   (DEPARTMENT OF ..., INVESTIGATION/RESULT/RANGE), so the system-rendered
+   chrome around the report no longer reads as a visually different blue
+   from the admin-authored content inside it. */
 .label-blue {
-    color: #003399;
+    color: #1F4E78;
     font-weight: bold;
 }
 
-.patient-detail-table th,
+/* A letterhead-style data strip (top/bottom rule only) instead of a full
+   grid of boxed cells -- reads as part of the report's header, not a
+   spreadsheet dropped onto the page. */
+.patient-detail-table {
+    border-top: 1.4pt solid #1F4E78;
+    border-bottom: 1.4pt solid #1F4E78;
+}
+
 .patient-detail-table td {
-    font-size: 9px;
-    padding: 3px;
-    border: 1px solid #000;
-    vertical-align: top;
+    font-size: 9.5px;
+    padding: 5px 6px;
+    vertical-align: middle;
+}
+
+.patient-detail-table .pdt-label {
+    color: #1F4E78;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.patient-detail-table .pdt-value {
+    color: #222222;
 }
 
 .study-title {
-    font-size: 18px;
+    font-size: 16px;
+    font-weight: bold;
     text-align: center;
-    margin-top: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #1F4E78;
+    margin: 14px 0 0 0;
+    padding-bottom: 6px;
+    border-bottom: 1pt solid #B8C8D4;
 }
 
 .report-body {
@@ -66,6 +95,41 @@ table {
 
 .report-body table {
     margin-top: 6px;
+}
+
+.key-param-history {
+    margin-top: 16px;
+    padding-top: 8px;
+    border-top: 1pt solid #B8C8D4;
+}
+
+.key-param-history .heading {
+    font-size: 11px;
+    font-weight: bold;
+    color: #1F4E78;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 4px;
+}
+
+.key-param-history table {
+    font-size: 9px;
+    border: 1px solid #B8C8D4;
+}
+
+.key-param-history th {
+    background-color: #1F4E78;
+    color: #FFFFFF;
+    font-weight: bold;
+    padding: 4px 6px;
+    text-align: left;
+    border: 1px solid #B8C8D4;
+}
+
+.key-param-history td {
+    padding: 3px 6px;
+    border: 1px solid #B8C8D4;
+    text-align: left;
 }
 
 /*
@@ -136,17 +200,17 @@ table {
 
 <table class="patient-detail-table">
     <tr>
-        <th width="12%">Patient Name</th>
-        <td width="18%">{{ $invoice->patient_name }}</td>
+        <td class="pdt-label" width="12%">Patient Name</td>
+        <td class="pdt-value" width="18%">{{ $invoice->patient_name }}</td>
 
-        <th width="10%">Age / Sex</th>
-        <td width="13%">{{ $invoice->patient_age ?? '' }} / {{ $invoice->patient_gender ?? '' }}</td>
+        <td class="pdt-label" width="10%">Age / Sex</td>
+        <td class="pdt-value" width="13%">{{ $invoice->patient_age ?? '' }} / {{ $invoice->patient_gender ?? '' }}</td>
 
-        <th width="12%">Invoice No</th>
-        <td width="18%">{{ $invoice->invoice_no }}</td>
+        <td class="pdt-label" width="12%">Invoice No</td>
+        <td class="pdt-value" width="18%">{{ $invoice->invoice_no }}</td>
 
-        <th width="7%">Date</th>
-        <td width="10%">{{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</td>
+        <td class="pdt-label" width="7%">Date</td>
+        <td class="pdt-value" width="10%">{{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</td>
     </tr>
 </table>
 
@@ -182,6 +246,40 @@ table {
 <div class="report-body">
     {!! $finding->content !!}
 </div>
+
+@if(!empty($keyParameterHistory))
+<div class="key-param-history">
+    <div class="heading">Previous Values</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Parameter</th>
+                <th>Current</th>
+                @for($i = 0; $i < 3; $i++)
+                <th>Previous {{ $i + 1 }}</th>
+                @endfor
+            </tr>
+        </thead>
+        <tbody>
+            @foreach($keyParameterHistory as $row)
+            <tr style="{{ $loop->even ? 'background-color:#F7FAFC;' : '' }}">
+                <td>{{ $row['parameter_name'] }}{{ $row['uom'] ? ' (' . $row['uom'] . ')' : '' }}</td>
+                <td>{{ $row['current'] ?? '-' }}</td>
+                @for($i = 0; $i < 3; $i++)
+                <td>
+                    @if(isset($row['history'][$i]))
+                        {{ $row['history'][$i]['result_value'] }} ({{ $row['history'][$i]['test_date_fmt'] }})
+                    @else
+                        -
+                    @endif
+                </td>
+                @endfor
+            </tr>
+            @endforeach
+        </tbody>
+    </table>
+</div>
+@endif
 
 @include('partials.report-correction-footnote', ['correctedFromSentAt' => $finding->corrected_from_sent_at ?? null])
 

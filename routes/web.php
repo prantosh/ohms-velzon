@@ -3109,6 +3109,11 @@ Route::middleware(['auth'])->prefix('test-report-dashboard')->group(function () 
         [TestReportDashboardController::class, 'printSelected']
     )->name('test-report-dashboard.print-selected');
 
+    Route::get(
+        '/print-all/{id}',
+        [TestReportDashboardController::class, 'printAllForInvoice']
+    )->name('test-report-dashboard.print-all');
+
 });
 
 

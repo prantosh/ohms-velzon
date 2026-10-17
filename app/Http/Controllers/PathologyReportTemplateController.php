@@ -44,7 +44,20 @@ class PathologyReportTemplateController extends Controller
             ->orderBy('test_group_name')
             ->get(['id', 'test_group_name']);
 
-        return view('apps-pathology-report-template', compact('testGroups'));
+        // For the "Insert Result Field" button -- lets the admin drop a
+        // data-key-param-result marker into this template's own Result
+        // cell for any key-tracked parameter that becomes capturable once
+        // one of the currently-checked items is billed (see
+        // KeyParameterService / the trigger_item_code_subs docblock on the
+        // key_parameters migration). trigger_item_code_subs ships as JSON
+        // text already, so it's passed straight through for the frontend
+        // to decode.
+        $keyParameters = DB::table('key_parameters')
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get(['item_code_sub', 'parameter_name', 'uom', 'trigger_item_code_subs']);
+
+        return view('apps-pathology-report-template', compact('testGroups', 'keyParameters'));
     }
 
     /*

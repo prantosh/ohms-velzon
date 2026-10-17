@@ -303,16 +303,16 @@ class CashLedgerService
         |------------------------------------------------------------------
         */
 
-        // Each column is apportioned to whole rupees ACROSS ALL CATEGORIES
-        // together (not per-category independently) -- see
-        // apportionToWholeRupees()'s doc comment for why a mixed-category
+        // Each column is apportioned to multiples of 10 ACROSS ALL
+        // CATEGORIES together (not per-category independently) -- see
+        // apportionToNearestTen()'s doc comment for why a mixed-category
         // invoice makes independent per-category rounding both fractional
-        // and, worse, liable to not sum back to the real whole-rupee total.
-        $cashCollectedByItem = $this->apportionToWholeRupees(array_combine(array_keys($totals), array_column($totals, 'cash_collected')));
-        $nonCashCollectedByItem = $this->apportionToWholeRupees(array_combine(array_keys($totals), array_column($totals, 'non_cash_collected')));
-        $refundByItem = $this->apportionToWholeRupees(array_combine(array_keys($totals), array_column($totals, 'refund')));
-        $doctorPaymentCashSourceByItem = $this->apportionToWholeRupees(array_combine(array_keys($totals), array_column($totals, 'doctor_payment_cash_source')));
-        $doctorPaymentNonCashSourceByItem = $this->apportionToWholeRupees(array_combine(array_keys($totals), array_column($totals, 'doctor_payment_non_cash_source')));
+        // and, worse, liable to not sum back to the real total.
+        $cashCollectedByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'cash_collected')));
+        $nonCashCollectedByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'non_cash_collected')));
+        $refundByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'refund')));
+        $doctorPaymentCashSourceByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'doctor_payment_cash_source')));
+        $doctorPaymentNonCashSourceByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'doctor_payment_non_cash_source')));
 
         $rows = collect($totals)
             ->map(function ($cols, $itemCode) use ($itemCodeToName, $cashCollectedByItem, $nonCashCollectedByItem, $refundByItem, $doctorPaymentCashSourceByItem, $doctorPaymentNonCashSourceByItem) {
@@ -413,45 +413,51 @@ class CashLedgerService
 
     /**
      * Largest-remainder apportionment: rounds every value in $amountByKey
-     * to a whole rupee such that they still sum to EXACTLY round(total) --
-     * never off by a rupee the way rounding each value independently can
-     * be. Needed because a mixed-category invoice (e.g. one Cardiology +
+     * to a multiple of 10 such that they still sum to EXACTLY the true
+     * total rounded to the nearest 10 -- the same "amount collected from
+     * the patient is always a multiple of 10, with any split across items
+     * rounded to the nearest 10 and the remainder absorbed elsewhere"
+     * convention used for invoice payment allocation (see
+     * DiagnosticInvoiceController::allocatePaymentToInvoiceItems()),
+     * applied here because a mixed-category invoice (e.g. one Cardiology +
      * X-Ray invoice paid as a single transaction) splits that one
-     * whole-rupee payment across categories by each item's share of the
+     * multiple-of-10 payment across categories by each item's share of the
      * invoice total, e.g. 1400/1550 and 150/1550 -- ratios that essentially
      * never divide evenly, so every category's running total ends up
-     * fractional even though every real transaction was a whole number.
+     * fractional (and NOT a multiple of 10) even though every real
+     * transaction was.
      *
-     * Method: floor() every value, then hand out the shortfall between
-     * that and the true rounded total one rupee at a time to whichever
-     * keys had the largest fractional remainder (standard Hamilton/
-     * largest-remainder apportionment -- the same method used for e.g.
-     * seat allocation).
+     * Method: floor() every value down to its own lower multiple of 10,
+     * then hand out the shortfall between that and the true total (rounded
+     * to the nearest 10) ten rupees at a time to whichever keys had the
+     * largest fractional remainder (standard Hamilton/largest-remainder
+     * apportionment -- the same method used for e.g. seat allocation --
+     * just in units of 10 instead of 1).
      */
-    private function apportionToWholeRupees(array $amountByKey): array
+    private function apportionToNearestTen(array $amountByKey): array
     {
         $trueTotal = array_sum($amountByKey);
-        $targetTotal = (int) round($trueTotal);
+        $targetTotal = (int) (round($trueTotal / 10) * 10);
 
         $floors = [];
         $remainders = [];
 
         foreach ($amountByKey as $key => $value) {
-            // Epsilon guards against e.g. 1.9999999999 (float imprecision
-            // from the division above) flooring to 1 instead of 2.
-            $floors[$key] = (int) floor($value + 1e-9);
+            // Epsilon guards against e.g. 19.9999999999 (float imprecision
+            // from the division above) flooring to 10 instead of 20.
+            $floors[$key] = (int) (floor(($value + 1e-9) / 10) * 10);
             $remainders[$key] = $value - $floors[$key];
         }
 
-        $shortfall = $targetTotal - array_sum($floors);
+        $shortfallUnits = (int) (($targetTotal - array_sum($floors)) / 10);
 
         arsort($remainders);
 
         $keysByRemainder = array_keys($remainders);
         $keyCount = count($keysByRemainder);
 
-        for ($i = 0; $i < $shortfall && $keyCount > 0; $i++) {
-            $floors[$keysByRemainder[$i % $keyCount]]++;
+        for ($i = 0; $i < $shortfallUnits && $keyCount > 0; $i++) {
+            $floors[$keysByRemainder[$i % $keyCount]] += 10;
         }
 
         return $floors;

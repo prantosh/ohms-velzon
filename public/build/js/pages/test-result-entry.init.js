@@ -50,14 +50,14 @@ async function fetchJson(url, options = {}) {
 
 const {
     ClassicEditor, Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, FontColor, Heading, List, Undo,
-    Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
+    Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock, GeneralHtmlSupport, RestrictedEditingMode
 } = CKEDITOR;
 
 const RICH_EDITOR_CONFIG = {
     licenseKey: 'GPL',
     plugins: [
         Essentials, Paragraph, Bold, Italic, Underline, Alignment, FontSize, FontColor, Heading, List, Undo,
-        Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock
+        Table, TableToolbar, TableProperties, TableCellProperties, Indent, IndentBlock, GeneralHtmlSupport
     ],
     toolbar: [
         'heading', '|',
@@ -74,8 +74,58 @@ const RICH_EDITOR_CONFIG = {
             'tableColumn', 'tableRow', 'mergeTableCells',
             'tableProperties', 'tableCellProperties'
         ]
+    },
+    // Without this, CKEditor silently strips any attribute/element it
+    // doesn't itself know about on every setData()/getData() round-trip --
+    // including the data-key-param-block/data-key-param markers
+    // mergeKeyParametersIntoContent() relies on to find its own block
+    // again on a later save, which is what caused it to duplicate the
+    // block instead of updating it in place.
+    htmlSupport: {
+        allow: [
+            {
+                name: 'div',
+                attributes: { 'data-key-param-block': true },
+                styles: true,
+            },
+            {
+                name: /^(table|tbody|tr|td)$/,
+                attributes: { 'data-key-param': true },
+            },
+            {
+                // Template-anchored result markers (see the pathology
+                // template editor's "Insert Result Field" button) --
+                // inserted into template content, so must also survive the
+                // round-trip on THIS editor when that content is loaded in.
+                name: 'span',
+                attributes: { 'data-key-param-result': true },
+            },
+        ]
     }
 };
+
+// A raw contenteditable="false" attribute (tried first, see git history)
+// only survives the data round-trip via GeneralHtmlSupport -- it does
+// NOT stop CKEditor's own typing commands, which operate on the model
+// and don't consult arbitrary view attributes on already schema-known
+// elements (span/td/table/p). RestrictedEditingMode is CKEditor5's own
+// built-in feature for exactly this "template with fillable blanks" shape:
+// once active, EVERY command not in allowedCommands is blocked outside an
+// explicit exception region -- enforced at the command level, the same
+// layer typing itself goes through, not a DOM attribute CKEditor's input
+// pipeline has no reason to check. applyRestrictedEditingExceptions()
+// marks exception regions by wrapping them in the plugin's own
+// <span class="restricted-editing-exception"> convention, which it
+// converts to/from a model marker on its own -- no custom attribute needed.
+// Only used for templates applyRestrictedEditingExceptions() can find a
+// safe island in (see its doc comment); free-text templates and Blank
+// Report use the plain RICH_EDITOR_CONFIG, unrestricted, as before.
+const LOCKED_EDITOR_CONFIG = Object.assign({}, RICH_EDITOR_CONFIG, {
+    plugins: RICH_EDITOR_CONFIG.plugins.concat([RestrictedEditingMode]),
+    restrictedEditing: {
+        allowedCommands: ['input', 'delete', 'deleteForward', 'forwardDelete', 'enter', 'shiftEnter', 'undo', 'redo'],
+    },
+});
 
 // CKEditor5 only auto-binds Tab to indent inside a list -- for plain
 // paragraphs/headings Tab just moves focus out of the editor by default.
@@ -545,6 +595,12 @@ function refreshPathologyStartPicker(pane, g) {
     startWrap.style.display = '';
     picker.innerHTML = '<option value="">-- Select a Template / Item --</option>';
 
+    // Tracks every item_code_sub already covered by a real (fully-matching)
+    // template, so Blank Report below can be offered only where no real
+    // template exists at all -- once one does, staff must use it (locked
+    // structure, admin-controlled wording) rather than starting free-form.
+    let coveredItemCodes = new Set();
+
     g.available_templates.forEach(t => {
 
         let remainingItemCodes = t.item_code_subs.filter(code =>
@@ -576,12 +632,19 @@ function refreshPathologyStartPicker(pane, g) {
             : `Template: ${t.title} (${itemNames})`;
         picker.appendChild(option);
 
+        t.item_code_subs.forEach(code => coveredItemCodes.add(code));
+
         // (There is deliberately no "single test from a multi-test template" choice:
         // it would print the other tests of the template too. A single test is
         // reported from that test's OWN template, or from a blank report.)
     });
 
     g.unclaimed_items.forEach(item => {
+
+        // Blank Report is a fallback for the many tests that don't have a
+        // template authored yet -- it drops off the list the moment a real
+        // template covers this item.
+        if (coveredItemCodes.has(item.item_code_sub)) return;
 
         let option = document.createElement('option');
         option.value = 'blank:' + item.invoice_detail_id;
@@ -635,7 +698,12 @@ function refreshPathologyStartPicker(pane, g) {
             picker.appendChild(option);
         });
 
-        item.components.forEach(c => {
+        item.components.forEach((c, idx) => {
+
+            // Same fallback-only rule as the top-level Blank Report list:
+            // skip it once this component has its own dedicated template
+            // (ownTemplates[idx], computed above).
+            if (ownTemplates[idx].length > 0) return;
 
             let option = document.createElement('option');
             option.value = `splitblank:${c.invoice_detail_id}:${item.invoice_detail_id}`;
@@ -643,6 +711,314 @@ function refreshPathologyStartPicker(pane, g) {
             picker.appendChild(option);
         });
     });
+}
+
+// Every item_code_sub actually involved in this report -- a package
+// reported as one card (e.g. "splitall" Lipid Profile) carries its real
+// components in date_lines, not as its own top-level item_code_sub, so
+// this expands the same way the per-item date-editing UI already does.
+function pathologyFindingItemCodeSubs(finding) {
+    return (finding.items || [])
+        .flatMap(item => item.date_lines && item.date_lines.length ? item.date_lines : [item])
+        .map(dl => dl.item_code_sub)
+        .filter(Boolean);
+}
+
+// The small structured "Key Parameters" capture box -- only the parameters
+// this specific report's own tests trigger (FBS triggers on FBS; LFT's
+// sub-parameters trigger on LFT itself being billed, since LFT prints as
+// one bundled narrative, not separate billed lines -- see
+// KeyParameterService). Returns '' when nothing applies, so the container
+// stays hidden instead of showing an empty box.
+function buildKeyParametersHtml(finding) {
+
+    let allParams = (pathologyState && pathologyState.key_parameters) || [];
+    let history = (pathologyState && pathologyState.key_parameter_history) || {};
+    let draft = finding.key_parameter_values || {};
+
+    let itemCodeSubs = pathologyFindingItemCodeSubs(finding);
+
+    let applicable = allParams.filter(p => (p.triggers || []).some(t => itemCodeSubs.includes(t)));
+
+    if (!applicable.length) return '';
+
+    let byGroup = {};
+    applicable.forEach(p => {
+        let key = p.group_label || 'Other';
+        byGroup[key] = byGroup[key] || [];
+        byGroup[key].push(p);
+    });
+
+    let groupsHtml = Object.keys(byGroup).map(groupLabel => {
+
+        let fieldsHtml = byGroup[groupLabel].map(p => {
+
+            let past = history[p.item_code_sub] || [];
+            let pastText = past.length
+                ? 'Past: ' + past.map(h => `${escapeHtml(h.result_value)} (${escapeHtml(h.test_date_fmt)})`).join(', ')
+                : '';
+
+            let val = draft[p.item_code_sub] || '';
+            let uomText = p.uom ? ` (${escapeHtml(p.uom)})` : '';
+
+            return `
+            <div style="min-width:170px;" class="mb-1">
+                <label class="small mb-0">${escapeHtml(p.parameter_name)}${uomText}</label>
+                <input type="text" class="form-control form-control-sm pathology-key-param-input"
+                       data-item-code-sub="${escapeHtml(p.item_code_sub)}"
+                       data-param-label="${escapeHtml(p.parameter_name)}"
+                       data-param-uom="${escapeHtml(p.uom || '')}"
+                       data-param-range="${escapeHtml(p.reference_range || '')}"
+                       value="${escapeHtml(val)}">
+                ${pastText ? `<div class="small text-muted">${pastText}</div>` : ''}
+            </div>
+            `;
+        }).join('');
+
+        return `
+        <div class="mb-2">
+            <div class="text-muted small fw-semibold">${escapeHtml(groupLabel)}</div>
+            <div class="d-flex flex-wrap gap-3">${fieldsHtml}</div>
+        </div>
+        `;
+    }).join('');
+
+    return `
+    <div class="border rounded p-2 bg-light-subtle">
+        <div class="fw-semibold small mb-2"><i class="ri-history-line"></i> Key Parameters</div>
+        <div class="small text-muted mb-2">Saved on Save/Confirm below -- automatically added to the printed
+            report too, so you don't need to also type these into the result table.</div>
+        ${groupsHtml}
+    </div>
+    `;
+}
+
+// Finds (or creates) this report's own clearly-marked "Key Parameters"
+// block within the CKEditor content and syncs it to whatever's currently
+// in the Key Parameters inputs -- rather than guessing which existing row
+// in a free-typed template belongs to which test (unsafe: templates are
+// free-form HTML with no reliable per-row identity), this block is fully
+// owned and only ever written by this code, found again later by its own
+// data-key-param-block/data-key-param markers. Removes the whole block
+// when every field is empty, so an untouched report's content is
+// unaffected.
+// Marks the one kind of spot staff are actually meant to type into --
+// an untracked parameter's blank Result cell (the established
+// background-color:#F7FAFC convention -- see the pathology template
+// editor's own blank-cell detection) -- as a RestrictedEditingMode
+// exception region, by wrapping its content in that plugin's own
+// <span class="restricted-editing-exception"> convention (which it
+// upcasts into a model marker on its own; no custom attribute needed).
+// A tracked parameter's cell (data-key-param-result marker) is left alone
+// -- NOT wrapped as an exception, so it stays locked like everything
+// else -- that one is fed from the Key Parameters box, never typed
+// directly. Mutates the already-parsed `root` in place; does nothing when
+// no <table> is found at all, since a free-text template (no identifiable
+// cell boundaries -- e.g. Sodium, Potassium, Uric Acid) or a from-scratch
+// Blank Report never gets RestrictedEditingMode in the first place (see
+// renderPathologyFindingCard()'s editor-config choice) and has no safe
+// way to carve out an island regardless.
+function applyRestrictedEditingExceptions(root) {
+
+    let tables = Array.from(root.querySelectorAll('table'));
+    if (!tables.length) return;
+
+    tables.forEach(table => {
+
+        Array.from(table.querySelectorAll('td')).forEach(td => {
+
+            // Tracked-parameter cell -- leave outside any exception region.
+            if (td.hasAttribute('data-key-param-result') || td.querySelector('[data-key-param-result]')) {
+                return;
+            }
+
+            let style = td.getAttribute('style') || '';
+            if (!/F7FAFC/i.test(style)) return;
+
+            // Already wrapped from an earlier save -- re-wrapping would
+            // nest exception spans and corrupt the marker CKEditor
+            // maintains for it.
+            if (td.querySelector('.restricted-editing-exception')) return;
+
+            // span is inline, so it has to sit INSIDE any block-level <p>
+            // CKEditor's table feature wraps cell content in, not wrap the
+            // <p> itself -- falls back to the td directly if there isn't one.
+            let container = td.querySelector('p') || td;
+
+            let exception = td.ownerDocument.createElement('span');
+            exception.className = 'restricted-editing-exception';
+
+            while (container.firstChild) {
+                exception.appendChild(container.firstChild);
+            }
+            container.appendChild(exception);
+        });
+    });
+}
+
+// Applies applyRestrictedEditingExceptions() to contentHtml as a string --
+// used both on initial load (a finding opened straight from saved content)
+// and inside mergeKeyParametersIntoContent() (content just round-tripped
+// through this same logic on save).
+function applyTemplateContentLock(contentHtml) {
+
+    let parser = new DOMParser();
+    let doc = parser.parseFromString(`<div id="root">${contentHtml || ''}</div>`, 'text/html');
+    let root = doc.getElementById('root');
+
+    applyRestrictedEditingExceptions(root);
+
+    return root.innerHTML;
+}
+
+function mergeKeyParametersIntoContent(card, contentHtml) {
+
+    let inputs = card.querySelectorAll('.pathology-key-param-input');
+    // No tracked parameters on this card at all -- still apply the
+    // structural lock (most templates have zero tracked parameters today),
+    // just skip the marker fill/block logic below since there's nothing
+    // for it to do.
+    if (!inputs.length) return applyTemplateContentLock(contentHtml);
+
+    let entries = [];
+    let valueByCode = {};
+    inputs.forEach(input => {
+        let val = input.value.trim();
+        valueByCode[input.dataset.itemCodeSub] = val;
+        if (val) {
+            entries.push({
+                itemCodeSub: input.dataset.itemCodeSub,
+                label: input.dataset.paramLabel || input.dataset.itemCodeSub,
+                uom: input.dataset.paramUom || '',
+                range: input.dataset.paramRange || '',
+                value: val
+            });
+        }
+    });
+
+    let parser = new DOMParser();
+    let doc = parser.parseFromString(`<div id="root">${contentHtml || ''}</div>`, 'text/html');
+    let root = doc.getElementById('root');
+
+    // Template-anchored result cells: when the template itself was authored
+    // with a marker in its Result column (see the pathology template
+    // editor's "Insert Result Field" button), write straight into that real
+    // cell instead of the separate appended block below -- one entry field
+    // for staff, no blank main-table cell. Only parameters with NO marker
+    // in this content fall through to the block. Blanking an input clears
+    // its cell back out rather than leaving a stale value behind.
+    let markerHandled = {};
+    root.querySelectorAll('[data-key-param-result]').forEach(marker => {
+        let itemCodeSub = marker.getAttribute('data-key-param-result');
+        marker.textContent = valueByCode[itemCodeSub] || '';
+        markerHandled[itemCodeSub] = true;
+    });
+    entries = entries.filter(e => !markerHandled[e.itemCodeSub]);
+
+    // Primary signal: the data-key-param-block marker. Fallback signal (in
+    // case an editor round-trip ever drops a custom attribute despite the
+    // GeneralHtmlSupport config that's meant to preserve it): any <div>
+    // whose own first line of text is exactly "Key Parameters" -- a label
+    // chosen specifically because it won't collide with real report
+    // content. Using both means a block this code created earlier is
+    // always found and updated in place, never duplicated, even if one
+    // signal alone turns out not to survive every CKEditor version. Any
+    // EXTRA matching blocks (e.g. already duplicated before this fallback
+    // existed) are cleaned up here too -- merged into the first, rest
+    // removed.
+    // Only ROOT's own direct children -- querySelectorAll('div') would
+    // also match the block's own inner heading div (its text is exactly
+    // "Key Parameters" too), wrongly treating it as a second top-level
+    // block and deleting it as a "duplicate" on every re-save.
+    let candidates = Array.from(root.children).filter(el =>
+        el.tagName === 'DIV' && (
+            el.hasAttribute('data-key-param-block')
+            || (el.textContent || '').trim().indexOf('Key Parameters') === 0
+        )
+    );
+
+    let block = candidates.shift() || null;
+    candidates.forEach(extra => extra.remove());
+
+    if (!entries.length) {
+        if (block) block.remove();
+        applyRestrictedEditingExceptions(root);
+        return root.innerHTML;
+    }
+
+    if (!block) {
+        block = doc.createElement('div');
+        block.style.marginTop = '12px';
+
+        let heading = doc.createElement('div');
+        heading.style.fontWeight = 'bold';
+        heading.style.fontSize = '11px';
+        heading.style.color = '#1F4E78';
+        heading.style.marginBottom = '3px';
+        heading.textContent = 'Key Parameters';
+        block.appendChild(heading);
+
+        let table = doc.createElement('table');
+        table.style.width = '100%';
+        table.style.borderCollapse = 'collapse';
+        table.innerHTML = '<tbody></tbody>';
+        block.appendChild(table);
+
+        root.appendChild(block);
+    }
+
+    // Re-applied every time regardless of whether it was already there --
+    // self-heals a block found only via the text fallback above.
+    block.setAttribute('data-key-param-block', '1');
+
+    let tbody = block.querySelector('tbody');
+
+    // Every row, tagged or not -- an untagged one (same attribute-loss
+    // risk as the block itself) is matched by its own first cell's text,
+    // scoped to just these few rows this code owns, not the whole report,
+    // so an exact match here is reliable.
+    let rowFor = (itemCodeSub, label) => {
+
+        let tr = tbody.querySelector(`tr[data-key-param="${itemCodeSub}"]`);
+        if (tr) return tr;
+
+        return Array.from(tbody.querySelectorAll('tr')).find(row => {
+            let firstCellText = (row.querySelector('td')?.textContent || '').trim();
+            return firstCellText.indexOf(label) === 0;
+        }) || null;
+    };
+
+    // drop rows for fields that were cleared since the last save
+    Array.from(tbody.querySelectorAll('tr')).forEach(tr => {
+        let stillWanted = entries.some(e => tr === rowFor(e.itemCodeSub, e.label));
+        if (!stillWanted) tr.remove();
+    });
+
+    entries.forEach(e => {
+
+        let tr = rowFor(e.itemCodeSub, e.label);
+
+        if (!tr) {
+            tr = doc.createElement('tr');
+            tr.innerHTML = `
+                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;"></td>
+                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;text-align:center;"></td>
+                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;"></td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        tr.setAttribute('data-key-param', e.itemCodeSub);
+
+        let cells = tr.querySelectorAll('td');
+        cells[0].textContent = e.label + (e.uom ? ` (${e.uom})` : '');
+        cells[1].textContent = e.value;
+        cells[2].textContent = e.range || '';
+    });
+
+    applyRestrictedEditingExceptions(root);
+
+    return root.innerHTML;
 }
 
 function renderPathologyFindingCard(container, finding, invoiceNo) {
@@ -666,6 +1042,14 @@ function renderPathologyFindingCard(container, finding, invoiceNo) {
     // main heading of the report: the saved heading, else the test description(s)
     cardEl.querySelector('.pathology-report-title').value = finding.report_title || itemDesc;
 
+    let keyParamsHtml = buildKeyParametersHtml(finding);
+    let keyParamsWrap = cardEl.querySelector('.pathology-key-parameters');
+
+    if (keyParamsHtml) {
+        keyParamsWrap.innerHTML = keyParamsHtml;
+        keyParamsWrap.style.display = 'block';
+    }
+
     // A test date for each test on this report (starts as the date entered at
     // invoice creation; editable until the report is confirmed).
     let datesWrap = cardEl.querySelector('.pathology-item-dates');
@@ -687,17 +1071,25 @@ function renderPathologyFindingCard(container, finding, invoiceNo) {
 
     let textarea = cardEl.querySelector('.pathology-content');
 
+    // RestrictedEditingMode (see LOCKED_EDITOR_CONFIG's doc comment) locks
+    // the WHOLE document except explicit exception regions -- only usable
+    // when the template has an identifiable table to carve those islands
+    // out of; a free-text template or a from-scratch Blank Report has
+    // nothing to except, so forcing it on would leave staff unable to
+    // type anywhere at all.
+    let editorConfig = /<table[\s>]/i.test(finding.content || '') ? LOCKED_EDITOR_CONFIG : RICH_EDITOR_CONFIG;
+
     // Returned so loadPathologyReports() can wait for every card's editor
     // (and, with it, lockPathologyCard()'s confirmed-badge display) before
     // computing group/invoice completion -- pathologyGroupProgress() reads
     // that badge's visibility directly, and CKEditor's own creation is
     // async, so refreshing right after the render loop (before any editor
     // had actually resolved) always saw every card as still-unconfirmed.
-    return ClassicEditor.create(textarea, RICH_EDITOR_CONFIG).then(function (editor) {
+    return ClassicEditor.create(textarea, editorConfig).then(function (editor) {
 
         bindTabIndent(editor);
         pathologyEditors.set(cardEl, editor);
-        editor.setData(toEditorHtml(finding.content || ''));
+        editor.setData(applyTemplateContentLock(toEditorHtml(finding.content || '')));
 
         if (finding.confirmed_at) {
             lockPathologyCard(cardEl, finding.id);
@@ -713,6 +1105,7 @@ function lockPathologyCard(cardEl, findingId) {
 
     cardEl.querySelector('.pathology-confirmed-badge').style.display = 'inline-block';
     cardEl.querySelectorAll('.pathology-item-date').forEach(input => { input.disabled = true; });
+    cardEl.querySelectorAll('.pathology-key-param-input').forEach(input => { input.disabled = true; });
     cardEl.querySelector('.pathology-report-title').disabled = true;
     cardEl.querySelector('.pathology-save-btn').style.display = 'none';
     cardEl.querySelector('.pathology-confirm-btn').style.display = 'none';
@@ -911,6 +1304,13 @@ async function savePathologyCard(card) {
     let editor = pathologyEditors.get(card);
     let content = editor ? editor.getData() : '';
 
+    // Key Parameters -> auto-inserted/kept-in-sync block in the report
+    // itself, so a value only needs to be typed once. Reflected back into
+    // the visible editor too, so staff see it land in the report right
+    // after saving.
+    content = mergeKeyParametersIntoContent(card, content);
+    if (editor) editor.setData(content);
+
     let payload = { content: content, report_title: card.querySelector('.pathology-report-title').value };
 
     // per-test dates: { invoice_detail_id: 'YYYY-MM-DD' } ('' clears a test's own
@@ -919,6 +1319,16 @@ async function savePathologyCard(card) {
 
     card.querySelectorAll('.pathology-item-date').forEach(input => {
         payload.item_dates[input.dataset.detailId] = input.value || '';
+    });
+
+    // { item_code_sub: 'value' } -- the Key Parameters box, draft-saved
+    // alongside content and only promoted into the patient's permanent
+    // history once this report is actually confirmed (see
+    // KeyParameterService::recordConfirmedValues()).
+    payload.key_parameter_values = {};
+
+    card.querySelectorAll('.pathology-key-param-input').forEach(input => {
+        payload.key_parameter_values[input.dataset.itemCodeSub] = input.value || '';
     });
 
     if (card.dataset.findingId) {

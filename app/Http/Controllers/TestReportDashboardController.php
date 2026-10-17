@@ -252,8 +252,73 @@ class TestReportDashboardController extends Controller
             abort(422, 'The report for "' . $notReady['item_description'] . '" is not confirmed yet, so it cannot be printed.');
         }
 
-        // One document per underlying report -- a Pathology report can cover
-        // several billed items, so ticking two of them prints it once.
+        $pdf = $this->mergeReportsPdf($invoice, $items);
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $invoice,
+            'PRINT',
+            'Selected reports printed: ' . $items->pluck('item_description')->implode(', ')
+        );
+
+        $fileName = str_replace(['/', '\\'], '-', $invoice->invoice_no) . '-selected-reports.pdf';
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $fileName . '"',
+        ]);
+    }
+
+    /**
+     * Every reportable item on the invoice, combined into one PDF -- same
+     * merge logic as printSelected() with nothing excluded, for screens
+     * (Patient History) that just want "the whole report" in one click
+     * rather than a pick-which-items step. Opens a single document
+     * regardless of invoice_category or how many different report tables
+     * (Pathology/USG/Cardiology/Non-Pathology/X-Ray) the billed items
+     * actually span.
+     */
+    public function printAllForInvoice($id, InvoiceReportItemsService $itemsService, AuditService $auditService)
+    {
+        $invoice = Invoice::where('invoice_type', 'DIAGNOSTIC')->findOrFail($id);
+
+        $items = collect($itemsService->forInvoice($invoice));
+
+        if ($items->isEmpty()) {
+            abort(404, 'No reportable tests found on this invoice.');
+        }
+
+        $notReady = $items->first(fn ($item) => !$item['can_print']);
+
+        if ($notReady) {
+            abort(422, 'The report for "' . $notReady['item_description'] . '" is not confirmed yet, so the combined report cannot be printed.');
+        }
+
+        $pdf = $this->mergeReportsPdf($invoice, $items);
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $invoice,
+            'PRINT',
+            'All reports printed as one combined PDF'
+        );
+
+        $fileName = str_replace(['/', '\\'], '-', $invoice->invoice_no) . '-all-reports.pdf';
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $fileName . '"',
+        ]);
+    }
+
+    /**
+     * Shared by printSelected() (a ticked subset) and printAllForInvoice()
+     * (everything) -- one document per underlying report (a Pathology
+     * report can cover several billed items, so two of them still prints
+     * once), merged into a single PDF.
+     */
+    private function mergeReportsPdf(Invoice $invoice, $items): string
+    {
         $documents = [];
 
         // Several Pathology reports print as ONE sectioned document -- tests
@@ -286,28 +351,14 @@ class TestReportDashboardController extends Controller
 
         try {
 
-            $pdf = PdfMerger::merge(array_values($documents));
+            return PdfMerger::merge(array_values($documents));
 
         } catch (\Throwable $e) {
 
-            \Log::warning('Selected reports merge failed for ' . $invoice->invoice_no . ': ' . $e->getMessage());
+            \Log::warning('Report merge failed for ' . $invoice->invoice_no . ': ' . $e->getMessage());
 
             abort(422, 'These reports could not be combined into one PDF (an uploaded PDF is in a format that cannot be merged). Print them one at a time instead.');
         }
-
-        $auditService->logAction(
-            self::MODULE_CODE,
-            $invoice,
-            'PRINT',
-            'Selected reports printed: ' . $items->pluck('item_description')->implode(', ')
-        );
-
-        $fileName = str_replace(['/', '\\'], '-', $invoice->invoice_no) . '-selected-reports.pdf';
-
-        return response($pdf, 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="' . $fileName . '"',
-        ]);
     }
 
     private function renderItemPdf(Invoice $invoice, array $item): string

@@ -34,38 +34,64 @@ class PatientHistoryController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | SEARCH PATIENTS BY MOBILE (FOR DROPDOWN)
+    | SEARCH PATIENTS BY MOBILE AND/OR NAME (FOR DROPDOWN)
     |--------------------------------------------------------------------------
     */
 
     public function searchByMobile(Request $request)
     {
         $request->validate([
-            'mobile_no' => 'required'
+            'mobile_no' => 'nullable|string',
+            'patient_name' => 'nullable|string',
         ]);
 
-        $mobile = trim($request->mobile_no);
+        $mobile = trim((string) $request->mobile_no);
+        $name = trim((string) $request->patient_name);
 
-        // A patient can have multiple linked numbers (patient_mobile_numbers)
-        // besides their current primary (patients.mobile_no) -- e.g. after a
-        // Change Primary Mobile, the old number stays searchable as an alias.
-        // Same two-way match as DiagnosticInvoiceController::searchPatient().
-        $patients = Patient::where('mobile_no', $mobile)
-            ->orWhereIn(
-                'patient_id',
-                DB::table('patient_mobile_numbers')
-                    ->where('mobile_no', $mobile)
-                    ->pluck('patient_id')
-            )
+        if ($mobile === '' && $name === '') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Enter a mobile number or a patient name to search.'
+            ]);
+        }
+
+        // Matches on EITHER criterion (not both at once) -- entering both a
+        // mobile number and a name fragment broadens the search rather than
+        // narrowing it, same as asking "show me anyone matching this phone
+        // OR this name".
+        $patients = Patient::where(function ($query) use ($mobile, $name) {
+
+            if ($mobile !== '') {
+
+                // A patient can have multiple linked numbers
+                // (patient_mobile_numbers) besides their current primary
+                // (patients.mobile_no) -- e.g. after a Change Primary
+                // Mobile, the old number stays searchable as an alias. Same
+                // two-way match as DiagnosticInvoiceController::searchPatient().
+                $query->orWhere('mobile_no', $mobile)
+                    ->orWhereIn(
+                        'patient_id',
+                        DB::table('patient_mobile_numbers')
+                            ->where('mobile_no', $mobile)
+                            ->pluck('patient_id')
+                    );
+            }
+
+            if ($name !== '') {
+                $query->orWhere('patient_name', 'like', '%' . $name . '%');
+            }
+        })
             ->orderBy('patient_name')
-            ->get(['id', 'patient_id', 'patient_name', 'age', 'gender', 'status']);
+            ->get(['id', 'patient_id', 'patient_name', 'age', 'gender', 'status', 'mobile_no']);
 
         if ($patients->isEmpty()) {
 
-            $member = DB::table('users')
-                ->where('mobile_no', $mobile)
-                ->where('role', 'Member')
-                ->first();
+            // The Member fallback only ever matched by mobile number (a
+            // Member row has no linked patient_id at all to search by name
+            // against), so it stays mobile-only.
+            $member = $mobile !== ''
+                ? DB::table('users')->where('mobile_no', $mobile)->where('role', 'Member')->first()
+                : null;
 
             if ($member) {
 
@@ -78,13 +104,14 @@ class PatientHistoryController extends Controller
                         'age' => null,
                         'gender' => null,
                         'status' => $member->status,
+                        'mobile_no' => $member->mobile_no,
                     ]]
                 ]);
             }
 
             return response()->json([
                 'status' => false,
-                'message' => 'No patient found with this mobile number.'
+                'message' => 'No patient found matching that mobile number or name.'
             ]);
         }
 

@@ -37,10 +37,14 @@ class HtmlSanitizerService
         // the allowlist to avoid the warning noise.
         $config->set(
             'HTML.Allowed',
-            'p[style],span[class],span[style],h2[style],h3[style],h4[style],strong,em,u,ul,ol,li,br,'
+            'p[style],span[class],span[style],span[data-key-param-result],h2[style],h3[style],h4[style],strong,em,u,ul,ol,li,br,'
                 . 'table[style],thead,tbody,'
                 . 'tr,th[style|scope|colspan|rowspan],td[style|colspan|rowspan]'
         );
+        // span[class] above already covers CKEditor's RestrictedEditingMode
+        // exception marker (class="restricted-editing-exception" -- see
+        // applyRestrictedEditingExceptions() in test-result-entry.init.js),
+        // no extra allowance needed for it.
         $config->set(
             'CSS.AllowedProperties',
             'text-align,vertical-align,border,border-color,border-style,border-width,'
@@ -50,6 +54,20 @@ class HtmlSanitizerService
         // No cache directory needed for an allowlist this small, and
         // production has no way to create/chmod one (FTP-only deploy).
         $config->set('Cache.DefinitionImpl', null);
+
+        // HTML.Allowed only recognizes HTMLPurifier's own built-in
+        // attributes per tag -- a custom data-* attribute needs its own
+        // raw definition entry, or it's silently stripped here even though
+        // CKEditor's GeneralHtmlSupport preserves it client-side. Carries
+        // the pathology template editor's "Insert Result Field" marker
+        // (see KeyParameterService / mergeKeyParametersIntoContent) through
+        // to the saved template content.
+        $config->set('HTML.DefinitionID', 'ohms-clinical-text-key-param-marker');
+        $config->set('HTML.DefinitionRev', 1);
+        $def = $config->maybeGetRawHTMLDefinition();
+        if ($def !== null) {
+            $def->addAttribute('span', 'data-key-param-result', 'Text');
+        }
 
         return (new HTMLPurifier($config))->purify($html);
     }

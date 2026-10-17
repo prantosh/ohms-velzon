@@ -81,7 +81,8 @@
         <div class="col-12">
             <h4 class="fw-bold mb-1">Patient History</h4>
             <p class="text-muted mb-0">
-                Search a patient by mobile number to view their complete visit and billing history.
+                Search a patient by mobile number and/or name (even part of it) to view their complete visit
+                and billing history.
             </p>
         </div>
     </div>
@@ -92,13 +93,21 @@
 
             <div class="row align-items-end g-3">
 
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label fw-semibold">Mobile Number</label>
                     <input type="text"
                            id="mobileInput"
                            class="form-control"
                            maxlength="10"
                            placeholder="Enter 10 digit mobile number">
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold">Patient Name</label>
+                    <input type="text"
+                           id="nameInput"
+                           class="form-control"
+                           placeholder="Full or partial name">
                 </div>
 
                 <div class="col-md-2">
@@ -116,7 +125,7 @@
             </div>
 
             <div id="noPatientMsg" class="text-danger mt-3" style="display:none;">
-                No patient found with this mobile number.
+                No patient found matching that mobile number or name.
             </div>
 
         </div>

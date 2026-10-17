@@ -11,6 +11,7 @@ class PathologyReportFinding extends Model
         'invoice_no',
         'pathology_report_template_id',
         'content',
+        'key_parameter_values',
         'report_title',
 
         'confirmed_by',
@@ -24,6 +25,7 @@ class PathologyReportFinding extends Model
     protected $casts = [
         'confirmed_at' => 'datetime',
         'corrected_from_sent_at' => 'datetime',
+        'key_parameter_values' => 'array',
     ];
 
     public function items()

@@ -50,6 +50,7 @@
 @endcomponent
 
 <script id="testGroupsData" type="application/json">{!! json_encode($testGroups) !!}</script>
+<script id="keyParametersData" type="application/json">{!! json_encode($keyParameters) !!}</script>
 
 <div class="row">
 
@@ -301,6 +302,24 @@
                             <label class="form-label">
                                 Template Content
                             </label>
+
+                            <div class="d-flex align-items-center gap-2 mb-2 flex-wrap" id="keyParamInsertBar" style="display:none !important;">
+
+                                <select id="keyParamResultSelect" class="form-select form-select-sm w-auto">
+                                </select>
+
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="insertKeyParamResultBtn">
+                                    <i class="ri-add-line align-bottom"></i>
+                                    Insert Result Field
+                                </button>
+
+                                <small class="text-muted">
+                                    Place your cursor in the Result cell/line first, then click Insert -- staff will
+                                    then only type the value once, on the result-entry screen, and it fills this
+                                    exact spot.
+                                </small>
+
+                            </div>
 
                             <textarea id="content-field"
                                       class="form-control"></textarea>
