@@ -39,7 +39,8 @@ table {
 
 .no-border td {
     border: none;
-    padding: 4px 0;
+    padding: 4px 6px;
+    font-size: 9.5px;
 }
 
 /* One brand navy used throughout -- matches the #1F4E78 header color
@@ -69,12 +70,17 @@ table {
 .patient-detail-table .pdt-label {
     color: #1F4E78;
     font-weight: bold;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
 }
 
 .patient-detail-table .pdt-value {
     color: #222222;
+    font-weight: normal;
+}
+
+.patient-detail-table .pdt-value-name {
+    color: #222222;
+    font-weight: bold;
+    font-size: 11px;
 }
 
 .study-title {
@@ -95,41 +101,6 @@ table {
 
 .report-body table {
     margin-top: 6px;
-}
-
-.key-param-history {
-    margin-top: 16px;
-    padding-top: 8px;
-    border-top: 1pt solid #B8C8D4;
-}
-
-.key-param-history .heading {
-    font-size: 11px;
-    font-weight: bold;
-    color: #1F4E78;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    margin-bottom: 4px;
-}
-
-.key-param-history table {
-    font-size: 9px;
-    border: 1px solid #B8C8D4;
-}
-
-.key-param-history th {
-    background-color: #1F4E78;
-    color: #FFFFFF;
-    font-weight: bold;
-    padding: 4px 6px;
-    text-align: left;
-    border: 1px solid #B8C8D4;
-}
-
-.key-param-history td {
-    padding: 3px 6px;
-    border: 1px solid #B8C8D4;
-    text-align: left;
 }
 
 /*
@@ -200,17 +171,20 @@ table {
 
 <table class="patient-detail-table">
     <tr>
-        <td class="pdt-label" width="12%">Patient Name</td>
-        <td class="pdt-value" width="18%">{{ $invoice->patient_name }}</td>
+        <td width="35%" style="text-align:left;">
+            <span class="pdt-label">Patient Name :</span>
+            <span class="pdt-value-name">{{ $invoice->patient_name }}</span>
+        </td>
 
-        <td class="pdt-label" width="10%">Age / Sex</td>
-        <td class="pdt-value" width="13%">{{ $invoice->patient_age ?? '' }} / {{ $invoice->patient_gender ?? '' }}</td>
+        <td width="18%">
+            <span class="pdt-label">Age / Sex :</span>
+            <span class="pdt-value">{{ $invoice->patient_age ?? '' }} / {{ $invoice->patient_gender ?? '' }}</span>
+        </td>
 
-        <td class="pdt-label" width="12%">Invoice No</td>
-        <td class="pdt-value" width="18%">{{ $invoice->invoice_no }}</td>
-
-        <td class="pdt-label" width="7%">Date</td>
-        <td class="pdt-value" width="10%">{{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</td>
+        <td width="47%" style="text-align:right;">
+            <span class="pdt-label">Invoice No / Date :</span>
+            <span class="pdt-value">{{ $invoice->invoice_no }} / {{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</span>
+        </td>
     </tr>
 </table>
 
@@ -225,16 +199,24 @@ table {
     ];
 @endphp
 
-@if(!$dateInfo['mixed'])
 <table class="no-border">
     <tr>
-        <td width="70%">
+        @if(!$dateInfo['mixed'])
+        <td width="35%">
             <span class="label-blue">Test Date :</span>
             {{ $dateInfo['single'] ?? '-' }}
         </td>
+        @endif
+        <td width="{{ $dateInfo['mixed'] ? '50%' : '35%' }}">
+            <span class="label-blue">Ref. Doctor :</span>
+            {{ strlen(trim((string) $invoice->referred_doctor)) < 8 ? 'Not Mentioned' : trim($invoice->referred_doctor) }}
+        </td>
+        <td width="{{ $dateInfo['mixed'] ? '50%' : '30%' }}" style="text-align:right;">
+            <span class="label-blue">Patient Id :</span>
+            {{ $invoice->patient_id ?: '-' }}
+        </td>
     </tr>
 </table>
-@endif
 
 @php $customTitle = trim((string) ($finding->report_title ?? '')); @endphp
 
@@ -244,42 +226,8 @@ table {
 @endif
 
 <div class="report-body">
-    {!! $finding->content !!}
+    {!! $printContent ?? $finding->content !!}
 </div>
-
-@if(!empty($keyParameterHistory))
-<div class="key-param-history">
-    <div class="heading">Previous Values</div>
-    <table>
-        <thead>
-            <tr>
-                <th>Parameter</th>
-                <th>Current</th>
-                @for($i = 0; $i < 3; $i++)
-                <th>Previous {{ $i + 1 }}</th>
-                @endfor
-            </tr>
-        </thead>
-        <tbody>
-            @foreach($keyParameterHistory as $row)
-            <tr style="{{ $loop->even ? 'background-color:#F7FAFC;' : '' }}">
-                <td>{{ $row['parameter_name'] }}{{ $row['uom'] ? ' (' . $row['uom'] . ')' : '' }}</td>
-                <td>{{ $row['current'] ?? '-' }}</td>
-                @for($i = 0; $i < 3; $i++)
-                <td>
-                    @if(isset($row['history'][$i]))
-                        {{ $row['history'][$i]['result_value'] }} ({{ $row['history'][$i]['test_date_fmt'] }})
-                    @else
-                        -
-                    @endif
-                </td>
-                @endfor
-            </tr>
-            @endforeach
-        </tbody>
-    </table>
-</div>
-@endif
 
 @include('partials.report-correction-footnote', ['correctedFromSentAt' => $finding->corrected_from_sent_at ?? null])
 

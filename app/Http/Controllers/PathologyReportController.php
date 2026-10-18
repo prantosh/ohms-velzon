@@ -372,7 +372,28 @@ class PathologyReportController extends Controller
         // line's eventual report doesn't exist yet to scope it to.
         $keyParameterService = app(KeyParameterService::class);
 
-        $allBilledItemCodeSubs = $lines->pluck('item_code_sub')->unique()->values()->all();
+        // $lines shows a package only as its OWN collapsed line (e.g.
+        // "LIPID PROFILE" / PAT175) -- its real components (LDL/HDL/
+        // Triglyceride/...) are hidden from the list entirely (see
+        // ReportableLines::sql() above). But a component's own
+        // key_parameters trigger is its OWN code (PAT174, etc, same as if
+        // it were billed standalone) -- so trigger-matching needs the real
+        // component codes, not the package's collapsed code, or a tracked
+        // package component never surfaces its capture box.
+        $packageLineCodes = $lines->where('is_package', 1)->whereNull('package_parent_item_code_sub')->pluck('item_code_sub');
+
+        $packageComponentItemCodeSubs = $packageLineCodes->isEmpty()
+            ? collect()
+            : DB::table('invoice_details')
+                ->where('invoice_no', $invoice->invoice_no)
+                ->whereIn('package_parent_item_code_sub', $packageLineCodes)
+                ->pluck('item_code_sub');
+
+        $allBilledItemCodeSubs = $lines->pluck('item_code_sub')
+            ->merge($packageComponentItemCodeSubs)
+            ->unique()
+            ->values()
+            ->all();
 
         $triggeredParams = $keyParameterService
             ->triggeredParametersForItemCodeSubs($allBilledItemCodeSubs)
@@ -728,6 +749,7 @@ class PathologyReportController extends Controller
                 'item_dates.*' => 'nullable|date_format:Y-m-d',
                 'report_title' => 'nullable|string|max:255',
                 'content' => 'nullable|string',
+                'key_parameter_values' => 'nullable|array',
             ]
         );
 
@@ -754,11 +776,17 @@ class PathologyReportController extends Controller
 
         $invoice = Invoice::where('invoice_no', $lines->first()->invoice_no)->firstOrFail();
 
+        // A plain stdClass standing in for PathologyReportFinding -- the PDF
+        // template and KeyParameterService only ever read properties off
+        // $finding, never call a model method, so the unsaved draft
+        // (including whatever's currently typed into the Key Parameters
+        // box) can flow straight through without a real saved record.
         $finding = (object) [
             'invoice_no' => $invoice->invoice_no,
             'content' => HtmlSanitizerService::sanitizeClinicalText($request->content),
             'report_title' => \App\Support\ReportTitle::normalise($request->report_title, $lines->sortBy('id')->pluck('item_description')->implode(', ')),
             'confirmed_at' => null,
+            'key_parameter_values' => $this->sanitizeKeyParameterValues($request->input('key_parameter_values')),
         ];
 
         $itemDescriptions = $lines->pluck('item_description');
@@ -770,9 +798,20 @@ class PathologyReportController extends Controller
             collect($request->input('item_dates', []))->mapWithKeys(fn ($v, $k) => [(int) $k => $v])->all()
         );
 
+        // Same key-parameter table processing buildFindingPdf() applies --
+        // without this, the preview would silently omit the whole Key
+        // Parameters table (or any in-template marker fill) for a tracked
+        // test, which would make the single biggest change to how these
+        // reports print invisible in the one screen meant to show it
+        // before saving.
+        $keyParamService = app(KeyParameterService::class);
+        $tableData = $keyParamService->tableDataFor($finding, $invoice);
+        $printContent = $keyParamService->expandTrackedResultTables($finding->content ?? '', $tableData);
+        $printContent = $keyParamService->spliceAutoTable($printContent, $keyParamService->buildAutoTable($tableData));
+
         $pdf = Pdf::loadView(
             'apps-pathology-report-pdf',
-            compact('finding', 'invoice', 'itemDescriptions', 'dateInfo')
+            compact('finding', 'invoice', 'itemDescriptions', 'dateInfo', 'printContent')
         );
 
         PdfPageNumbers::add($pdf);
@@ -1144,53 +1183,32 @@ class PathologyReportController extends Controller
 
         $dateInfo = $this->dateInfoFor($finding);
 
-        $keyParameterHistory = $this->keyParameterHistoryFor($finding, $invoice);
+        // Folds each tracked parameter's current + up to 3 previous values
+        // into the investigation table -- print-time only, never saved back
+        // to $finding->content. Two mechanisms, depending on how the
+        // template was authored: expandTrackedResultTables() rewrites an
+        // admin-authored table's own marked Result cells in place (legacy
+        // templates like CBC/LFT that still mix tracked and untracked
+        // rows); spliceAutoTable() builds the whole table from scratch and
+        // drops it into a stripped-down template's placeholder (every
+        // template whose items are now fully tracked, so there's no
+        // admin-typed unit/range left to drift out of sync, and no marker
+        // that can silently go missing). A template can only match one of
+        // the two -- a legacy table has no placeholder, and a stripped
+        // template has no table left to expand.
+        $keyParamService = app(KeyParameterService::class);
+        $tableData = $keyParamService->tableDataFor($finding, $invoice);
+        $printContent = $keyParamService->expandTrackedResultTables($finding->content ?? '', $tableData);
+        $printContent = $keyParamService->spliceAutoTable($printContent, $keyParamService->buildAutoTable($tableData));
 
         $pdf = Pdf::loadView(
             'apps-pathology-report-pdf',
-            compact('finding', 'invoice', 'itemDescriptions', 'dateInfo', 'keyParameterHistory')
+            compact('finding', 'invoice', 'itemDescriptions', 'dateInfo', 'printContent')
         );
 
         PdfPageNumbers::add($pdf);
 
         return $pdf;
-    }
-
-    /**
-     * This report's own Key Parameters (whatever was captured on it, if
-     * any) alongside the patient's PRIOR values for those same parameters
-     * -- "Previous Values" on the printed report. Empty when this report
-     * didn't trigger any tracked parameter at all (the common case).
-     *
-     * @return array<int, array{parameter_name: string, uom: ?string, current: ?string, history: array}>
-     */
-    private function keyParameterHistoryFor(PathologyReportFinding $finding, Invoice $invoice): array
-    {
-        $current = $finding->key_parameter_values;
-
-        if (empty($current)) {
-            return [];
-        }
-
-        $itemCodeSubs = array_keys($current);
-
-        $paramMeta = DB::table('key_parameters')
-            ->whereIn('item_code_sub', $itemCodeSubs)
-            ->orderBy('sort_order')
-            ->get();
-
-        $history = app(KeyParameterService::class)->recentValuesForPatient(
-            $invoice->patient_id,
-            $itemCodeSubs,
-            $invoice->invoice_no
-        );
-
-        return $paramMeta->map(fn ($meta) => [
-            'parameter_name' => $meta->parameter_name,
-            'uom' => $meta->uom,
-            'current' => $current[$meta->item_code_sub] ?? null,
-            'history' => $history[$meta->item_code_sub] ?? [],
-        ])->filter(fn ($row) => !empty($row['history']))->values()->all();
     }
 
     /*
@@ -1486,6 +1504,15 @@ class PathologyReportController extends Controller
      */
     public function buildInvoiceSections(string $invoiceNo, ?array $onlyFindingIds = null)
     {
+        // Needed for the same key-parameter table processing buildFindingPdf()
+        // applies -- this combined/grouped rendering path used to skip it
+        // entirely, so a tracked parameter's current+previous values (or, for
+        // a fully-tracked item, the whole auto-generated table) never showed
+        // up on the WhatsApp'd PDF or "print selected items", even though
+        // the single-report print/download already got it right.
+        $invoice = Invoice::where('invoice_no', $invoiceNo)->first();
+        $keyParamService = app(KeyParameterService::class);
+
         $lines = DB::table('invoice_details as d')
             ->join('invoice_item_details as iid', function ($join) {
                 $join->on('iid.item_code', '=', 'd.item_code')
@@ -1529,11 +1556,19 @@ class PathologyReportController extends Controller
         return $findings
             ->sortBy(fn ($finding) => $groupNameForFinding($finding->id))
             ->values()
-            ->map(function ($finding) use ($groupNameForFinding, $itemDescById) {
+            ->map(function ($finding) use ($groupNameForFinding, $itemDescById, $invoice, $keyParamService) {
 
                 $ids = $finding->items->pluck('invoice_detail_id')->map(fn ($v) => (int) $v)->all();
 
                 $dateInfo = ReportTestDates::describe($ids, $itemDescById->all());
+
+                $content = $finding->content ?? '';
+
+                if ($invoice) {
+                    $tableData = $keyParamService->tableDataFor($finding, $invoice);
+                    $content = $keyParamService->expandTrackedResultTables($content, $tableData);
+                    $content = $keyParamService->spliceAutoTable($content, $keyParamService->buildAutoTable($tableData));
+                }
 
                 return [
                     'group_name' => $groupNameForFinding($finding->id),
@@ -1541,7 +1576,7 @@ class PathologyReportController extends Controller
                     'date_note' => (!empty($finding->report_title) && $dateInfo['mixed']) ? $dateInfo['title'] : null,
                     'date_single' => $dateInfo['single'],
                     'date_mixed' => $dateInfo['mixed'],
-                    'content' => $finding->content,
+                    'content' => $content,
                     'confirmed_at' => $finding->confirmed_at,
                     'corrected_from_sent_at' => $finding->corrected_from_sent_at,
                 ];

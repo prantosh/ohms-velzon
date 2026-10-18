@@ -38,6 +38,7 @@ class HtmlSanitizerService
         $config->set(
             'HTML.Allowed',
             'p[style],span[class],span[style],span[data-key-param-result],h2[style],h3[style],h4[style],strong,em,u,ul,ol,li,br,'
+                . 'div[style|data-key-param-block|data-auto-key-param-table],'
                 . 'table[style],thead,tbody,'
                 . 'tr,th[style|scope|colspan|rowspan],td[style|colspan|rowspan]'
         );
@@ -63,10 +64,18 @@ class HtmlSanitizerService
         // (see KeyParameterService / mergeKeyParametersIntoContent) through
         // to the saved template content.
         $config->set('HTML.DefinitionID', 'ohms-clinical-text-key-param-marker');
-        $config->set('HTML.DefinitionRev', 1);
+        $config->set('HTML.DefinitionRev', 2);
         $def = $config->maybeGetRawHTMLDefinition();
         if ($def !== null) {
             $def->addAttribute('span', 'data-key-param-result', 'Text');
+            // The appended "Key Parameters" fallback block
+            // (mergeKeyParametersIntoContent()) and the stripped-template
+            // auto-table placeholder (KeyParameterService::spliceAutoTable())
+            // both need to survive as real <div> elements with their marker
+            // attribute intact, or the block-update-in-place / placeholder
+            // detection on the next save can't find them again.
+            $def->addAttribute('div', 'data-key-param-block', 'Text');
+            $def->addAttribute('div', 'data-auto-key-param-table', 'Text');
         }
 
         return (new HTMLPurifier($config))->purify($html);

@@ -64,8 +64,20 @@ class InvoiceItemDetailController extends Controller
 
             );
 
-        if ($request->boolean('packages_only')) {
-            $query->where('invoice_item_details.is_package', 1);
+        if ($request->filled('item_code')) {
+            $query->where('invoice_item_details.item_code', $request->item_code);
+        }
+
+        if ($request->filled('is_package')) {
+            $query->where('invoice_item_details.is_package', $request->boolean('is_package'));
+        }
+
+        if ($request->filled('is_outsourced')) {
+            $query->where('invoice_item_details.is_outsourced', $request->boolean('is_outsourced'));
+        }
+
+        if ($request->filled('is_report_not_required')) {
+            $query->where('invoice_item_details.is_report_not_required', $request->boolean('is_report_not_required'));
         }
 
         return DataTables::of($query)
@@ -83,6 +95,39 @@ class InvoiceItemDetailController extends Controller
                 return $row->status === 'Y'
                     ? '<span class="badge bg-success">Active</span>'
                     : '<span class="badge bg-danger">Inactive</span>';
+
+            })
+
+            ->addColumn('discount_summary', function ($row) {
+
+                return '<button type="button" class="btn btn-sm btn-outline-primary view-discount"'
+                    . ' data-desc="' . e($row->item_description_sub) . '"'
+                    . ' data-standard="' . number_format((float) $row->discount_percent, 2) . '"'
+                    . ' data-member="' . number_format((float) $row->member_discount, 2) . '"'
+                    . ' data-other-lab="' . number_format((float) $row->discount_other_lab, 2) . '"'
+                    . ' data-member-other-lab="' . number_format((float) $row->discount_member_other_lab, 2) . '"'
+                    . ' data-senior="' . number_format((float) $row->discount_senior_citizen, 2) . '">'
+                    . '<i class="ri-percent-line"></i> View</button>';
+
+            })
+
+            ->addColumn('range_summary', function ($row) {
+
+                if (
+                    trim((string) $row->range_male) === ''
+                    && trim((string) $row->range_female) === ''
+                    && trim((string) $row->range_common) === ''
+                ) {
+                    return '<button type="button" class="btn btn-sm btn-outline-secondary edit-item" data-id="' . $row->id . '">'
+                        . '<i class="ri-add-line"></i> Add Range</button>';
+                }
+
+                return '<button type="button" class="btn btn-sm btn-outline-primary view-range"'
+                    . ' data-desc="' . e($row->item_description_sub) . '"'
+                    . ' data-male="' . e($row->range_male ?? '-') . '"'
+                    . ' data-female="' . e($row->range_female ?? '-') . '"'
+                    . ' data-common="' . e($row->range_common ?? '-') . '">'
+                    . '<i class="ri-ruler-line"></i> View</button>';
 
             })
 
@@ -132,6 +177,8 @@ class InvoiceItemDetailController extends Controller
 
             ->rawColumns([
                 'status',
+                'discount_summary',
+                'range_summary',
                 'is_package_label',
                 'is_outsourced_label',
                 'is_report_not_required_label',
@@ -253,6 +300,8 @@ class InvoiceItemDetailController extends Controller
 
         ]);
 
+        $validator->after(fn ($v) => $this->validateUomRangePair($v, $request));
+
         if ($validator->fails()) {
 
             return response()->json([
@@ -327,6 +376,8 @@ class InvoiceItemDetailController extends Controller
 
                 'test_group_code' => $request->test_group_code,
 
+                'uom' => $request->uom,
+
                 'range_male' => $request->male_range,
 
                 'range_female' => $request->female_range,
@@ -348,6 +399,8 @@ class InvoiceItemDetailController extends Controller
             $this->syncPackageComponents($item, $isPackage, $request->components ?? []);
 
         });
+
+        $this->syncKeyParameter($item, $request);
 
         $auditService->logCreate(
             self::MODULE_CODE,
@@ -397,6 +450,14 @@ class InvoiceItemDetailController extends Controller
             ->orderBy('sort_order')
             ->pluck('component_invoice_item_detail_id');
 
+        // Key Parameter tracking config (KeyParameterService) for this item,
+        // if any -- lets the edit form show/prefill it instead of needing a
+        // separate screen. Keyed by item_code_sub, same identity the
+        // key_parameters table uses.
+        $item->key_parameter = DB::table('key_parameters')
+            ->where('item_code_sub', $item->item_code_sub)
+            ->first();
+
         return response()->json($item);
     }
 
@@ -427,8 +488,22 @@ class InvoiceItemDetailController extends Controller
 
                 'components.*' => 'exists:invoice_item_details,id',
 
+                'kp_enabled' => 'nullable|boolean',
+
+                'kp_parameter_name' => 'required_if:kp_enabled,1|nullable|max:150',
+
+                'kp_group_label' => 'nullable|max:100',
+
+                'kp_uom' => 'nullable|max:50',
+
+                'kp_sort_order' => 'nullable|integer',
+
+                'kp_trigger_item_code_subs' => 'nullable|string|max:255',
+
             ]
         );
+
+        $validator->after(fn ($v) => $this->validateUomRangePair($v, $request));
 
         if ($validator->fails()) {
 
@@ -493,6 +568,8 @@ class InvoiceItemDetailController extends Controller
 
         $this->syncPackageComponents($item, $isPackage, $request->components ?? []);
 
+        $this->syncKeyParameter($item, $request);
+
         $auditService->logUpdate(
             self::MODULE_CODE,
             $item,
@@ -508,6 +585,40 @@ class InvoiceItemDetailController extends Controller
             'message' => 'Updated successfully.'
 
         ]);
+    }
+
+    /**
+     * UOM and Range are meant to travel together -- a UOM with no range to
+     * interpret it against is meaningless, and a range with no UOM is
+     * ambiguous. Skipped entirely for a package: those fields don't apply to
+     * a package line at all (it bills its components, not itself -- see
+     * #testDetailsWrap in the view, hidden whenever is_package is checked).
+     */
+    private function validateUomRangePair($validator, Request $request): void
+    {
+        if ($request->boolean('is_package')) {
+            return;
+        }
+
+        $hasUom = trim((string) $request->uom) !== '';
+
+        $hasRange = trim((string) $request->male_range) !== ''
+            || trim((string) $request->female_range) !== ''
+            || trim((string) $request->common_range) !== '';
+
+        if ($hasUom && !$hasRange) {
+            $validator->errors()->add(
+                'uom',
+                'Enter at least one Range (Male, Female, or Common) when a UOM is entered.'
+            );
+        }
+
+        if ($hasRange && !$hasUom) {
+            $validator->errors()->add(
+                'uom',
+                'Enter a UOM when a Range value is entered.'
+            );
+        }
     }
 
     /**
@@ -534,6 +645,73 @@ class InvoiceItemDetailController extends Controller
                 'status' => 'ACTIVE',
                 'created_by' => auth()->id(),
             ]);
+        }
+    }
+
+    /**
+     * Enable/update or disable this item's Key Parameter tracking
+     * (KeyParameterService) from the item edit form, instead of needing the
+     * separate pathology template editor or a direct DB row. Keyed by this
+     * item's own item_code_sub -- disabling never deletes the row (a
+     * template may already have an "Insert Result Field" marker anchored to
+     * it), it just flips is_active off the same way the admin-curated list
+     * is meant to be deactivated elsewhere.
+     *
+     * Policy: any item with a UOM (a numeric result worth tracking) is a Key
+     * Parameter BY DEFAULT -- an admin who never opens the Key Parameter
+     * section still gets tracking for free the first time this item is
+     * saved with a UOM. The explicit kp_enabled checkbox only matters (a)
+     * the first time, for an item with NO uom that the admin wants tracked
+     * anyway, or (b) to opt back OUT of the default once a row already
+     * exists. A row that already exists is never silently re-activated or
+     * re-defaulted here -- once an admin has made an explicit choice for an
+     * item (on a prior save), that choice stands until they change it again.
+     */
+    private function syncKeyParameter(InvoiceItemDetail $item, Request $request): void
+    {
+        $existing = DB::table('key_parameters')->where('item_code_sub', $item->item_code_sub)->first();
+
+        $wantsTracking = $request->boolean('kp_enabled')
+            || (!$existing && trim((string) $item->uom) !== '');
+
+        if (!$wantsTracking) {
+
+            if ($existing) {
+                DB::table('key_parameters')->where('id', $existing->id)->update([
+                    'is_active' => false,
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return;
+        }
+
+        $triggers = array_values(array_filter(array_map(
+            'trim',
+            explode(',', $request->kp_trigger_item_code_subs ?: $item->item_code_sub)
+        )));
+
+        if (empty($triggers)) {
+            $triggers = [$item->item_code_sub];
+        }
+
+        $values = [
+            'parameter_name' => $request->kp_parameter_name ?: $item->item_description_sub,
+            'group_label' => $request->kp_group_label ?: null,
+            'uom' => $request->kp_uom ?: $item->uom,
+            'trigger_item_code_subs' => json_encode($triggers),
+            'sort_order' => $request->kp_sort_order ?? 0,
+            'is_active' => true,
+            'updated_at' => now(),
+        ];
+
+        if ($existing) {
+            DB::table('key_parameters')->where('id', $existing->id)->update($values);
+        } else {
+            DB::table('key_parameters')->insert(array_merge(
+                ['item_code_sub' => $item->item_code_sub, 'created_at' => now()],
+                $values
+            ));
         }
     }
 

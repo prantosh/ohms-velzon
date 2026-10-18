@@ -126,9 +126,17 @@ table td {
     margin: 0;
 }
 
+/* A small deliberate gap between bullets -- print intentionally strips the
+   blank-paragraph breathing room the editor shows (see the rule below), but
+   zero gap read as bullets running together, so this puts back a fixed,
+   modest gap instead of the editor's full blank-line-sized one. */
 .report-section-body li {
-    margin: 0;
+    margin: 0 0 8px 0;
     line-height: 1.25;
+}
+
+.report-section-body li:last-child {
+    margin-bottom: 0;
 }
 
 /* A pasted (or CKEditor Document-List) numbered/bulleted item can wrap its
@@ -236,7 +244,7 @@ table td {
     @if($key !== 'heading' && !empty($finding->{$key}))
     <div class="report-section">
         <div class="report-section-heading{{ $key === 'conclusion' ? ' conclusion-heading' : '' }}">{{ $key === 'conclusion' ? strtoupper($label) : $label }}</div>
-        <div class="report-section-body">{!! $finding->{$key} !!}</div>
+        <div class="report-section-body">{!! \App\Support\ReportListSpacing::fixListParagraphBreaks($finding->{$key}) !!}</div>
     </div>
     @endif
 @endforeach

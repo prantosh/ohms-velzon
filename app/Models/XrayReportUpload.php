@@ -21,6 +21,11 @@ class XrayReportUpload extends Model
         'original_name',
         'size_bytes',
         'uploaded_by',
+        'whatsapp_due_at',
+    ];
+
+    protected $casts = [
+        'whatsapp_due_at' => 'datetime',
     ];
 
     public static function fileNameFor(string $invoiceNo): string

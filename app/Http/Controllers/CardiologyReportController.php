@@ -365,8 +365,13 @@ class CardiologyReportController extends Controller
         // A plain stdClass standing in for CardiologyReportFinding -- the PDF
         // template only ever reads properties off $finding, never calls a
         // model method, so the unsaved draft text can flow straight through.
+        // invoice_detail_id is required here -- without it,
+        // ReportTestDates::textForLine() has no line to look up and
+        // silently falls back to the invoice's own (often stale) test_date
+        // instead of this item's actual one.
         $finding = (object) array_merge([
             'item_description' => $line->item_description,
+            'invoice_detail_id' => $line->id,
             'confirmed_at' => null,
         ], $this->fieldsFromRequest($request));
 

@@ -32,6 +32,11 @@ class XrayReportUploadController extends Controller
 
     private const MAX_KB = 20480;
 
+    // Unlike every other report type (sent immediately on confirm/upload),
+    // X-Ray deliberately waits this long from the latest upload/replace
+    // before attempting WhatsApp -- see upload()/processDueWhatsapp().
+    private const WHATSAPP_DELAY_HOURS = 2;
+
     public function index()
     {
         return view('apps-xray-report-upload');
@@ -156,7 +161,7 @@ class XrayReportUploadController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function upload(Request $request, AuditService $auditService, WatiService $wati)
+    public function upload(Request $request, AuditService $auditService)
     {
         $request->validate([
             'invoice_id' => 'required|integer',
@@ -219,6 +224,13 @@ class XrayReportUploadController extends Controller
 
         $existing = XrayReportUpload::where('invoice_no', $invoice->invoice_no)->first();
 
+        // WhatsApp fires DELAYED_HOURS after this moment, not immediately --
+        // see processDueWhatsapp()/the xray:send-due-whatsapp schedule. A
+        // replace simply overwrites this with a fresh now()+2h, which is
+        // what gives the delay its "resets on change" behaviour: whichever
+        // upload is LATEST is the one the 2-hour clock counts from.
+        $whatsappDueAt = now()->addHours(self::WHATSAPP_DELAY_HOURS);
+
         $upload = XrayReportUpload::updateOrCreate(
             ['invoice_no' => $invoice->invoice_no],
             [
@@ -226,6 +238,7 @@ class XrayReportUploadController extends Controller
                 'original_name' => mb_substr($file->getClientOriginalName(), 0, 255),
                 'size_bytes' => File::size($dir . DIRECTORY_SEPARATOR . $fileName),
                 'uploaded_by' => Auth::id(),
+                'whatsapp_due_at' => $whatsappDueAt,
             ]
         );
 
@@ -236,16 +249,15 @@ class XrayReportUploadController extends Controller
             ($existing ? 'X-Ray report replaced' : 'X-Ray report uploaded') . ' (' . $fileName . ')'
         );
 
-        $whatsapp = $this->autoSendWhatsapp($invoice, $upload, $wati, $auditService);
-
         $base = $existing ? 'X-Ray report replaced.' : 'X-Ray report uploaded.';
 
         return response()->json([
             'status' => true,
-            'message' => $base . ' ' . $whatsapp['message'],
+            'message' => $base . ' It will be sent to the patient via WhatsApp automatically at ' . $whatsappDueAt->format('d-m-Y h:i A') . ' (2 hours from now), unless replaced again before then.',
             'data' => [
                 'file_name' => $upload->file_name,
-                'whatsapp_status' => $whatsapp['status'],
+                'whatsapp_status' => 'scheduled',
+                'whatsapp_due_at' => $whatsappDueAt->toIso8601String(),
             ],
         ]);
     }
@@ -290,6 +302,51 @@ class XrayReportUploadController extends Controller
     }
 
     /**
+     * Called by the xray:send-due-whatsapp scheduled command (every 5
+     * minutes -- see Kernel::schedule()) to actually fire every upload
+     * whose 2-hour delay has now elapsed. Runs the exact same checks a
+     * same-other-report-type immediate send would (due-amount hold,
+     * Admin auto-send toggle) -- the delay changes WHEN this runs, not
+     * what it does once it does.
+     *
+     * whatsapp_due_at is cleared BEFORE sending, not after, and scoped to
+     * the exact timestamp just read -- if upload() races this and sets a
+     * newer due_at in between (a replace arriving right as this fires),
+     * that UPDATE matches zero rows and the newer schedule survives
+     * untouched instead of being wiped out from under it.
+     */
+    public function processDueWhatsapp(WatiService $wati, AuditService $auditService): void
+    {
+        $due = XrayReportUpload::whereNotNull('whatsapp_due_at')
+            ->where('whatsapp_due_at', '<=', now())
+            ->get();
+
+        foreach ($due as $upload) {
+
+            $claimed = XrayReportUpload::where('id', $upload->id)
+                ->where('whatsapp_due_at', $upload->whatsapp_due_at)
+                ->update(['whatsapp_due_at' => null]);
+
+            if (!$claimed) {
+                continue;
+            }
+
+            $invoice = Invoice::where('invoice_no', $upload->invoice_no)->first();
+
+            if (!$invoice || DiagnosticReportGuard::invoiceIsCancelled($upload->invoice_no)) {
+                continue;
+            }
+
+            if (!$upload->fileExists()) {
+                \Log::warning('X-Ray scheduled WhatsApp skipped -- file missing for ' . $upload->invoice_no);
+                continue;
+            }
+
+            $this->autoSendWhatsapp($invoice, $upload, $wati, $auditService);
+        }
+    }
+
+    /**
      * Manual "Send WhatsApp" -- staff retry after a failure, or a resend.
      * Blocked while a payment is due (Admin may override), like every
      * other report's manual send.
@@ -318,6 +375,13 @@ class XrayReportUploadController extends Controller
                 'status' => false,
                 'message' => 'WhatsApp sending for X-Ray Report is currently disabled by Admin. Enable it in WhatsApp Auto-Send settings to send.'
             ]);
+        }
+
+        // Pre-empts the scheduled delayed send (if its 2 hours haven't
+        // elapsed yet) -- without this, a manual send-now followed later by
+        // the scheduled command would send the same report twice.
+        if ($upload->whatsapp_due_at) {
+            XrayReportUpload::where('id', $upload->id)->update(['whatsapp_due_at' => null]);
         }
 
         $result = $this->sendWhatsapp($invoice, $upload, $wati, $auditService);

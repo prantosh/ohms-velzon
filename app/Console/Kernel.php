@@ -19,8 +19,7 @@ class Kernel extends ConsoleKernel
 
         // See InvoicesBackupService -- requires the cPanel cron entry
         // `php <app-root>/artisan schedule:run` firing every minute for this
-        // to actually run on production (no other scheduled task exists yet,
-        // so that cron entry likely still needs to be added there).
+        // to actually run on production.
         // Checked daily; the command itself only acts on the 3-day grid
         // anchored at 06/10/2026 (archives the oldest 3 of the 6 days held)
         // -- so a missed day or month boundary can't skew the rhythm like a cron
@@ -39,6 +38,12 @@ class Kernel extends ConsoleKernel
         // UserReconciliationService). The dashboard also fills any missing month when it
         // is opened, so a missed run leaves no gap.
         $schedule->command('reconciliation:snapshot')->monthlyOn(1, '00:30');
+
+        // See XrayReportUploadController::upload()/processDueWhatsapp() --
+        // unlike every other report type (sent immediately), X-Ray's
+        // WhatsApp send is deliberately delayed 2 hours from the latest
+        // upload/replace. This picks up whatever's due every 5 minutes.
+        $schedule->command('xray:send-due-whatsapp')->everyFiveMinutes();
     }
 
     /**

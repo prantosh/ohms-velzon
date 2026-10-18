@@ -319,6 +319,38 @@
 
 </template>
 
+<!-- PATHOLOGY PREVIEW MODAL -- shows the draft report (including whatever's
+     currently typed into the Key Parameters box) exactly as it would print,
+     without saving or confirming; closing it returns to the still-open,
+     still-editable card underneath. Same pattern as USG's own preview. -->
+
+<div class="modal fade" id="pathologyPreviewModal" tabindex="-1" aria-hidden="true">
+
+    <div class="modal-dialog modal-fullscreen-lg-down modal-xl">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">Report Preview (Unsaved Draft)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body p-0">
+                <iframe id="pathologyPreviewFrame" style="width:100%; height:80vh; border:none;"></iframe>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">
+                    Close &amp; Continue Editing
+                </button>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
 <!-- PATHOLOGY REPORT CARD (cloned per report -- a report can cover one
      billed line or several bundled together by the chosen template.) -->
 
@@ -369,6 +401,11 @@
                 <button type="button" class="btn btn-primary pathology-save-btn">
                     <i class="ri-save-line"></i>
                     Save
+                </button>
+
+                <button type="button" class="btn btn-outline-secondary pathology-preview-btn">
+                    <i class="ri-eye-line"></i>
+                    Preview
                 </button>
 
                 <!-- Confirms/locks just THIS one report, independent of the

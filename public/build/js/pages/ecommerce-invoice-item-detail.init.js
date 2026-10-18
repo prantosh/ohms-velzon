@@ -2,6 +2,8 @@
 
 let table = null;
 let modal = null;
+let discountModal = null;
+let rangeModal = null;
 let editId = 0;
 
 const routeList = window.invoiceItemDetailRoutes.list;
@@ -116,6 +118,14 @@ $(function () {
         document.getElementById('itemDetailModal')
     );
 
+    discountModal = new bootstrap.Modal(
+        document.getElementById('discountModal')
+    );
+
+    rangeModal = new bootstrap.Modal(
+        document.getElementById('rangeModal')
+    );
+
     initialiseDataTable();
 
     initialiseEvents();
@@ -146,7 +156,13 @@ function initialiseDataTable() {
 
                 d._token = token;
 
-                d.packages_only = $('#packagesOnlyFilter').is(':checked') ? 1 : 0;
+                d.item_code = $('#itemNameFilter').val();
+
+                d.is_package = $('#packageFilter').val();
+
+                d.is_outsourced = $('#outsourcedFilter').val();
+
+                d.is_report_not_required = $('#reportNotRequiredFilter').val();
 
             }
 
@@ -183,33 +199,11 @@ function initialiseDataTable() {
             },
 
             {
-                data: 'discount_percent',
+                data: 'discount_summary',
                 name: 'invoice_item_details.discount_percent',
-                className: 'text-end'
-            },
-
-            {
-                data: 'member_discount',
-                name: 'invoice_item_details.member_discount',
-                className: 'text-end'
-            },
-
-            {
-                data: 'discount_other_lab',
-                name: 'invoice_item_details.discount_other_lab',
-                className: 'text-end'
-            },
-
-            {
-                data: 'discount_member_other_lab',
-                name: 'invoice_item_details.discount_member_other_lab',
-                className: 'text-end'
-            },
-
-            {
-                data: 'discount_senior_citizen',
-                name: 'invoice_item_details.discount_senior_citizen',
-                className: 'text-end'
+                searchable: false,
+                orderable: false,
+                className: 'text-center'
             },
 
             {
@@ -224,29 +218,16 @@ function initialiseDataTable() {
             },
 
             {
-                data: 'range_male',
-                name: 'invoice_item_details.range_male'
-            },
-
-            {
-                data: 'range_female',
-                name: 'invoice_item_details.range_female'
-            },
-
-            {
-                data: 'range_common',
-                name: 'invoice_item_details.range_common'
+                data: 'range_summary',
+                name: 'invoice_item_details.range_male',
+                searchable: false,
+                orderable: false,
+                className: 'text-center'
             },
 
             {
                 data: 'method',
                 name: 'invoice_item_details.method'
-            },
-
-            {
-                data: 'report_days',
-                name: 'invoice_item_details.report_days',
-                className: 'text-center'
             },
 
             {
@@ -355,6 +336,20 @@ function clearForm() {
 
     $('#item_status').val('Y');
 
+    // Key Parameter tracking -- available on Add too, not just Edit: the
+    // item's own item_code_sub isn't known client-side until after save
+    // (generateSubItemCode() runs server-side in store()), but
+    // syncKeyParameter() already runs right after the item is created, so
+    // there's nothing stopping an admin configuring this up front.
+    $('#keyParamWrap').show();
+    $('#kp_enabled').prop('checked', false);
+    $('#keyParamFields').hide();
+    $('#kp_parameter_name').val('');
+    $('#kp_group_label').val('');
+    $('#kp_uom').val('');
+    $('#kp_sort_order').val('');
+    $('#kp_trigger_item_code_subs').val('');
+
     // Remove validation
     $('.is-invalid').removeClass('is-invalid');
 
@@ -444,6 +439,10 @@ $('#is_report_not_required').change(function () {
     }
 });
 
+$('#kp_enabled').change(function () {
+    $('#keyParamFields').toggle($(this).is(':checked'));
+});
+
 function editRecord() {
 
     editId = $(this).data('id');
@@ -518,6 +517,21 @@ function editRecord() {
             $('#report_days').val(response.report_days);
 
             $('#item_status').val(response.status);
+
+            // Key Parameter tracking -- edit-only, prefilled from the
+            // existing key_parameters row (if any) for this item's code.
+            $('#keyParamWrap').show();
+
+            let kp = response.key_parameter;
+            $('#kp_enabled').prop('checked', !!(kp && kp.is_active * 1));
+            $('#keyParamFields').toggle(!!(kp && kp.is_active * 1));
+            $('#kp_parameter_name').val(kp ? kp.parameter_name : (response.item_description_sub || ''));
+            $('#kp_group_label').val(kp ? kp.group_label : '');
+            $('#kp_uom').val(kp ? kp.uom : (response.uom || ''));
+            $('#kp_sort_order').val(kp ? kp.sort_order : '');
+            $('#kp_trigger_item_code_subs').val(
+                kp ? (JSON.parse(kp.trigger_item_code_subs || '[]').join(', ')) : response.item_code_sub
+            );
 
             $('#item_code').prop('disabled', true);
             $('#modalTitle').text('Edit Invoice Item Detail');
@@ -659,7 +673,19 @@ function saveRecord() {
 
             report_days: $('#report_days').val(),
 
-            status: $('#item_status').val()
+            status: $('#item_status').val(),
+
+            kp_enabled: $('#kp_enabled').is(':checked') ? 1 : 0,
+
+            kp_parameter_name: $('#kp_parameter_name').val(),
+
+            kp_group_label: $('#kp_group_label').val(),
+
+            kp_uom: $('#kp_uom').val(),
+
+            kp_sort_order: $('#kp_sort_order').val(),
+
+            kp_trigger_item_code_subs: $('#kp_trigger_item_code_subs').val()
 
         },
 
@@ -851,7 +877,7 @@ $('#btnReload').click(function () {
 
 });
 
-$('#packagesOnlyFilter').change(function () {
+$('#itemNameFilter, #packageFilter, #outsourcedFilter, #reportNotRequiredFilter').change(function () {
 
     table.ajax.reload(null, false);
 
@@ -924,4 +950,38 @@ function initialiseEvents() {
         .off('click', '.delete-item')
         .on('click', '.delete-item', deleteRecord);
 
+    $(document)
+        .off('click', '.view-discount')
+        .on('click', '.view-discount', showDiscountDetails);
+
+    $(document)
+        .off('click', '.view-range')
+        .on('click', '.view-range', showRangeDetails);
+
+}
+
+function showDiscountDetails() {
+
+    let btn = $(this);
+
+    $('#discountModalDesc').text(btn.data('desc') ? '— ' + btn.data('desc') : '');
+    $('#discountModalStandard').text(btn.data('standard') + '%');
+    $('#discountModalMember').text(btn.data('member') + '%');
+    $('#discountModalOtherLab').text(btn.data('other-lab') + '%');
+    $('#discountModalMemberOtherLab').text(btn.data('member-other-lab') + '%');
+    $('#discountModalSenior').text(btn.data('senior') + '%');
+
+    discountModal.show();
+}
+
+function showRangeDetails() {
+
+    let btn = $(this);
+
+    $('#rangeModalDesc').text(btn.data('desc') ? '— ' + btn.data('desc') : '');
+    $('#rangeModalMale').text(btn.data('male'));
+    $('#rangeModalFemale').text(btn.data('female'));
+    $('#rangeModalCommon').text(btn.data('common'));
+
+    rangeModal.show();
 }

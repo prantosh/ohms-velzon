@@ -27,10 +27,11 @@
 */
 @page {
     /* 50mm is the clinic's pre-printed letterhead art zone (unchanged);
-       the extra 20mm reserves room for the patient-detail strip below it,
-       which is position:fixed so it repeats on every page -- see
+       the extra 35mm reserves room for the patient-detail strip below it
+       (now two lines, same as the single-report layout, so this grew from
+       20mm), which is position:fixed so it repeats on every page -- see
        .patient-detail-fixed. */
-    margin-top: 70mm;
+    margin-top: 85mm;
     margin-right: 40px;
     margin-bottom: 60mm;
     margin-left: 40px;
@@ -60,12 +61,12 @@ table {
 }
 
 /* Repeats on every page (DomPDF renders position:fixed elements once per
-   page) -- positioned above the normal content box, in the 20mm strip
+   page) -- positioned above the normal content box, in the 35mm strip
    @page reserves for it just below the letterhead art zone, so every
    page identifies the patient even if pages get separated. */
 .patient-detail-fixed {
     position: fixed;
-    top: -20mm;
+    top: -35mm;
     left: 0;
     right: 0;
 }
@@ -93,12 +94,45 @@ table {
     width: 100%;
 }
 
-.patient-detail-table th,
-.patient-detail-table td {
-    font-size: 9px;
-    padding: 3px;
-    border: 1px solid #000;
-    vertical-align: top;
+/* Same two-line letterhead-style header as the single-report layout
+   (apps-pathology-report-pdf.blade.php): line 1 is a bordered strip
+   (top/bottom rule), line 2 sits directly under it with no border of its
+   own -- scoped to .patient-detail-fixed specifically so it doesn't
+   affect the unrelated .no-border table each section below already uses
+   for its own per-section Test Date. Fits this header's own fixed 35mm
+   band -- see .patient-detail-fixed below, calibrated against the
+   physical letterhead art and not safe to grow without re-measuring that
+   stationery. */
+.patient-detail-table {
+    border-top: 1.4pt solid #1F4E78;
+    border-bottom: 1.4pt solid #1F4E78;
+}
+
+.patient-detail-fixed td {
+    font-size: 8.5px;
+    padding: 3px 4px;
+    vertical-align: middle;
+}
+
+.patient-detail-fixed .no-border td {
+    border: none;
+    padding: 3px 4px;
+}
+
+.patient-detail-fixed .pdt-label {
+    color: #1F4E78;
+    font-weight: bold;
+}
+
+.patient-detail-fixed .pdt-value {
+    color: #222222;
+    font-weight: normal;
+}
+
+.patient-detail-fixed .pdt-value-name {
+    color: #222222;
+    font-weight: bold;
+    font-size: 9.5px;
 }
 
 .group-heading {
@@ -204,17 +238,44 @@ table {
 <div class="patient-detail-fixed">
     <table class="patient-detail-table">
         <tr>
-            <th width="12%">Patient Name</th>
-            <td width="18%">{{ $invoice->patient_name }}</td>
+            <td width="35%" style="text-align:left;">
+                <span class="pdt-label">Patient Name :</span>
+                <span class="pdt-value-name">{{ $invoice->patient_name }}</span>
+            </td>
 
-            <th width="10%">Age / Sex</th>
-            <td width="13%">{{ $invoice->patient_age ?? '' }} / {{ $invoice->patient_gender ?? '' }}</td>
+            <td width="18%">
+                <span class="pdt-label">Age / Sex :</span>
+                <span class="pdt-value">{{ $invoice->patient_age ?? '' }} / {{ $invoice->patient_gender ?? '' }}</span>
+            </td>
 
-            <th width="12%">Invoice No</th>
-            <td width="18%">{{ $invoice->invoice_no }}</td>
+            <td width="47%" style="text-align:right;">
+                <span class="pdt-label">Invoice No / Date :</span>
+                <span class="pdt-value">{{ $invoice->invoice_no }} / {{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</span>
+            </td>
+        </tr>
+    </table>
 
-            <th width="7%">Date</th>
-            <td width="10%">{{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y') }}</td>
+    {{-- One shared Test Date for the whole fixed header (the invoice's own
+         date) -- each section below still prints its own precise test
+         date(s) too (see the per-section "Test Date :" row further down),
+         this is just the same at-a-glance identifier the patient-name
+         line already gives on every page. --}}
+    <table class="no-border">
+        <tr>
+            <td width="35%">
+                <span class="pdt-label">Test Date :</span>
+                <span class="pdt-value">{{ $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-' }}</span>
+            </td>
+
+            <td width="35%">
+                <span class="pdt-label">Ref. Doctor :</span>
+                <span class="pdt-value">{{ strlen(trim((string) $invoice->referred_doctor)) < 8 ? 'Not Mentioned' : trim($invoice->referred_doctor) }}</span>
+            </td>
+
+            <td width="30%" style="text-align:right;">
+                <span class="pdt-label">Patient Id :</span>
+                <span class="pdt-value">{{ $invoice->patient_id ?: '-' }}</span>
+            </td>
         </tr>
     </table>
 </div>
@@ -243,19 +304,12 @@ table {
 
 <div class="report-item @if(!$isFirstInGroup) avoid-break @endif">
 
-    {{-- One date printed once when every test in this report shares it; when
-         they differ the title below carries each date in brackets instead. --}}
-    @if(empty($section['date_mixed']))
-    <table class="no-border">
-        <tr>
-            <td width="70%">
-                <span class="label-blue">Test Date :</span>
-                {{ $section['date_single'] ?? ($invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : '-') }}
-            </td>
-        </tr>
-    </table>
-    @endif
-
+    {{-- The single shared Test Date now prints once in the fixed header
+         at the top of every page instead of repeating per section (see
+         .patient-detail-fixed's own Test Date line) -- when dates differ
+         across this report's own tests, the title below still carries
+         each one in brackets, since the fixed header can only show ONE
+         date for the whole invoice. --}}
     <h4 class="study-title">{{ $section['title'] }}</h4>
     @if(!empty($section['date_note']))
     <div style="text-align:center; font-size:10px; margin:0 0 6px 0;">Test dates: {{ $section['date_note'] }}</div>

@@ -89,6 +89,18 @@ const RICH_EDITOR_CONFIG = {
                 styles: true,
             },
             {
+                // The stripped-template placeholder KeyParameterService::
+                // buildAutoTable()/spliceAutoTable() replaces with a full
+                // result table at print time -- without this it's an
+                // unrecognised empty div, so GeneralHtmlSupport silently
+                // deletes it on save, and the print-time splice then has
+                // nothing to find (see mergeKeyParametersIntoContent()'s
+                // placeholder check just below, which must run BEFORE this
+                // div is lost, not after).
+                name: 'div',
+                attributes: { 'data-auto-key-param-table': true },
+            },
+            {
                 name: /^(table|tbody|tr|td)$/,
                 attributes: { 'data-key-param': true },
             },
@@ -714,12 +726,21 @@ function refreshPathologyStartPicker(pane, g) {
 }
 
 // Every item_code_sub actually involved in this report -- a package
-// reported as one card (e.g. "splitall" Lipid Profile) carries its real
-// components in date_lines, not as its own top-level item_code_sub, so
-// this expands the same way the per-item date-editing UI already does.
+// reported as one card carries its real components under one of two
+// different keys depending on how the card was built, never as its own
+// top-level item_code_sub: date_lines for an already-claimed/saved
+// finding's items (built server-side via ReportTestDates::expandPackages),
+// or components for a freshly-picked, still-unclaimed package line (e.g.
+// picking the combined "LIPID PROFILE" template straight from the normal
+// picker, not the "report in parts" splitall/splittpl UI) -- both expand
+// the same way the per-item date-editing UI already does for date_lines.
 function pathologyFindingItemCodeSubs(finding) {
     return (finding.items || [])
-        .flatMap(item => item.date_lines && item.date_lines.length ? item.date_lines : [item])
+        .flatMap(item => {
+            if (item.date_lines && item.date_lines.length) return item.date_lines;
+            if (item.components && item.components.length) return item.components;
+            return [item];
+        })
         .map(dl => dl.item_code_sub)
         .filter(Boolean);
 }
@@ -914,6 +935,17 @@ function mergeKeyParametersIntoContent(card, contentHtml) {
         markerHandled[itemCodeSub] = true;
     });
     entries = entries.filter(e => !markerHandled[e.itemCodeSub]);
+
+    // A template stripped down to the auto-table placeholder (every item it
+    // covers is fully tracked -- see KeyParameterService::buildAutoTable())
+    // has no per-row markers at all, so every entry would otherwise fall
+    // through to the old appended-block fallback below. That table is
+    // built fresh from the database at print time instead, so appending the
+    // block here would just be a stale duplicate -- skip it entirely
+    // whenever the placeholder is present.
+    if (root.querySelector('[data-auto-key-param-table]')) {
+        entries = [];
+    }
 
     // Primary signal: the data-key-param-block marker. Fallback signal (in
     // case an editor round-trip ever drops a custom attribute despite the
@@ -1562,6 +1594,32 @@ async function confirmPathologyFinding(confirmBtn) {
     }
 }
 
+// The preview modal opens ON TOP OF the already-open result-entry modal, so
+// it needs a higher z-index than that modal's own backdrop, or the backdrop
+// hides it; revoke the blob URL on close so repeated previews don't leak
+// memory. Same pattern as the USG report preview.
+document.getElementById('pathologyPreviewModal').addEventListener('shown.bs.modal', function () {
+
+    let backdrops = document.querySelectorAll('.modal-backdrop');
+    let topBackdrop = backdrops[backdrops.length - 1];
+
+    if (topBackdrop) {
+        topBackdrop.style.zIndex = 1070;
+    }
+
+    this.style.zIndex = 1075;
+});
+
+document.getElementById('pathologyPreviewModal').addEventListener('hidden.bs.modal', function () {
+
+    let frame = document.getElementById('pathologyPreviewFrame');
+
+    if (frame.src) {
+        URL.revokeObjectURL(frame.src);
+        frame.src = '';
+    }
+});
+
 document.addEventListener('click', async function (e) {
 
     let saveBtn = e.target.closest('.pathology-save-btn');
@@ -1581,6 +1639,89 @@ document.addEventListener('click', async function (e) {
             timer: result.status ? 1200 : undefined,
             showConfirmButton: !result.status
         });
+
+        return;
+    }
+
+    let previewBtn = e.target.closest('.pathology-preview-btn');
+
+    if (previewBtn) {
+
+        let card = previewBtn.closest('.pathology-finding-card');
+        let editor = pathologyEditors.get(card);
+
+        if (!editor) return;
+
+        previewBtn.disabled = true;
+
+        try {
+
+            let itemDates = {};
+            card.querySelectorAll('.pathology-item-date').forEach(input => {
+                itemDates[input.dataset.detailId] = input.value || '';
+            });
+
+            // Server-side (KeyParameterService::tableDataFor()) always
+            // reads the CURRENT value from here, not from whatever text
+            // happens to sit in a template's own marker span -- so there's
+            // no need to run mergeKeyParametersIntoContent() first the way
+            // saving does; the raw, unmerged editor content plus this is
+            // everything the preview endpoint needs to build the same
+            // table a real save/print would.
+            let keyParameterValues = {};
+            card.querySelectorAll('.pathology-key-param-input').forEach(input => {
+                keyParameterValues[input.dataset.itemCodeSub] = input.value || '';
+            });
+
+            const response = await fetch('/pathology-report/preview', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                    'Accept': 'application/pdf, application/json'
+                },
+                body: JSON.stringify({
+                    invoice_detail_ids: (card.dataset.invoiceDetailIds || '').split(',').filter(Boolean),
+                    item_dates: itemDates,
+                    report_title: card.querySelector('.pathology-report-title').value,
+                    content: editor.getData(),
+                    key_parameter_values: keyParameterValues
+                })
+            });
+
+            if (!response.ok || (response.headers.get('Content-Type') || '').includes('application/json')) {
+
+                let message = `Unable to generate preview (HTTP ${response.status}).`;
+
+                try {
+                    const result = await response.json();
+                    message = result.message ?? (result.errors ? Object.values(result.errors).flat().join(', ') : message);
+                } catch (e) {
+                    // Non-JSON error body (e.g. a redirected HTML page) --
+                    // fall back to the generic message above instead of
+                    // throwing.
+                }
+
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: message
+                });
+
+                return;
+            }
+
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+
+            document.getElementById('pathologyPreviewFrame').src = blobUrl;
+
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('pathologyPreviewModal')).show();
+
+        } finally {
+
+            previewBtn.disabled = false;
+        }
 
         return;
     }

@@ -200,9 +200,9 @@ Excel
 
 <div class="card-body">
 
-<div class="row mb-3">
+<div class="row mb-3 gy-2">
 
-<div class="col-md-4">
+<div class="col-md-3">
 
 <input
 type="text"
@@ -212,14 +212,44 @@ placeholder="Search...">
 
 </div>
 
-<div class="col-md-4 d-flex align-items-center">
+<div class="col-md-3">
 
-<div class="form-check">
-    <input type="checkbox" id="packagesOnlyFilter" class="form-check-input">
-    <label class="form-check-label" for="packagesOnlyFilter">
-        Show Packages Only
-    </label>
+<select id="itemNameFilter" class="form-select">
+    <option value="">All Item Names</option>
+    @foreach($itemMasters as $item)
+        <option value="{{ $item->item_code }}">{{ $item->item_name }}</option>
+    @endforeach
+</select>
+
 </div>
+
+<div class="col-md-2">
+
+<select id="packageFilter" class="form-select">
+    <option value="">Package: All</option>
+    <option value="1">Package Only</option>
+    <option value="0">Non-Package Only</option>
+</select>
+
+</div>
+
+<div class="col-md-2">
+
+<select id="outsourcedFilter" class="form-select">
+    <option value="">Outsourced: All</option>
+    <option value="1">Outsourced Only</option>
+    <option value="0">Not Outsourced</option>
+</select>
+
+</div>
+
+<div class="col-md-2">
+
+<select id="reportNotRequiredFilter" class="form-select">
+    <option value="">Report: All</option>
+    <option value="1">Report Not Required</option>
+    <option value="0">Report Required</option>
+</select>
 
 </div>
 
@@ -236,91 +266,35 @@ width="100%">
 
 <tr>
 
-    <th rowspan="2" class="text-center align-middle">Sl</th>
+    <th class="text-center align-middle">Sl</th>
 
-    <th rowspan="2" class="text-center align-middle">Item<br>Name</th>
+    <th class="text-center align-middle">Item Name</th>
 
-    <th rowspan="2" class="text-center align-middle">Sub<br>Code</th>
+    <th class="text-center align-middle">Sub Code</th>
 
-    <th rowspan="2" class="text-center align-middle">Test Description</th>
+    <th class="text-center align-middle">Test Description</th>
 
-    <th rowspan="2" class="text-center align-middle">Rate<br>(₹)</th>
+    <th class="text-center align-middle">Rate (₹)</th>
 
-    <th colspan="5" class="text-center bg-soft-info">
-        Discount %
-    </th>
+    <th class="text-center align-middle">Discount</th>
 
-    <th rowspan="2" class="text-center align-middle">
-        Test<br>Group
-    </th>
+    <th class="text-center align-middle">Test Group</th>
 
-    <th rowspan="2" class="text-center align-middle">
-        UOM
-    </th>
+    <th class="text-center align-middle">UOM</th>
 
-    <th rowspan="2" class="text-center align-middle">
-        Range<br>(Male)
-    </th>
+    <th class="text-center align-middle">Range</th>
 
-    <th rowspan="2" class="text-center align-middle">
-        Range<br>(Female)
-    </th>
+    <th class="text-center align-middle">Method</th>
 
-    <th rowspan="2" class="text-center align-middle">
-        Range<br>(Common)
-    </th>
+    <th class="text-center align-middle">Package</th>
 
-    <th rowspan="2" class="text-center align-middle">
-        Method
-    </th>
+    <th class="text-center align-middle">Outsourced</th>
 
-    <th rowspan="2" class="text-center align-middle">
-        Report<br>Days
-    </th>
+    <th class="text-center align-middle">Report Not Required</th>
 
-    <th rowspan="2" class="text-center align-middle">
-        Package
-    </th>
+    <th class="text-center align-middle">Status</th>
 
-    <th rowspan="2" class="text-center align-middle">
-        Outsourced
-    </th>
-
-    <th rowspan="2" class="text-center align-middle">
-        Report Not<br>Required
-    </th>
-
-    <th rowspan="2" class="text-center align-middle">
-        Status
-    </th>
-
-    <th rowspan="2" class="text-center align-middle">
-        Action
-    </th>
-
-</tr>
-
-<tr>
-
-    <th class="text-center">
-        Standard
-    </th>
-
-    <th class="text-center">
-        Member
-    </th>
-
-    <th class="text-center">
-        Other Lab
-    </th>
-
-    <th class="text-center">
-        Member +<br>Other Lab
-    </th>
-
-    <th class="text-center">
-        Only Senior<br>Citizen
-    </th>
+    <th class="text-center align-middle">Action</th>
 
 </tr>
 
@@ -727,6 +701,10 @@ width="100%">
                                id="uom"
                                class="form-control">
 
+                        <div class="invalid-feedback"
+                             id="error_uom">
+                        </div>
+
                     </div>
 
                     <div class="col-md-3">
@@ -819,6 +797,66 @@ width="100%">
 
                 </div>
 
+                <!-- Key Parameter tracking (edit only -- a new item has no
+                     item_code_sub committed yet for this to attach to) -->
+                <div id="keyParamWrap"
+                     class="mt-3"
+                     style="display:none;">
+
+                    <hr>
+
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               id="kp_enabled">
+                        <label class="form-check-label" for="kp_enabled">
+                            Track as Key Parameter (shown with patient history on printed reports)
+                        </label>
+                    </div>
+
+                    <div id="keyParamFields" style="display:none;">
+
+                        <div class="row">
+
+                            <div class="col-md-4">
+                                <label class="form-label">Parameter Name</label>
+                                <input type="text" id="kp_parameter_name" class="form-control">
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label">Group Label</label>
+                                <input type="text" id="kp_group_label" class="form-control" placeholder="e.g. Lipid Profile">
+                            </div>
+
+                            <div class="col-md-2">
+                                <label class="form-label">UOM</label>
+                                <input type="text" id="kp_uom" class="form-control">
+                            </div>
+
+                            <div class="col-md-3">
+                                <label class="form-label">Sort Order</label>
+                                <input type="number" id="kp_sort_order" class="form-control numeric">
+                            </div>
+
+                        </div>
+
+                        <div class="row mt-2">
+
+                            <div class="col-md-12">
+                                <label class="form-label">
+                                    Trigger Item Code(s)
+                                    <i class="ri-information-line text-muted"
+                                       title="Which billed item code(s) make this parameter capturable. Leave blank to default to this item's own code. For a parameter that's really a component of a bundled panel billed as one line (e.g. SGOT inside LFT), put the panel's own code here instead."></i>
+                                </label>
+                                <input type="text" id="kp_trigger_item_code_subs" class="form-control" placeholder="Comma-separated, defaults to this item's own code">
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
                 </div>
 
             </div>
@@ -837,6 +875,148 @@ width="100%">
 
                     Save
 
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<!-- Discount Details Modal -->
+
+<div class="modal fade"
+     id="discountModal"
+     tabindex="-1">
+
+    <div class="modal-dialog modal-dialog-centered">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5 class="modal-title">
+                    Discount Details
+                    <span id="discountModalDesc" class="fw-normal"></span>
+                </h5>
+
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal">
+                </button>
+
+            </div>
+
+            <div class="modal-body">
+
+                <table class="table table-bordered mb-0">
+
+                    <tbody>
+
+                        <tr>
+                            <th>Standard Discount</th>
+                            <td id="discountModalStandard" class="text-end"></td>
+                        </tr>
+
+                        <tr>
+                            <th>Member Discount</th>
+                            <td id="discountModalMember" class="text-end"></td>
+                        </tr>
+
+                        <tr>
+                            <th>Other Lab Discount</th>
+                            <td id="discountModalOtherLab" class="text-end"></td>
+                        </tr>
+
+                        <tr>
+                            <th>Member + Other Lab Discount</th>
+                            <td id="discountModalMemberOtherLab" class="text-end"></td>
+                        </tr>
+
+                        <tr>
+                            <th>Only Senior Citizen Discount</th>
+                            <td id="discountModalSenior" class="text-end"></td>
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            <div class="modal-footer">
+
+                <button class="btn btn-light"
+                        data-bs-dismiss="modal">
+                    Close
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<!-- Range Details Modal -->
+
+<div class="modal fade"
+     id="rangeModal"
+     tabindex="-1">
+
+    <div class="modal-dialog modal-dialog-centered">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5 class="modal-title">
+                    Range Details
+                    <span id="rangeModalDesc" class="fw-normal"></span>
+                </h5>
+
+                <button type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal">
+                </button>
+
+            </div>
+
+            <div class="modal-body">
+
+                <table class="table table-bordered mb-0">
+
+                    <tbody>
+
+                        <tr>
+                            <th>Range (Male)</th>
+                            <td id="rangeModalMale"></td>
+                        </tr>
+
+                        <tr>
+                            <th>Range (Female)</th>
+                            <td id="rangeModalFemale"></td>
+                        </tr>
+
+                        <tr>
+                            <th>Range (Common)</th>
+                            <td id="rangeModalCommon"></td>
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+            <div class="modal-footer">
+
+                <button class="btn btn-light"
+                        data-bs-dismiss="modal">
+                    Close
                 </button>
 
             </div>
