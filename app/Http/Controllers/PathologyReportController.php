@@ -305,11 +305,19 @@ class PathologyReportController extends Controller
                             'item_description' => $lineDescriptionById->get($i->invoice_detail_id, $i->item_code_sub),
                             'test_date' => $effectiveDates[$i->invoice_detail_id] ?? null,
                             // the lines whose dates are edited on the card: a package's
-                            // components (each may be done on a different day), else itself
+                            // components (each may be done on a different day), else itself.
+                            // item_code_sub is required here -- pathologyFindingItemCodeSubs()
+                            // in test-result-entry.init.js reads it off every date_lines entry
+                            // (date_lines is always non-empty for a saved finding, so it's
+                            // ALWAYS the branch taken) to match this card's own tests against
+                            // key_parameters.trigger_item_code_subs; without it, every already-
+                            // saved report's Key Parameters box silently disappears on reload
+                            // even though the values are still saved and still print correctly.
                             'date_lines' => collect(ReportTestDates::expandPackages([(int) $i->invoice_detail_id]))
                                 ->map(fn ($e) => [
                                     'invoice_detail_id' => $e['id'],
                                     'item_description' => $e['name'],
+                                    'item_code_sub' => $e['item_code_sub'],
                                     'test_date' => $effectiveDates[$e['id']] ?? null,
                                 ])->values(),
                         ])->values(),
@@ -807,7 +815,7 @@ class PathologyReportController extends Controller
         $keyParamService = app(KeyParameterService::class);
         $tableData = $keyParamService->tableDataFor($finding, $invoice);
         $printContent = $keyParamService->expandTrackedResultTables($finding->content ?? '', $tableData);
-        $printContent = $keyParamService->spliceAutoTable($printContent, $keyParamService->buildAutoTable($tableData));
+        $printContent = $keyParamService->spliceAutoTable($printContent, $keyParamService->buildAutoTable($tableData, $dateInfo['header_date_raw'] ?? null));
 
         $pdf = Pdf::loadView(
             'apps-pathology-report-pdf',
@@ -1199,7 +1207,7 @@ class PathologyReportController extends Controller
         $keyParamService = app(KeyParameterService::class);
         $tableData = $keyParamService->tableDataFor($finding, $invoice);
         $printContent = $keyParamService->expandTrackedResultTables($finding->content ?? '', $tableData);
-        $printContent = $keyParamService->spliceAutoTable($printContent, $keyParamService->buildAutoTable($tableData));
+        $printContent = $keyParamService->spliceAutoTable($printContent, $keyParamService->buildAutoTable($tableData, $dateInfo['header_date_raw'] ?? null));
 
         $pdf = Pdf::loadView(
             'apps-pathology-report-pdf',
@@ -1513,6 +1521,14 @@ class PathologyReportController extends Controller
         $invoice = Invoice::where('invoice_no', $invoiceNo)->first();
         $keyParamService = app(KeyParameterService::class);
 
+        // Unlike the single-report print, this combined layout shows ONE
+        // shared "Test Date" for the whole invoice at the top of the page
+        // (see apps-pathology-report-pdf-group.blade.php's fixed header),
+        // not a per-section one -- so a row's own date has to be compared
+        // against THAT, not against its own section's (often trivially
+        // single-item, so nothing would ever differ) header date.
+        $sharedHeaderDateRaw = \App\Support\ReportTestDates::clean($invoice->test_date ?? null);
+
         $lines = DB::table('invoice_details as d')
             ->join('invoice_item_details as iid', function ($join) {
                 $join->on('iid.item_code', '=', 'd.item_code')
@@ -1556,7 +1572,7 @@ class PathologyReportController extends Controller
         return $findings
             ->sortBy(fn ($finding) => $groupNameForFinding($finding->id))
             ->values()
-            ->map(function ($finding) use ($groupNameForFinding, $itemDescById, $invoice, $keyParamService) {
+            ->map(function ($finding) use ($groupNameForFinding, $itemDescById, $invoice, $keyParamService, $sharedHeaderDateRaw) {
 
                 $ids = $finding->items->pluck('invoice_detail_id')->map(fn ($v) => (int) $v)->all();
 
@@ -1567,7 +1583,7 @@ class PathologyReportController extends Controller
                 if ($invoice) {
                     $tableData = $keyParamService->tableDataFor($finding, $invoice);
                     $content = $keyParamService->expandTrackedResultTables($content, $tableData);
-                    $content = $keyParamService->spliceAutoTable($content, $keyParamService->buildAutoTable($tableData));
+                    $content = $keyParamService->spliceAutoTable($content, $keyParamService->buildAutoTable($tableData, $sharedHeaderDateRaw));
                 }
 
                 return [

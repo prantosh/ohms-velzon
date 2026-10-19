@@ -892,6 +892,26 @@ function applyTemplateContentLock(contentHtml) {
     return root.innerHTML;
 }
 
+// Whether contentHtml has a real admin-authored table with blank cells to
+// fill in -- the thing RestrictedEditingMode exists for (see
+// LOCKED_EDITOR_CONFIG's doc comment). The self-managed table
+// mergeKeyParametersIntoContent() appends/prepends (data-key-param-block)
+// doesn't count: it's a read-only summary filled from the separate Key
+// Parameters input box, never typed into directly, and once a report with
+// tracked parameters has been saved once, that table is the ONLY <table> in
+// its content -- counting it here would wrongly flip the editor into
+// restricted mode on the next load and lock out every surrounding free-text
+// paragraph (instrument notes, method, etc.) that was editable before the
+// first save.
+function hasAdminAuthoredTable(contentHtml) {
+
+    let parser = new DOMParser();
+    let doc = parser.parseFromString(`<div id="root">${contentHtml || ''}</div>`, 'text/html');
+    let root = doc.getElementById('root');
+
+    return Array.from(root.querySelectorAll('table')).some(table => !table.closest('[data-key-param-block]'));
+}
+
 function mergeKeyParametersIntoContent(card, contentHtml) {
 
     let inputs = card.querySelectorAll('.pathology-key-param-input');
@@ -980,7 +1000,7 @@ function mergeKeyParametersIntoContent(card, contentHtml) {
 
     if (!block) {
         block = doc.createElement('div');
-        block.style.marginTop = '12px';
+        block.style.marginBottom = '12px';
 
         let heading = doc.createElement('div');
         heading.style.fontWeight = 'bold';
@@ -993,10 +1013,25 @@ function mergeKeyParametersIntoContent(card, contentHtml) {
         let table = doc.createElement('table');
         table.style.width = '100%';
         table.style.borderCollapse = 'collapse';
-        table.innerHTML = '<tbody></tbody>';
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;">INVESTIGATION</td>
+                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;text-align:center;">UNIT</td>
+                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;text-align:center;">RESULT</td>
+                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;">REFERENCE RANGE</td>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        `;
         block.appendChild(table);
 
-        root.appendChild(block);
+        // At the TOP, not appended at the end -- the result table reads
+        // first, with any supplementary free text (instrument notes,
+        // method, etc.) printing below it, same ordering the stripped-
+        // template placeholder path already gives when the placeholder
+        // sits early in the template (see buildAutoTable()/spliceAutoTable()).
+        root.insertBefore(block, root.firstChild);
     }
 
     // Re-applied every time regardless of whether it was already there --
@@ -1035,6 +1070,7 @@ function mergeKeyParametersIntoContent(card, contentHtml) {
             tr.innerHTML = `
                 <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;"></td>
                 <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;text-align:center;"></td>
+                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;text-align:center;"></td>
                 <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;"></td>
             `;
             tbody.appendChild(tr);
@@ -1043,9 +1079,10 @@ function mergeKeyParametersIntoContent(card, contentHtml) {
         tr.setAttribute('data-key-param', e.itemCodeSub);
 
         let cells = tr.querySelectorAll('td');
-        cells[0].textContent = e.label + (e.uom ? ` (${e.uom})` : '');
-        cells[1].textContent = e.value;
-        cells[2].textContent = e.range || '';
+        cells[0].textContent = e.label;
+        cells[1].textContent = e.uom || '-';
+        cells[2].textContent = e.value;
+        cells[3].textContent = e.range || '';
     });
 
     applyRestrictedEditingExceptions(root);
@@ -1108,8 +1145,9 @@ function renderPathologyFindingCard(container, finding, invoiceNo) {
     // when the template has an identifiable table to carve those islands
     // out of; a free-text template or a from-scratch Blank Report has
     // nothing to except, so forcing it on would leave staff unable to
-    // type anywhere at all.
-    let editorConfig = /<table[\s>]/i.test(finding.content || '') ? LOCKED_EDITOR_CONFIG : RICH_EDITOR_CONFIG;
+    // type anywhere at all. See hasAdminAuthoredTable()'s doc comment for
+    // why the self-managed Key Parameters summary table doesn't count.
+    let editorConfig = hasAdminAuthoredTable(finding.content || '') ? LOCKED_EDITOR_CONFIG : RICH_EDITOR_CONFIG;
 
     // Returned so loadPathologyReports() can wait for every card's editor
     // (and, with it, lockPathologyCard()'s confirmed-badge display) before

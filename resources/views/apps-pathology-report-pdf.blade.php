@@ -84,7 +84,7 @@ table {
 }
 
 .study-title {
-    font-size: 16px;
+    font-size: 12px;
     font-weight: bold;
     text-align: center;
     text-transform: uppercase;
@@ -189,29 +189,30 @@ table {
 </table>
 
 @php
-    // From the controller: one date printed once when every test in this
-    // report shares it; when the dates differ there is no single date, and the
-    // title carries each date in brackets beside its test name instead.
+    // From the controller (see ReportTestDates::describe()): header_date is
+    // always printed here -- the shared date when every test in this report
+    // agrees, else just the first one. A line whose own date differs from it
+    // gets its own "(Test Done : ...)" note beside its result in the table
+    // instead (see KeyParameterService::buildAutoTable()).
     $dateInfo = $dateInfo ?? [
         'single' => $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : null,
         'title' => $itemDescriptions->implode(', '),
         'mixed' => false,
+        'header_date' => $invoice->test_date ? \Carbon\Carbon::parse($invoice->test_date)->format('d-m-Y') : null,
     ];
 @endphp
 
 <table class="no-border">
     <tr>
-        @if(!$dateInfo['mixed'])
         <td width="35%">
             <span class="label-blue">Test Date :</span>
-            {{ $dateInfo['single'] ?? '-' }}
+            {{ $dateInfo['header_date'] ?? $dateInfo['single'] ?? '-' }}
         </td>
-        @endif
-        <td width="{{ $dateInfo['mixed'] ? '50%' : '35%' }}">
+        <td width="35%">
             <span class="label-blue">Ref. Doctor :</span>
             {{ strlen(trim((string) $invoice->referred_doctor)) < 8 ? 'Not Mentioned' : trim($invoice->referred_doctor) }}
         </td>
-        <td width="{{ $dateInfo['mixed'] ? '50%' : '30%' }}" style="text-align:right;">
+        <td width="30%" style="text-align:right;">
             <span class="label-blue">Patient Id :</span>
             {{ $invoice->patient_id ?: '-' }}
         </td>

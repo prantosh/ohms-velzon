@@ -348,6 +348,10 @@ async function loadTemplates(page = 1) {
             ? '<span class="badge bg-success">ACTIVE</span>'
             : '<span class="badge bg-danger">INACTIVE</span>';
 
+        let keyParamBadge = raw.has_key_parameter
+            ? '<span class="badge bg-info">Yes</span>'
+            : '<span class="badge bg-secondary">No</span>';
+
         tbody.innerHTML += `
         <tr>
 
@@ -356,6 +360,8 @@ async function loadTemplates(page = 1) {
             <td>${escapeHtml(testGroupName(raw.test_group_code))}</td>
 
             <td>${escapeHtml(raw.item_names)}</td>
+
+            <td>${keyParamBadge}</td>
 
             <td>${escapeHtml(raw.created_by_name)}</td>
 

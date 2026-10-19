@@ -154,6 +154,7 @@
                             <th>Title</th>
                             <th>Test Group</th>
                             <th>Items Covered</th>
+                            <th width="110">Key Parameter</th>
                             <th width="130">Created By</th>
                             <th width="150">Created Date Time</th>
                             <th width="120">Status</th>

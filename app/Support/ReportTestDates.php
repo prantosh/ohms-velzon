@@ -60,10 +60,17 @@ class ReportTestDates
      * @param  array<int,int>     $detailIds
      * @param  array<int,string>  $names    invoice_detail id => item description
      * @param  array<int,?string> $override unsaved date edits (see effectiveDates())
-     * @return array{single: ?string, title: string, mixed: bool}
+     * @return array{single: ?string, title: string, mixed: bool, header_date: ?string, header_date_raw: ?string}
      *         single = "dd-mm-yyyy" when every line shares one date (else null);
      *         title  = the item names joined with ", ", each followed by its
-     *                  date in brackets ONLY when the dates differ.
+     *                  date in brackets ONLY when the dates differ;
+     *         header_date(_raw) = the date the report's single "Test Date"
+     *                  line should show even when mixed -- same as single
+     *                  when every line agrees, else the FIRST line's own
+     *                  date (in the order given) -- see
+     *                  KeyParameterService::buildAutoTable(), which uses
+     *                  header_date_raw to decide which rows need their own
+     *                  "(Test Done : ...)" note beside the result instead.
      */
     public static function describe(array $detailIds, array $names, array $override = []): array
     {
@@ -110,12 +117,25 @@ class ReportTestDates
                 : $name;
         }
 
+        // Same order the report prints its rows in: $detailIds has already
+        // been swapped to the expanded component ids above when mixed, else
+        // it's the billed lines as given.
+        $headerDateRaw = null;
+        foreach ($detailIds as $id) {
+            if (!empty($dates[$id])) {
+                $headerDateRaw = $dates[$id];
+                break;
+            }
+        }
+
         return [
             'single' => (!$mixed && $distinct->count() === 1)
                 ? Carbon::parse($distinct->first())->format('d-m-Y')
                 : null,
             'title' => implode(', ', $parts),
             'mixed' => $mixed,
+            'header_date_raw' => $headerDateRaw,
+            'header_date' => $headerDateRaw ? Carbon::parse($headerDateRaw)->format('d-m-Y') : null,
         ];
     }
 
@@ -189,7 +209,7 @@ class ReportTestDates
      * components; any other line stands for itself.
      *
      * @param  array<int,int>  $detailIds
-     * @return array<int,array{id:int,name:string,parent:int}>  parent = the id passed in
+     * @return array<int,array{id:int,name:string,item_code_sub:string,parent:int}>  parent = the id passed in
      */
     public static function expandPackages(array $detailIds): array
     {
@@ -216,16 +236,16 @@ class ReportTestDates
                     ->where('invoice_no', $row->invoice_no)
                     ->where('package_parent_item_code_sub', $row->item_code_sub)
                     ->orderBy('id')
-                    ->get(['id', 'item_description'])
+                    ->get(['id', 'item_code_sub', 'item_description'])
                 : collect();
 
             if ($children->isEmpty()) {
-                $out[] = ['id' => (int) $row->id, 'name' => (string) $row->item_description, 'parent' => (int) $row->id];
+                $out[] = ['id' => (int) $row->id, 'name' => (string) $row->item_description, 'item_code_sub' => (string) $row->item_code_sub, 'parent' => (int) $row->id];
                 continue;
             }
 
             foreach ($children as $child) {
-                $out[] = ['id' => (int) $child->id, 'name' => (string) $child->item_description, 'parent' => (int) $row->id];
+                $out[] = ['id' => (int) $child->id, 'name' => (string) $child->item_description, 'item_code_sub' => (string) $child->item_code_sub, 'parent' => (int) $row->id];
             }
         }
 
@@ -255,7 +275,7 @@ class ReportTestDates
         return $date ? Carbon::parse($date)->format('d-m-Y') : '-';
     }
 
-    private static function clean($value): ?string
+    public static function clean($value): ?string
     {
         if (!$value) {
             return null;

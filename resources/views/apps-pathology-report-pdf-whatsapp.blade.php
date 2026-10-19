@@ -135,7 +135,7 @@ table {
 }
 
 .study-title {
-    font-size: 18px;
+    font-size: 12px;
     text-align: center;
     margin-top: 6px;
 }

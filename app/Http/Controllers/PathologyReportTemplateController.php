@@ -166,13 +166,35 @@ class PathologyReportTemplateController extends Controller
         $itemNames = InvoiceItemDetail::whereIn('item_code_sub', $itemCodeSubs)
             ->pluck('item_description_sub', 'item_code_sub');
 
-        $templates->getCollection()->transform(function ($row) use ($itemNames) {
+        // "Key Parameter" column: whether billing ANY item this template
+        // covers actually triggers a tracked capture -- not whether the
+        // template's own content has been stripped down to the auto-table
+        // placeholder yet (see KeyParameterService::buildAutoTable()). This
+        // has to go through trigger_item_code_subs, not a direct match on
+        // key_parameters.item_code_sub: a bundled panel template like CBC
+        // only lists its own billed code (PAT150) in
+        // pathology_report_template_items -- its tracked components
+        // (Haemoglobin/RBC/...) live under their OWN item_code_subs in
+        // key_parameters, and it's THEIR trigger arrays that name PAT150,
+        // not the other way round. A direct-match check would wrongly say
+        // CBC/LFT have no key parameters at all.
+        $triggerItemCodeSubs = DB::table('key_parameters')
+            ->where('is_active', true)
+            ->pluck('trigger_item_code_subs')
+            ->flatMap(fn ($json) => json_decode($json, true) ?: [])
+            ->unique();
+
+        $templates->getCollection()->transform(function ($row) use ($itemNames, $triggerItemCodeSubs) {
 
             $row->item_code_subs = $row->items->pluck('item_code_sub')->values();
 
             $row->item_names = $row->items
                 ->map(fn ($i) => $itemNames->get($i->item_code_sub, $i->item_code_sub))
                 ->implode(', ');
+
+            $row->has_key_parameter = $row->item_code_subs
+                ->intersect($triggerItemCodeSubs)
+                ->isNotEmpty();
 
             $row->created_dt = optional($row->created_at)->format('d-m-Y H:i');
             $row->updated_dt = optional($row->updated_at)->format('d-m-Y H:i');

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Invoice;
 use App\Models\PathologyReportFinding;
+use App\Support\ReportTestDates;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -210,6 +211,17 @@ class KeyParameterService
 
         $history = $this->recentValuesForPatient($invoice->patient_id, $itemCodeSubs, $invoice->invoice_no);
 
+        // This item's own billed line on THIS invoice, if it has one of its
+        // own -- else the invoice's own date (same fallback ReportTestDates
+        // uses). Lets buildAutoTable() flag a row whose test was actually
+        // done on a different day than the report's header date.
+        $lineDates = DB::table('invoice_details')
+            ->where('invoice_no', $invoice->invoice_no)
+            ->whereIn('item_code_sub', $itemCodeSubs)
+            ->pluck('test_date', 'item_code_sub');
+
+        $invoiceDate = ReportTestDates::clean($invoice->test_date ?? null);
+
         $data = [];
 
         foreach ($itemCodeSubs as $code) {
@@ -230,6 +242,7 @@ class KeyParameterService
                 'sort_order' => $meta->sort_order ?? 0,
                 'current' => $value,
                 'history' => $history[$code] ?? [],
+                'test_date' => ReportTestDates::clean($lineDates->get($code)) ?? $invoiceDate,
             ];
         }
 
@@ -250,25 +263,27 @@ class KeyParameterService
      * by key_parameters.sort_order. Returns '' when there's nothing
      * tracked on this finding yet, so the placeholder can be dropped
      * cleanly instead of leaving a stray empty table.
+     *
+     * History (the previous-test-dates columns) is deliberately not
+     * printed for now -- $tableData's 'history' entries are simply
+     * ignored here -- pending a later redesign of how that's shown;
+     * tableDataFor() still computes it so nothing upstream needs to
+     * change when it comes back.
+     *
+     * $headerDateRaw (Y-m-d, see ReportTestDates::describe()'s
+     * header_date_raw) is the date already printed in the report's own
+     * "Test Date :" line. A row whose own test_date differs from it (a
+     * panel whose components were actually done on different days) gets
+     * "(Test Done : dd/mm/yyyy)" printed beside its own result instead of
+     * silently sharing a header date that isn't actually its own.
      */
-    public function buildAutoTable(array $tableData): string
+    public function buildAutoTable(array $tableData, ?string $headerDateRaw = null): string
     {
         if (empty($tableData)) {
             return '';
         }
 
         uasort($tableData, fn ($a, $b) => ($a['sort_order'] ?? 0) <=> ($b['sort_order'] ?? 0));
-
-        $prevLabels = ['', '', ''];
-
-        foreach ($tableData as $info) {
-            $hist = $info['history'] ?? [];
-            foreach ([0, 1, 2] as $i) {
-                if ($prevLabels[$i] === '' && isset($hist[$i])) {
-                    $prevLabels[$i] = \Carbon\Carbon::parse($hist[$i]['test_date'])->format('d/m/Y');
-                }
-            }
-        }
 
         // Lets a long, otherwise-unbreakable run of text (e.g. a Reference
         // Range description) actually wrap inside its own cell instead of
@@ -292,13 +307,14 @@ class KeyParameterService
         $headerCellStyle = 'background-color:#E3EBF3;border-color:#B8C8D4;border-width:1pt;border-bottom:1.4pt solid #1F4E78;padding:4.5pt 6pt;font-size:9.5px;' . $wordWrap;
         $contentFontSize = 'font-size:8px;';
         $investigationWidth = 'width:2.113in;';
-        // Current + the 3 Previous columns -- UNIT keeps the original
-        // width (it's a short fixed label, not a result value); Reference
-        // Range absorbs exactly what these 4 give up (4 x 0.22in = 0.88in)
-        // so the table's overall width is unchanged.
+        // History (the old 3 Previous columns) isn't printed for now -- see
+        // buildAutoTable()'s docblock -- so Reference Range absorbs the
+        // 3 x 0.515in those columns used to take (1.545in) on top of its
+        // own original 2.376in, keeping the table's overall width
+        // unchanged.
         $unitWidth = 'width:0.735in;';
         $resultValueWidth = 'width:0.515in;';
-        $rangeWidth = 'width:2.376in;';
+        $rangeWidth = 'width:3.921in;';
 
         $makeHeaderCell = function (string $text, string $widthStyle) use ($headerCellStyle) {
             $td = '<td style="' . $headerCellStyle . $widthStyle . '">';
@@ -313,17 +329,14 @@ class KeyParameterService
         // line and pushing the whole table past the page's right margin;
         // fixed + width:100% respected the page width but silently
         // rescaled these specific column ratios instead of honouring them.
-        // An explicit width exactly equal to the sum of all seven columns
-        // below (2.113 + 0.735 + 4x0.515 + 2.376 = 7.284in, safely inside
+        // An explicit width exactly equal to the sum of all four columns
+        // below (2.113 + 0.735 + 0.515 + 3.921 = 7.284in, safely inside
         // this report's ~7.44in usable content width) leaves nothing for
         // DomPDF to redistribute either way.
         $html = '<table style="border-width:0px;table-layout:fixed;width:7.284in;"><tbody><tr>';
         $html .= $makeHeaderCell('INVESTIGATION', $investigationWidth);
         $html .= $makeHeaderCell('UNIT', $unitWidth);
-        $html .= $makeHeaderCell('CURRENT', $resultValueWidth);
-        $html .= $makeHeaderCell(strtoupper($prevLabels[0]), $resultValueWidth);
-        $html .= $makeHeaderCell(strtoupper($prevLabels[1]), $resultValueWidth);
-        $html .= $makeHeaderCell(strtoupper($prevLabels[2]), $resultValueWidth);
+        $html .= $makeHeaderCell('RESULT', $resultValueWidth);
         $html .= $makeHeaderCell('REFERENCE RANGE', $rangeWidth);
         $html .= '</tr>';
 
@@ -333,8 +346,6 @@ class KeyParameterService
         };
 
         foreach ($tableData as $info) {
-
-            $hist = $info['history'] ?? [];
 
             // Method prints right under the investigation name, same spot
             // and convention admin-authored templates already use for it
@@ -350,10 +361,21 @@ class KeyParameterService
                 . '<p style="margin:0;font-weight:bold;color:#222222;">' . e($info['parameter_name']) . '</p>'
                 . $methodLine . '</td>';
             $html .= $makeDataCell((string) ($info['uom'] ?: '-'), $unitWidth);
-            $html .= $makeDataCell((string) ($info['current'] !== null && $info['current'] !== '' ? $info['current'] : '-'), $resultValueWidth, true);
-            $html .= $makeDataCell(isset($hist[0]) ? (string) $hist[0]['result_value'] : '-', $resultValueWidth);
-            $html .= $makeDataCell(isset($hist[1]) ? (string) $hist[1]['result_value'] : '-', $resultValueWidth);
-            $html .= $makeDataCell(isset($hist[2]) ? (string) $hist[2]['result_value'] : '-', $resultValueWidth);
+
+            $resultText = e((string) ($info['current'] !== null && $info['current'] !== '' ? $info['current'] : '-'));
+
+            // Only when this row's own date is actually known and differs
+            // from the header's -- a row with no date of its own (e.g. a
+            // value entered with nothing in invoice_details.test_date and
+            // no invoice test_date either) says nothing rather than
+            // guessing it matches.
+            $testDoneNote = ($headerDateRaw && !empty($info['test_date']) && $info['test_date'] !== $headerDateRaw)
+                ? '<p style="margin:2px 0 0;font-size:6.5px;color:#5B6570;font-weight:normal;">(Test Done : ' . e(\Carbon\Carbon::parse($info['test_date'])->format('d/m/Y')) . ')</p>'
+                : '';
+
+            $html .= '<td style="background-color:#F7FAFC;padding:4.5pt 6pt;' . $resultValueWidth . $wordWrap . $contentFontSize . '">'
+                . '<p style="text-align:center;font-weight:bold;">' . $resultText . '</p>'
+                . $testDoneNote . '</td>';
             // $info['range'] is already-escaped HTML from combinedRange()
             // (may contain a real <br> between Male/Female/Common lines) --
             // must NOT be escaped again here, or the <br> prints as literal
