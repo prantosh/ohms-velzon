@@ -185,7 +185,15 @@ class DailyTransactionReportController extends Controller
         $row->collection_total = round((float) $row->collection_cash + (float) $row->collection_noncash, 2);
         $row->refund_total = round((float) $row->refund_cash + (float) $row->refund_noncash, 2);
         $row->payment_total = round((float) $row->payment_cash + (float) $row->payment_noncash, 2);
-        $row->net_cash = round((float) $row->collection_cash - (float) $row->refund_cash - (float) $row->payment_cash, 2);
+
+        // A refund is always physically handed back in cash by whoever
+        // cancels the invoice, regardless of how the original payment was
+        // collected -- its own payment_mode reflects the ORIGINAL payment,
+        // not the refund itself (see CashInHandService's doc comment for
+        // the same rule) -- so net cash subtracts the FULL refund_total,
+        // not just the refund_cash bucket. refund_cash/refund_noncash stay
+        // as their own columns purely for display of the original mode.
+        $row->net_cash = round((float) $row->collection_cash - (float) $row->refund_total - (float) $row->payment_cash, 2);
         $row->net_total = round($row->collection_total - $row->refund_total - $row->payment_total, 2);
         return $row;
     }

@@ -99,9 +99,14 @@ class CashLedgerService
         $cashCollected = $receivedByMode->cash_total ?? 0;
         $nonCashCollected = $receivedByMode->non_cash_total ?? 0;
 
+        // Every refund, regardless of payment_mode -- a cancelled invoice's
+        // refund is always physically handed back in cash by whoever
+        // cancels it, no matter how the original payment was collected, so
+        // payment_mode on a REFUND row reflects the ORIGINAL payment, not
+        // how the refund itself was disbursed (see CashInHandService's own
+        // doc comment for the same rule).
         $cashRefunded = DB::table('daily_transactions')
             ->where('transaction_type', 'REFUND')
-            ->where('payment_mode', 'Cash')
             ->where('created_by', $userId)
             ->whereBetween('transaction_date', [$fromDate, $toDate])
             ->sum('refund_amount');
@@ -176,9 +181,10 @@ class CashLedgerService
             ->whereBetween('transaction_date', [$fromDate, $toDate])
             ->get(['invoice_reference', 'received_amount', 'payment_mode']);
 
+        // Every refund, regardless of payment_mode -- see buildSummary()'s
+        // own comment on $cashRefunded for why.
         $refunds = DB::table('daily_transactions')
             ->where('transaction_type', 'REFUND')
-            ->where('payment_mode', 'Cash')
             ->where('created_by', $userId)
             ->whereBetween('transaction_date', [$fromDate, $toDate])
             ->get(['invoice_reference', 'refund_amount']);
@@ -513,13 +519,18 @@ class CashLedgerService
 
         /*
         |----------------------------------------------------------------
-        | 2) CASH REFUNDS processed by this user, same attribution
+        | 2) REFUNDS processed by this user, same attribution -- every one,
+        |    regardless of payment_mode (see buildSummary()'s own comment
+        |    on $cashRefunded: a refund is always handed back in cash no
+        |    matter how the original payment was collected, so
+        |    payment_mode here reflects the ORIGINAL payment, not the
+        |    refund itself). payment_mode is still selected/shown on the
+        |    slip as that historical context, just no longer filtered on.
         |----------------------------------------------------------------
         */
 
         $refunds = DB::table('daily_transactions')
             ->where('transaction_type', 'REFUND')
-            ->where('payment_mode', 'Cash')
             ->where('created_by', $userId)
             ->whereBetween('transaction_date', [$fromDate, $toDate])
             ->get(['transaction_no', 'invoice_reference', 'patient_name', 'refund_amount', 'created_at', 'payment_mode']);

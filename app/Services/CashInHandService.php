@@ -16,6 +16,17 @@ use Illuminate\Support\Facades\DB;
  * transaction types this doesn't understand are silently ignored, so it's
  * always safe to call unconditionally rather than guarding every call site.
  *
+ * REFUND is the one exception to the payment_mode gate: a cancelled
+ * invoice's refund is always physically handed back in cash by whoever
+ * cancels it, regardless of how the original payment was collected -- the
+ * payment_mode passed in for a REFUND reflects the ORIGINAL payment's mode,
+ * not how the refund itself was disbursed, so it is not a reliable signal
+ * for whether cash actually moved here. ItemWiseReportController and
+ * MonthlyReconciliationReportController already encode this same rule
+ * (their refund buckets are unconditional); CashLedgerService,
+ * UserReconciliationService, and DailyTransactionReportController had the
+ * same payment_mode-gated bug this fixes and were corrected to match.
+ *
  * Only one place in the app reverses an already-recorded row after the fact
  * (DoctorSettlementController::cancel() flips a PAYMENT row to CANCELLED) --
  * call reverse() there with that row's own stored values to undo exactly
@@ -54,7 +65,14 @@ class CashInHandService
 
     private function adjust(?int $userId, string $transactionType, ?string $paymentMode, float $amount, int $direction): void
     {
-        if (!$userId || $paymentMode !== 'Cash' || $amount == 0.0) {
+        if (!$userId || $amount == 0.0) {
+            return;
+        }
+
+        // See the class doc comment -- REFUND always affects cash-in-hand
+        // regardless of payment_mode; RECEIVED/PAYMENT only when it's
+        // actually Cash.
+        if ($transactionType !== 'REFUND' && $paymentMode !== 'Cash') {
             return;
         }
 

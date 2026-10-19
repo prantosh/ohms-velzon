@@ -143,8 +143,14 @@ class UserReconciliationService
             $pPaidTotal = array_sum($p['doctor_paid']);
             $cPaidTotal = array_sum($c['doctor_paid']);
 
-            $pNet = $pCollCash - ($p['refund']['CASH'] ?? 0.0) - ($p['doctor_paid']['CASH'] ?? 0.0);
-            $cNet = $cCollCash - ($c['refund']['CASH'] ?? 0.0) - ($c['doctor_paid']['CASH'] ?? 0.0);
+            // A refund is always handed back in cash by whoever cancels the
+            // invoice, regardless of how the original payment was
+            // collected -- its own payment_mode reflects the ORIGINAL
+            // payment, not the refund itself (see CashInHandService's doc
+            // comment for the same rule) -- so the net-cash figure
+            // subtracts the FULL refund total, not just its 'CASH' bucket.
+            $pNet = $pCollCash - $pRefundTotal - ($p['doctor_paid']['CASH'] ?? 0.0);
+            $cNet = $cCollCash - $cRefundTotal - ($c['doctor_paid']['CASH'] ?? 0.0);
 
             $pendingTotal = $pending[$userId]['total'] ?? 0.0;
 
