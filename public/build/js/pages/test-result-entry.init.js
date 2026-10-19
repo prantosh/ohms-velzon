@@ -814,6 +814,78 @@ function buildKeyParametersHtml(finding) {
     `;
 }
 
+// Live read-only render of the real result table (see
+// KeyParameterService::buildAutoTable(), reached here through the
+// lightweight /pathology-report/preview-table endpoint, which stops short
+// of the full PDF render preview() does -- this gets called on every pause
+// in typing, so it has to stay cheap). Lives in .pathology-table-preview,
+// a sibling of the Key Parameters inputs box, never inside the rich-text
+// editor itself. Debounced per card via tablePreviewTimers so fast typing
+// across several fields only fires one request after the pause, not one
+// per keystroke.
+let tablePreviewTimers = new WeakMap();
+
+function debouncedFetchTablePreview(cardEl) {
+    clearTimeout(tablePreviewTimers.get(cardEl));
+    tablePreviewTimers.set(cardEl, setTimeout(() => fetchTablePreview(cardEl), 500));
+}
+
+async function fetchTablePreview(cardEl) {
+
+    let previewWrap = cardEl.querySelector('.pathology-table-preview');
+    if (!previewWrap) return;
+
+    let invoiceDetailIds = (cardEl.dataset.invoiceDetailIds || '')
+        .split(',')
+        .map(v => parseInt(v, 10))
+        .filter(v => !isNaN(v));
+
+    if (!invoiceDetailIds.length) return;
+
+    let values = {};
+    cardEl.querySelectorAll('.pathology-key-param-input').forEach(input => {
+        let val = input.value.trim();
+        if (val) values[input.dataset.itemCodeSub] = val;
+    });
+
+    try {
+
+        let response = await fetch('/pathology-report/preview-table', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken()
+            },
+            body: JSON.stringify({
+                invoice_detail_ids: invoiceDetailIds,
+                key_parameter_values: values
+            })
+        });
+
+        let result = await response.json();
+
+        if (result.status && result.html) {
+            previewWrap.innerHTML = result.html;
+            previewWrap.style.display = 'block';
+        } else {
+            previewWrap.innerHTML = '';
+            previewWrap.style.display = 'none';
+        }
+
+    } catch (e) {
+        // A failed preview fetch shouldn't interrupt typing -- the real
+        // table still generates correctly at Print/Preview/Save regardless.
+    }
+}
+
+document.addEventListener('input', function (e) {
+
+    if (!e.target.classList || !e.target.classList.contains('pathology-key-param-input')) return;
+
+    let cardEl = e.target.closest('.pathology-finding-card');
+    if (cardEl) debouncedFetchTablePreview(cardEl);
+});
+
 // Finds (or creates) this report's own clearly-marked "Key Parameters"
 // block within the CKEditor content and syncs it to whatever's currently
 // in the Key Parameters inputs -- rather than guessing which existing row
@@ -1137,6 +1209,12 @@ function renderPathologyFindingCard(container, finding, invoiceNo) {
         finding.template_title ? `(Template: ${finding.template_title})` : '';
 
     container.appendChild(frag);
+
+    // Shows the real result table immediately for a report that already has
+    // saved Key Parameter values, not only after the next keystroke.
+    if (keyParamsHtml) {
+        fetchTablePreview(cardEl);
+    }
 
     let textarea = cardEl.querySelector('.pathology-content');
 

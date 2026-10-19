@@ -340,8 +340,10 @@ class KeyParameterService
         $html .= $makeHeaderCell('REFERENCE RANGE', $rangeWidth);
         $html .= '</tr>';
 
-        $makeDataCell = function (string $text, string $widthStyle, bool $bold = false, bool $shaded = true) use ($wordWrap, $contentFontSize) {
-            $style = ($shaded ? 'background-color:#F7FAFC;' : '') . 'padding:4.5pt 6pt;' . $widthStyle . ($bold ? 'font-weight:bold;' : '') . $wordWrap . $contentFontSize;
+        $dataCellBorder = 'border-color:#B8C8D4;border-width:1pt;';
+
+        $makeDataCell = function (string $text, string $widthStyle, bool $bold = false, bool $shaded = true) use ($wordWrap, $contentFontSize, $dataCellBorder) {
+            $style = $dataCellBorder . ($shaded ? 'background-color:#F7FAFC;' : '') . 'padding:4.5pt 6pt;' . $widthStyle . ($bold ? 'font-weight:bold;' : '') . $wordWrap . $contentFontSize;
             return '<td style="' . $style . '"><p style="text-align:center;">' . e($text) . '</p></td>';
         };
 
@@ -373,14 +375,14 @@ class KeyParameterService
                 ? '<p style="margin:2px 0 0;font-size:6.5px;color:#5B6570;font-weight:normal;">(Test Done : ' . e(\Carbon\Carbon::parse($info['test_date'])->format('d/m/Y')) . ')</p>'
                 : '';
 
-            $html .= '<td style="background-color:#F7FAFC;padding:4.5pt 6pt;' . $resultValueWidth . $wordWrap . $contentFontSize . '">'
+            $html .= '<td style="' . $dataCellBorder . 'background-color:#F7FAFC;padding:4.5pt 6pt;' . $resultValueWidth . $wordWrap . $contentFontSize . '">'
                 . '<p style="text-align:center;font-weight:bold;">' . $resultText . '</p>'
                 . $testDoneNote . '</td>';
             // $info['range'] is already-escaped HTML from combinedRange()
             // (may contain a real <br> between Male/Female/Common lines) --
             // must NOT be escaped again here, or the <br> prints as literal
             // text instead of a line break.
-            $html .= '<td style="padding:4.5pt 6pt;' . $rangeWidth . $wordWrap . $contentFontSize . '"><span style="color:#222222;">' . ($info['range'] ?: '-') . '</span></td>';
+            $html .= '<td style="' . $dataCellBorder . 'padding:4.5pt 6pt;text-align:center;' . $rangeWidth . $wordWrap . $contentFontSize . '"><span style="color:#222222;">' . ($info['range'] ?: '-') . '</span></td>';
             $html .= '</tr>';
         }
 

@@ -394,6 +394,14 @@
                  either way. -->
             <div class="pathology-key-parameters mb-3" style="display:none;"></div>
 
+            <!-- Live, read-only render of the real Investigation/Unit/Result/
+                 Reference Range table (KeyParameterService::buildAutoTable()),
+                 updated as the Key Parameters inputs above are typed -- lets
+                 staff see exactly what will print without needing to click
+                 Preview first. Lives outside the rich-text editor entirely;
+                 never written into pathology-content. -->
+            <div class="pathology-table-preview mb-3" style="display:none;"></div>
+
             <textarea class="form-control pathology-content"></textarea>
 
             <div class="d-flex justify-content-end gap-2 mt-3">

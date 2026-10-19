@@ -3025,6 +3025,11 @@ Route::middleware(['auth'])->prefix('pathology-report')->group(function () {
     )->name('pathology-report.preview');
 
     Route::post(
+        '/preview-table',
+        [PathologyReportController::class, 'previewTable']
+    )->name('pathology-report.preview-table');
+
+    Route::post(
         '/confirm',
         [PathologyReportController::class, 'confirm']
     )->name('pathology-report.confirm');

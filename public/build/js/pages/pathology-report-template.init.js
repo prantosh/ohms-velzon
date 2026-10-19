@@ -77,11 +77,27 @@ const RICH_EDITOR_CONFIG = {
     // attribute it doesn't recognize on its own save/load round-trip, and
     // the marker would silently vanish the next time this template is
     // opened and saved again.
+    //
+    // Same risk for the stripped-template placeholder
+    // (KeyParameterService::buildAutoTable()/spliceAutoTable() -- the empty
+    // div every fully-tracked template is reduced to) -- missing here, not
+    // just on the report-entry screen's own editor (test-result-entry.init.js),
+    // which is where this was first caught and fixed. This editor is a
+    // SEPARATE CKEditor instance with its own htmlSupport config, so that
+    // fix never covered it: opening an already-stripped template here and
+    // saving it for ANY reason (even an unrelated text edit) silently
+    // deleted the placeholder, corrupting the template at the source --
+    // every report later created from it fell back to the old free-text
+    // append mechanism instead of the real auto-generated table.
     htmlSupport: {
         allow: [
             {
                 name: 'span',
                 attributes: { 'data-key-param-result': true },
+            },
+            {
+                name: 'div',
+                attributes: { 'data-auto-key-param-table': true },
             },
         ]
     }

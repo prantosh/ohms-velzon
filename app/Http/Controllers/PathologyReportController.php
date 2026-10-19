@@ -829,6 +829,73 @@ class PathologyReportController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | PREVIEW TABLE -- just the Key Parameters result table, as HTML
+    |--------------------------------------------------------------------------
+    | Same finding/invoice resolution and tableDataFor()/buildAutoTable()
+    | calls preview() makes, but stops before the full PDF render -- this is
+    | called repeatedly while staff are still typing (debounced on the
+    | frontend, see test-result-entry.init.js), so it has to stay cheap.
+    | Reuses the exact same KeyParameterService calls the real print/
+    | WhatsApp pipeline does, so this can never drift out of sync with what
+    | actually prints.
+    |--------------------------------------------------------------------------
+    */
+
+    public function previewTable(Request $request)
+    {
+        $validator = Validator::make(
+            $request->all(),
+            [
+                'invoice_detail_ids' => 'required|array|min:1',
+                'invoice_detail_ids.*' => 'integer',
+                'key_parameter_values' => 'nullable|array',
+            ]
+        );
+
+        if ($validator->fails()) {
+
+            return response()->json([
+                'status' => false,
+                'errors' => $validator->errors()
+            ]);
+        }
+
+        $lines = DB::table('invoice_details')
+            ->whereIn('id', $request->invoice_detail_ids)
+            ->where('item_code', self::ITEM_CODE)
+            ->get();
+
+        if ($lines->isEmpty()) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Not a valid Pathology line item.'
+            ], 422);
+        }
+
+        $invoice = Invoice::where('invoice_no', $lines->first()->invoice_no)->firstOrFail();
+
+        $finding = (object) [
+            'invoice_no' => $invoice->invoice_no,
+            'key_parameter_values' => $this->sanitizeKeyParameterValues($request->input('key_parameter_values')),
+        ];
+
+        $ids = $lines->pluck('id')->map(fn ($v) => (int) $v)->sort()->values()->all();
+        $names = $lines->pluck('item_description', 'id')->all();
+        $dateInfo = ReportTestDates::describe($ids, $names);
+
+        $keyParamService = app(KeyParameterService::class);
+        $tableData = $keyParamService->tableDataFor($finding, $invoice);
+        $html = $keyParamService->buildAutoTable($tableData, $dateInfo['header_date_raw'] ?? null);
+
+        return response()->json([
+            'status' => true,
+            'html' => $html,
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | CONFIRM -- ONE TEST GROUP AT A TIME, NOT ONE REPORT AT A TIME
     |--------------------------------------------------------------------------
     | Confirming is invoice+test-group scoped: every report within the given
