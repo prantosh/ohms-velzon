@@ -287,16 +287,8 @@ class KeyParameterService
 
         // Lets a long, otherwise-unbreakable run of text (e.g. a Reference
         // Range description) actually wrap inside its own cell instead of
-        // forcing the column -- and with it, the whole table past the
-        // page's right margin -- wider to fit it. Deliberately NOT paired
-        // with table-layout:fixed/width:100% on the table itself: those
-        // turn each cell's width into a PROPORTION of the table's overall
-        // width rather than an absolute value, and DomPDF doesn't
-        // redistribute that the way a browser would -- it was overriding
-        // these specific column-width ratios instead of honouring them.
-        // Plain per-cell widths (same approach already proven correct in
-        // expandTrackedResultTables() above) are what actually keep each
-        // column the size it's set to here.
+        // forcing the column -- and with it, the whole table -- wider to
+        // fit it.
         $wordWrap = 'word-wrap:break-word;overflow-wrap:break-word;';
 
         // Light tint (not the data cells' own #F7FAFC, so the header still
@@ -306,15 +298,20 @@ class KeyParameterService
         // row.
         $headerCellStyle = 'background-color:#E3EBF3;border-color:#B8C8D4;border-width:1pt;border-bottom:1.4pt solid #1F4E78;padding:4.5pt 6pt;font-size:9.5px;' . $wordWrap;
         $contentFontSize = 'font-size:8px;';
-        $investigationWidth = 'width:2.113in;';
-        // History (the old 3 Previous columns) isn't printed for now -- see
-        // buildAutoTable()'s docblock -- so Reference Range absorbs the
-        // 3 x 0.515in those columns used to take (1.545in) on top of its
-        // own original 2.376in, keeping the table's overall width
-        // unchanged.
-        $unitWidth = 'width:0.735in;';
-        $resultValueWidth = 'width:0.515in;';
-        $rangeWidth = 'width:3.921in;';
+        // Percentages, not absolute inches -- paired with the table's own
+        // width:100% below, this is what makes the table span exactly the
+        // same left-to-right extent as every other table in this report
+        // (the base `table { width:100%; }` rule in this file's own
+        // <style>), instead of sitting narrower and left-aligned with a
+        // visible gap only on its right that nothing else on the page has.
+        // Mixing absolute cell widths with a 100%-wide table was what
+        // previously made DomPDF silently rescale these ratios -- purely
+        // relative units on both the table and its cells is the case
+        // table-layout:fixed actually honours correctly.
+        $investigationWidth = 'width:30%;';
+        $unitWidth = 'width:15%;';
+        $resultValueWidth = 'width:15%;';
+        $rangeWidth = 'width:40%;';
 
         $makeHeaderCell = function (string $text, string $widthStyle) use ($headerCellStyle) {
             $td = '<td style="' . $headerCellStyle . $widthStyle . '">';
@@ -322,18 +319,12 @@ class KeyParameterService
             return $td . '</td>';
         };
 
-        // table-layout:fixed + an EXPLICIT absolute width (not 100%) is the
-        // combination that actually works: fixed alone (with no overall
-        // width given) let DomPDF's content-driven sizing win anyway,
-        // widening Investigation past 2.113in to fit its text + Method
-        // line and pushing the whole table past the page's right margin;
-        // fixed + width:100% respected the page width but silently
-        // rescaled these specific column ratios instead of honouring them.
-        // An explicit width exactly equal to the sum of all four columns
-        // below (2.113 + 0.735 + 0.515 + 3.921 = 7.284in, safely inside
-        // this report's ~7.44in usable content width) leaves nothing for
-        // DomPDF to redistribute either way.
-        $html = '<table style="border-width:0px;table-layout:fixed;width:7.284in;"><tbody><tr>';
+        // table-layout:fixed is required for the percentage widths above to
+        // actually hold -- without it, DomPDF's content-driven sizing wins
+        // anyway, widening Investigation past its 30% to fit its text +
+        // Method line and pushing the whole table past the page's right
+        // margin.
+        $html = '<table style="border-width:0px;table-layout:fixed;width:100%;"><tbody><tr>';
         $html .= $makeHeaderCell('INVESTIGATION', $investigationWidth);
         $html .= $makeHeaderCell('UNIT', $unitWidth);
         $html .= $makeHeaderCell('RESULT', $resultValueWidth);

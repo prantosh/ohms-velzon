@@ -128,6 +128,27 @@ let currentInvoiceCategory = 'PATHOLOGY';
 let currentInvoiceDays = 3;
 
 function loadInvoices() {
+
+    // Switching tabs/day-filter re-fetches the whole list, which can take
+    // a moment -- without this the table just sits on the PREVIOUS
+    // category's rows until the new ones arrive, which reads as the click
+    // having done nothing.
+    if ($.fn.DataTable.isDataTable('#invoiceTable')) {
+
+        $('#invoiceTable')
+            .DataTable()
+            .destroy();
+    }
+
+    $("#invoiceTable tbody").html(`
+        <tr>
+            <td colspan="13" class="text-center py-5">
+                <div class="spinner-border text-primary" role="status" style="width: 2rem; height: 2rem;"></div>
+                <div class="mt-2 fw-semibold">Loading invoices, please wait...</div>
+            </td>
+        </tr>
+    `);
+
     $.ajax({
 
         url: "/diagnostic-invoice/list",
@@ -225,11 +246,6 @@ function loadInvoices() {
 
                         <td>${row.invoice_date ?? ''}</td>
                         <td>${row.test_date ?? ''}</td>
-                        <td>
-                            ${row.invoice_category === 'PATHOLOGY'
-                                                    ? '<span class="badge bg-success">PATHOLOGY</span>'
-                                                    : '<span class="badge bg-info">NON PATHOLOGY</span>'}
-                        </td>
 
                         <td class="text-end">${row.total_amount ?? 0}</td>
 
@@ -277,6 +293,17 @@ function loadInvoices() {
                 .DataTable({
                     responsive: true
                 });
+        },
+
+        error: function () {
+
+            $("#invoiceTable tbody").html(`
+                <tr>
+                    <td colspan="13" class="text-center py-5 text-danger">
+                        Unable to load invoices. Please try again.
+                    </td>
+                </tr>
+            `);
         }
     });
 }

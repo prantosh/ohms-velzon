@@ -54,6 +54,15 @@ Diagnostic Invoice
         font-size: 11px;
         padding: 0.25rem 0.5rem;
     }
+
+    /* Pathology/Non-Pathology tabs -- solid filled like the "Create
+       Diagnostic Invoice" button above them, instead of Bootstrap's
+       default muted-background active-tab look. */
+    #invoiceCategoryTabs .nav-link.active {
+        background-color: var(--vz-primary);
+        border-color: var(--vz-primary);
+        color: #fff;
+    }
 </style>
 
 @endsection
@@ -140,7 +149,6 @@ Diagnostic Invoice
 
                            <th>Inv Dt</th>
                             <th>Test Dt</th>
-                            <th>Invoice Category</th>
 
                             <th>Total</th>
 
