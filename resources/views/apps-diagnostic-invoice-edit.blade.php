@@ -741,6 +741,16 @@ Pay Rest Payment
                     value="{{ $invoice->due_amount }}"
                     readonly>
 
+                @if(auth()->user()->role === 'Admin' && $invoice->paid_amount > 0 && $invoice->cancelled !== 'Y')
+                <button
+                    type="button"
+                    id="markPaymentFailedBtn"
+                    class="btn btn-sm btn-soft-danger mt-1"
+                    data-id="{{ $invoice->id }}">
+                    Mark Payment Failed
+                </button>
+                @endif
+
             </div>
 
             <div class="col-md-3 mb-3">

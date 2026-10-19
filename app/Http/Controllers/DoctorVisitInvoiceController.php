@@ -951,6 +951,97 @@ class DoctorVisitInvoiceController extends Controller
             ], 500);
         }
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | MARK PAYMENT FAILED
+    |--------------------------------------------------------------------------
+    | Doctor Visit invoices always collect full payment at creation
+    | (due_amount hardcoded 0, status 'Paid') and have no later due-payment
+    | flow -- there is only ever ONE RECEIVED transaction to reverse. See
+    | DiagnosticInvoiceController::markPaymentFailed() for the fuller,
+    | multi-phase version of this same action.
+    |--------------------------------------------------------------------------
+    */
+
+    public function markPaymentFailed(Request $request, $id, AuditService $auditService, \App\Services\PaymentReversalService $reversalService)
+    {
+        if (optional(Auth::user())->role !== 'Admin') {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Only an Admin can mark a payment as failed.'
+            ], 403);
+        }
+
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+
+            $invoice = Invoice::lockForUpdate()->findOrFail($id);
+
+            if ($invoice->cancelled === 'Y') {
+
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'payment' => ['This invoice is already cancelled.'],
+                ]);
+            }
+
+            if ((float) $invoice->paid_amount <= 0) {
+
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'payment' => ['Nothing has been paid on this invoice to reverse.'],
+                ]);
+            }
+
+            $oldInvoiceData = $invoice->only($invoice->getFillable());
+
+            $expectedAmount = (float) $invoice->paid_amount;
+
+            $reversalService->reverseLatestReceived($invoice, $expectedAmount);
+
+            $invoice->due_amount = $expectedAmount;
+            $invoice->paid_amount = 0;
+            $invoice->status = 'Due';
+
+            $invoice->payment_failed_reason = $request->reason;
+            $invoice->payment_failed_by = Auth::id();
+            $invoice->payment_failed_at = now();
+
+            $invoice->updated_by = Auth::id();
+
+            $invoice->save();
+
+            DB::commit();
+
+            $auditService->logUpdate(
+                self::MODULE_CODE,
+                $invoice,
+                $oldInvoiceData,
+                $invoice->only($invoice->getFillable()),
+                'Payment marked failed: ' . $request->reason
+            );
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Payment marked as failed. Due amount reopened by ₹' . number_format($expectedAmount, 2) . '.'
+            ]);
+
+        } catch (\Exception $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     /*
     |--------------------------------------------------------------------------
     | SEND WHATSAPP

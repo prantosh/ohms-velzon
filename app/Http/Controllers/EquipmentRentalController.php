@@ -90,6 +90,7 @@ class EquipmentRentalController extends Controller
                 'final_invoices.id as final_invoice_id',
                 'final_invoices.invoice_no as final_invoice_no',
                 'final_invoices.total_amount as final_invoice_amount',
+                'final_invoices.paid_amount as final_paid_amount',
                 'final_invoices.whatsapp_status as final_whatsapp_status'
             );
 
@@ -772,6 +773,113 @@ class EquipmentRentalController extends Controller
             return response()->json([
                 'status' => false,
                 'message' => 'Unable to cancel rental.'
+            ], 500);
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | MARK PAYMENT FAILED
+    |--------------------------------------------------------------------------
+    | Each rental cycle can have up to two independent invoices -- the
+    | advance payment from issue() (status 'Issued') and a separate final
+    | settlement from returnEquipment() (status 'Settled'). This operates on
+    | ONE invoice row at a time, by its own id, so which stage the rental is
+    | at doesn't matter here the way it does for cancel() (which only
+    | applies to an unreturned 'Issued' rental) -- a payment on either
+    | invoice can independently turn out to have failed. Only ONE RECEIVED
+    | transaction ever exists per invoice row to reverse. See
+    | DiagnosticInvoiceController::markPaymentFailed() for the fuller
+    | version of this same action.
+    |--------------------------------------------------------------------------
+    */
+
+    public function markPaymentFailed(Request $request, $id, AuditService $auditService, \App\Services\PaymentReversalService $reversalService)
+    {
+        if (optional(Auth::user())->role !== 'Admin') {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Only an Admin can mark a payment as failed.'
+            ], 403);
+        }
+
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+
+            $invoice = Invoice::whereIn('invoice_type', self::RENTAL_TYPES)
+                ->lockForUpdate()
+                ->findOrFail($id);
+
+            if ($invoice->status === 'Cancelled') {
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'This invoice has already been cancelled.'
+                ], 422);
+            }
+
+            if ((float) $invoice->paid_amount <= 0) {
+
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Nothing has been paid on this invoice to reverse.'
+                ], 422);
+            }
+
+            $oldData = $invoice->only($invoice->getFillable());
+
+            $expectedAmount = (float) $invoice->paid_amount;
+
+            $reversalService->reverseLatestReceived($invoice, $expectedAmount);
+
+            $invoice->paid_amount = 0;
+            $invoice->due_amount = (float) $invoice->due_amount + $expectedAmount;
+
+            $invoice->payment_failed_reason = $request->reason;
+            $invoice->payment_failed_by = Auth::id();
+            $invoice->payment_failed_at = now();
+
+            $invoice->save();
+
+            DB::commit();
+
+            $auditService->logUpdate(
+                self::MODULE_CODE,
+                $invoice,
+                $oldData,
+                $invoice->only($invoice->getFillable()),
+                'Payment marked failed: ' . $request->reason
+            );
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Payment marked as failed. Due amount reopened by ₹' . number_format($expectedAmount, 2) . '.'
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage()
+            ], 422);
+
+        } catch (Exception $e) {
+
+            DB::rollBack();
+
+            Log::error($e);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Unable to mark payment as failed.'
             ], 500);
         }
     }

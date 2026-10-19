@@ -358,6 +358,11 @@ Route::delete(
     [DoctorVisitInvoiceController::class, 'destroy']
 );
 
+Route::post(
+    '/doctor-visit-invoice/{id}/mark-payment-failed',
+    [DoctorVisitInvoiceController::class, 'markPaymentFailed']
+)->name('doctor-visit-invoice.mark-payment-failed');
+
 Route::get(
     '/doctor-visit-invoice/print/{id}',
     [DoctorVisitInvoiceController::class, 'printInvoice']
@@ -407,6 +412,11 @@ Route::prefix('diagnostic-invoice')->group(function () {
         '/delete/{id}',
         [DiagnosticInvoiceController::class, 'destroy']
     )->name('diagnostic-invoice.delete');
+
+    Route::post(
+        '/{id}/mark-payment-failed',
+        [DiagnosticInvoiceController::class, 'markPaymentFailed']
+    )->name('diagnostic-invoice.mark-payment-failed');
 
     Route::get(
         '/tests/{itemCode}',
@@ -1095,6 +1105,11 @@ Route::middleware(['auth'])->prefix('equipment-rental')->group(function () {
         [EquipmentRentalController::class, 'cancel']
     );
 
+    Route::post(
+        '/{id}/mark-payment-failed',
+        [EquipmentRentalController::class, 'markPaymentFailed']
+    )->name('equipment-rental.mark-payment-failed');
+
     Route::get(
         '/print/{id}',
         [EquipmentRentalController::class, 'printInvoice']
@@ -1167,6 +1182,11 @@ Route::prefix('ambulance-rental')->group(function () {
         '/cancel/{id}',
         [AmbulanceRentalController::class, 'cancel']
     );
+
+    Route::post(
+        '/{id}/mark-payment-failed',
+        [AmbulanceRentalController::class, 'markPaymentFailed']
+    )->name('ambulance-rental.mark-payment-failed');
 
     Route::get(
         '/print/{id}',

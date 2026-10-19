@@ -51,6 +51,10 @@ class Invoice extends Model
         'cancellation_approved_by',
         'cancellation_remarks',
 
+        'payment_failed_reason',
+        'payment_failed_by',
+        'payment_failed_at',
+
         'refund_amount',
         'refund_date',
         'paid_amount_1',

@@ -363,6 +363,14 @@ async function loadRentals(page = 1) {
             `
             : '-';
 
+        if (window.isAdminUser && Number(raw.paid_amount) > 0 && raw.status !== 'Cancelled') {
+            actions += `
+            <button class="btn btn-sm btn-soft-warning mark-payment-failed-btn" data-id="${raw.id}" title="Mark Payment Failed">
+                <i class="ri-refund-2-line"></i>
+            </button>
+            `;
+        }
+
         tbody.innerHTML += `
         <tr>
 
@@ -612,6 +620,57 @@ document.addEventListener('click', async function (e) {
         Swal.fire({
             icon: result.status ? 'success' : 'error',
             title: result.status ? 'Cancelled' : 'Error',
+            text: result.message
+        });
+
+        if (result.status) {
+            loadRentals(currentPage);
+        }
+    }
+
+    // Admin-only: reverses this invoice's single payment (see
+    // AmbulanceRentalController::markPaymentFailed()) -- a bounced UPI/card
+    // transaction, or any other payment discovered to have failed after the
+    // fact. The invoice itself is never cancelled, only its payment state.
+    let markPaymentFailedBtn = e.target.closest('.mark-payment-failed-btn');
+
+    if (markPaymentFailedBtn) {
+
+        let id = markPaymentFailedBtn.dataset.id;
+
+        let confirm = await Swal.fire({
+            title: 'Mark Payment Failed?',
+            text: "Reopens the due amount by reversing this invoice's payment. This does not cancel the invoice.",
+            icon: 'warning',
+            input: 'textarea',
+            inputLabel: 'Reason',
+            inputPlaceholder: 'Why did this payment fail? (e.g. UPI transaction bounced)',
+            inputValidator: (value) => {
+                if (!value || !value.trim()) {
+                    return 'Please enter a reason.';
+                }
+            },
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Mark Failed',
+            cancelButtonText: 'No'
+        });
+
+        if (!confirm.isConfirmed) return;
+
+        let response = await fetch(`/ambulance-rental/${id}/mark-payment-failed`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason: confirm.value })
+        });
+
+        let result = await response.json();
+
+        Swal.fire({
+            icon: result.status ? 'success' : 'error',
+            title: result.status ? 'Success' : 'Error',
             text: result.message
         });
 

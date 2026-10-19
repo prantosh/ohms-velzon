@@ -178,6 +178,14 @@ function buildInvoiceRowHtml(raw) {
 
                     </button>
 
+                    ${(window.isAdminUser && (raw.paid_amount > 0)) ? `
+                    <button class="btn btn-sm btn-warning markPaymentFailedBtn"
+                        data-id="${raw.invoice_id}"
+                        title="Mark Payment Failed">
+                        <i class="ri-refund-2-line"></i>
+                    </button>
+                    ` : ''}
+
                     `
 
                                     ) : `
@@ -1216,6 +1224,68 @@ $(document).on(
                     }
                 });
             }
+        });
+    }
+);
+
+// Admin-only: reverses this invoice's single payment (see
+// DoctorVisitInvoiceController::markPaymentFailed()) -- a bounced UPI/card
+// transaction, or any other payment discovered to have failed after the
+// fact. The invoice itself is never cancelled, only its payment state.
+$(document).on(
+    "click",
+    ".markPaymentFailedBtn",
+    function () {
+
+        let id = $(this).data("id");
+
+        Swal.fire({
+            title: "Mark Payment Failed?",
+            html: "Reopens the due amount by reversing this invoice's payment. This does not cancel the invoice.",
+            icon: "warning",
+            input: "textarea",
+            inputLabel: "Reason",
+            inputPlaceholder: "Why did this payment fail? (e.g. UPI transaction bounced)",
+            inputValidator: (value) => {
+                if (!value || !value.trim()) {
+                    return "Please enter a reason.";
+                }
+            },
+            showCancelButton: true,
+            confirmButtonText: "Yes, Mark Failed",
+            cancelButtonText: "No"
+        }).then((result) => {
+
+            if (!result.isConfirmed) {
+                return;
+            }
+
+            $.ajax({
+                url: "/doctor-visit-invoice/" + id + "/mark-payment-failed",
+                type: "POST",
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    reason: result.value
+                },
+                success: function (response) {
+                    Swal.fire({
+                        icon: response.status ? "success" : "error",
+                        title: response.status ? "Success" : "Error",
+                        text: response.message
+                    });
+
+                    if (response.status) {
+                        loadInvoices();
+                    }
+                },
+                error: function (xhr) {
+                    Swal.fire({
+                        icon: "error",
+                        title: "Error",
+                        text: xhr.responseJSON?.message || "Unable to mark payment as failed."
+                    });
+                }
+            });
         });
     }
 );

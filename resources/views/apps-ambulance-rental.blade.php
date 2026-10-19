@@ -504,6 +504,9 @@
 <script src="{{ URL::asset('build/libs/flatpickr/flatpickr.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/pages/flatpickr-dmy.init.js') }}"></script>
 
+<script>
+    window.isAdminUser = {{ (auth()->user() && auth()->user()->role === 'Admin') ? 'true' : 'false' }};
+</script>
 <script src="{{ URL::asset('build/js/pages/ambulance-rental.init.js') }}"></script>
 
 @endsection

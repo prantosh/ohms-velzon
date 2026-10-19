@@ -21,8 +21,10 @@ use App\Mail\DiscountApprovedMail;
 use App\Services\AuditService;
 use App\Services\CashInHandService;
 use App\Services\PatientIdentityGuard;
+use App\Services\PaymentReversalService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\ValidationException;
 class DiagnosticInvoiceController extends Controller
 {
     private const MODULE_CODE = 'DIAGNOSTIC_INVOICE';
@@ -2511,6 +2513,134 @@ class DiagnosticInvoiceController extends Controller
             return response()->json([
                 'status' => true,
                 'message' => 'Invoice cancelled successfully'
+            ]);
+
+        } catch (\Exception $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'status' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | MARK PAYMENT FAILED
+    |--------------------------------------------------------------------------
+    | A payment already recorded against this invoice (initial, Phase 1, or
+    | Phase 2 -- whichever was collected MOST RECENTLY, per
+    | payment_edit_count's current value) turns out to have failed after the
+    | fact (a bounced UPI/card transaction, discovered later). Reopens
+    | due_amount by that exact amount, cancels the matching
+    | daily_transactions row and reverses cash_in_hand (via
+    | PaymentReversalService), and steps payment_edit_count back down --
+    | which is also what lets this be called again to unwind an EARLIER
+    | phase too, one call at a time, oldest last. The invoice itself is
+    | never cancelled -- the diagnostic work already done stays valid, only
+    | its payment state is corrected.
+    |--------------------------------------------------------------------------
+    */
+
+    public function markPaymentFailed(Request $request, $id, AuditService $auditService, PaymentReversalService $reversalService)
+    {
+        if (optional(Auth::user())->role !== 'Admin') {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Only an Admin can mark a payment as failed.'
+            ], 403);
+        }
+
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+
+            $invoice = Invoice::lockForUpdate()->findOrFail($id);
+
+            if ($invoice->cancelled === 'Y') {
+
+                throw ValidationException::withMessages([
+                    'payment' => ['This invoice is already cancelled.'],
+                ]);
+            }
+
+            if ((float) $invoice->paid_amount <= 0) {
+
+                throw ValidationException::withMessages([
+                    'payment' => ['Nothing has been paid on this invoice to reverse.'],
+                ]);
+            }
+
+            $oldInvoiceData = $invoice->only($invoice->getFillable());
+
+            // The amount tied to the MOST RECENT phase only -- payment_edit_count
+            // 2 means Phase 2 was the last thing collected, 1 means Phase 1, 0
+            // means no due-payment phase has ever run and the only payment on
+            // record is the initial one (paid_amount with phase 1/2 both still
+            // null/0 collapses this formula to paid_amount itself).
+            if ($invoice->payment_edit_count == 2) {
+                $expectedAmount = (float) $invoice->paid_amount_2;
+            } elseif ($invoice->payment_edit_count == 1) {
+                $expectedAmount = (float) $invoice->paid_amount_1;
+            } else {
+                $expectedAmount = (float) $invoice->paid_amount
+                    - (float) ($invoice->paid_amount_1 ?? 0)
+                    - (float) ($invoice->paid_amount_2 ?? 0);
+            }
+
+            $reversalService->reverseLatestReceived($invoice, $expectedAmount);
+
+            $invoice->paid_amount = (float) $invoice->paid_amount - $expectedAmount;
+            $invoice->due_amount = (float) $invoice->due_amount + $expectedAmount;
+
+            if ($invoice->payment_edit_count == 2) {
+                $invoice->paid_amount_2 = null;
+                $invoice->paid_date_2 = null;
+            } elseif ($invoice->payment_edit_count == 1) {
+                $invoice->paid_amount_1 = null;
+                $invoice->paid_date_1 = null;
+            }
+
+            $invoice->payment_edit_count = max(0, $invoice->payment_edit_count - 1);
+
+            $invoice->status = $invoice->due_amount == 0
+                ? 'Paid'
+                : ($invoice->paid_amount > 0 ? 'Partial' : 'Due');
+
+            // Mirrors the exact inverse of updateDuePayment()'s write-once-if-empty
+            // guard (only ever set when due_amount hit 0) -- the reversal just
+            // reopened due_amount above, so the condition that set this no longer
+            // holds; letting the next genuine full payment set it again.
+            $invoice->doctor_amount_collected_by = null;
+
+            $invoice->payment_failed_reason = $request->reason;
+            $invoice->payment_failed_by = Auth::id();
+            $invoice->payment_failed_at = now();
+
+            $invoice->updated_by = Auth::id();
+
+            $invoice->save();
+
+            DB::commit();
+
+            $auditService->logUpdate(
+                self::MODULE_CODE,
+                $invoice,
+                $oldInvoiceData,
+                $invoice->only($invoice->getFillable()),
+                'Payment marked failed: ' . $request->reason
+            );
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Payment marked as failed. Due amount reopened by ₹' . number_format($expectedAmount, 2) . '.'
             ]);
 
         } catch (\Exception $e) {
