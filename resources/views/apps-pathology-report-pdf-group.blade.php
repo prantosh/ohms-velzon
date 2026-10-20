@@ -26,12 +26,17 @@
     once, unchanged from before.
 */
 @page {
-    /* 50mm is the clinic's pre-printed letterhead art zone (unchanged);
-       the extra 35mm reserves room for the patient-detail strip below it
-       (now two lines, same as the single-report layout, so this grew from
-       20mm), which is position:fixed so it repeats on every page -- see
-       .patient-detail-fixed. */
-    margin-top: 85mm;
+    /* 50mm is the clinic's pre-printed letterhead art zone (unchanged --
+       .patient-detail-fixed's own top offset below is paired with this
+       value specifically to keep that 50mm anchor fixed, see its own
+       comment); the remaining 22.5mm is layout BUDGET for the
+       patient-detail strip's own two lines of content plus the gap before
+       the group heading that follows it -- NOT itself tied to any
+       pre-printed art, so safe to resize on its own. Was 35mm (-> 10mm of
+       actual content + ~25mm of pure blank gap); halved to close roughly
+       half that blank gap per request, while keeping the strip's own
+       printed position identical. */
+    margin-top: 72.5mm;
     margin-right: 40px;
     margin-bottom: 60mm;
     margin-left: 40px;
@@ -61,12 +66,18 @@ table {
 }
 
 /* Repeats on every page (DomPDF renders position:fixed elements once per
-   page) -- positioned above the normal content box, in the 35mm strip
+   page) -- positioned above the normal content box, in the 22.5mm strip
    @page reserves for it just below the letterhead art zone, so every
-   page identifies the patient even if pages get separated. */
+   page identifies the patient even if pages get separated.
+   Paired with @page's own margin-top: this strip's true position on the
+   physical page is margin-top + top = 72.5mm - 22.5mm = 50mm from the
+   true page top, exactly the same 50mm anchor as before (was 85mm -
+   35mm = 50mm) -- shrinking both by the same 12.5mm keeps the printed
+   strip in its original spot while pulling the group heading that
+   follows it closer, which is the whole point of the change. */
 .patient-detail-fixed {
     position: fixed;
-    top: -35mm;
+    top: -22.5mm;
     left: 0;
     right: 0;
 }
@@ -99,10 +110,10 @@ table {
    (top/bottom rule), line 2 sits directly under it with no border of its
    own -- scoped to .patient-detail-fixed specifically so it doesn't
    affect the unrelated .no-border table each section below already uses
-   for its own per-section Test Date. Fits this header's own fixed 35mm
-   band -- see .patient-detail-fixed below, calibrated against the
-   physical letterhead art and not safe to grow without re-measuring that
-   stationery. */
+   for its own per-section Test Date. Fits this header's own 22.5mm
+   layout budget -- see .patient-detail-fixed below and @page's own
+   comment for the 50mm anchor that IS tied to the physical letterhead
+   art and must not move. */
 .patient-detail-table {
     border-top: 1.4pt solid #1F4E78;
     border-bottom: 1.4pt solid #1F4E78;
@@ -140,12 +151,12 @@ table {
     font-weight: bold;
     font-size: 14px;
     border-bottom: 2px solid #003399;
-    margin-top: 18px;
+    margin-top: 9px;
     padding-bottom: 2px;
 }
 
 .group-heading:first-of-type {
-    margin-top: 10px;
+    margin-top: 5px;
 }
 
 /* Requirement: each test group starts on its own page -- except the very

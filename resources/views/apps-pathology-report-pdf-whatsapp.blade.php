@@ -27,11 +27,18 @@
 */
 @page {
     /* 43.8mm is the scanned letterhead header image's own height
-       (unchanged); the extra 35mm reserves room for the patient-detail
-       strip below it (now two lines, same as the single-report layout,
-       so this grew from 20mm), which is position:fixed so it repeats on
-       every page -- see .patient-detail-fixed. */
-    margin-top: 78.8mm;
+       (unchanged, tied to the physical art -- see .report-header-image's
+       own comment for why its offset must always exactly match this
+       margin-top value); the remaining 17.5mm is layout BUDGET for the
+       patient-detail strip's own two lines of content plus the gap before
+       the group heading that follows it -- NOT itself tied to any
+       pre-printed art, so safe to resize on its own (see
+       .patient-detail-fixed's own comment for how it stays flush against
+       the header image despite this). Was 35mm (-> 10mm of actual content
+       + ~25mm of pure blank gap); halved to close roughly half that blank
+       gap per request, while keeping both images and the patient-detail
+       strip in their original printed positions. */
+    margin-top: 61.3mm;
     margin-right: 0;
     margin-bottom: 61.4mm;
     margin-left: 0;
@@ -47,14 +54,15 @@ body {
 
 .report-header-image {
     position: fixed;
-    /* Offset must equal the FULL margin-top (78.8mm), not just the image's
-       own 43.8mm height -- DomPDF measures position:fixed from the page's
-       margin/content box, which moved down 35mm when margin-top grew to
-       make room for .patient-detail-fixed below it. Using -43.8mm here
-       (the old value) would drag the image down with that box and overlap
-       the patient-detail strip instead of staying flush with the true
-       page edge. */
-    top: -78.8mm;
+    /* Offset must always equal the FULL margin-top exactly, not just the
+       image's own 43.8mm height -- DomPDF measures position:fixed from
+       the page's margin/content box, which sits however far margin-top
+       pushed it down to make room for .patient-detail-fixed below it.
+       Using -43.8mm here would drag the image down with that box and
+       overlap the patient-detail strip instead of staying flush with the
+       true page edge -- this has to change in lockstep with @page's own
+       margin-top any time that value does. */
+    top: -61.3mm;
     left: 0;
     width: 210mm;
 }
@@ -82,13 +90,20 @@ table {
 }
 
 /* Repeats on every page (DomPDF renders position:fixed elements once per
-   page) -- positioned in the 35mm strip @page reserves for it just below
-   the header image, with the same 40px side padding the body text uses
-   (this div sits outside body's own padding since it's fixed), so every
-   page identifies the patient even if pages get separated. */
+   page) -- positioned in the 17.5mm strip @page reserves for it just
+   below the header image, with the same 40px side padding the body text
+   uses (this div sits outside body's own padding since it's fixed), so
+   every page identifies the patient even if pages get separated.
+   Paired with @page's own margin-top and .report-header-image's offset:
+   this strip's true position is margin-top + top = 61.3mm - 17.5mm =
+   43.8mm from the true page top -- exactly flush against the bottom of
+   the header image, same as before (was 78.8mm - 35mm = 43.8mm) --
+   shrinking both margin-top and this offset by the same 17.5mm keeps the
+   strip flush in its original spot while pulling the group heading that
+   follows it closer, which is the whole point of the change. */
 .patient-detail-fixed {
     position: fixed;
-    top: -35mm;
+    top: -17.5mm;
     left: 0;
     right: 0;
     padding: 0 40px;
@@ -99,9 +114,10 @@ table {
    (top/bottom rule), line 2 sits directly under it with no border of its
    own -- scoped to .patient-detail-fixed specifically so it doesn't
    affect the unrelated .no-border table each section below already uses
-   for its own per-section Test Date. Fits this header's own fixed 35mm
-   band -- see .patient-detail-fixed above, calibrated against the
-   scanned letterhead image and not safe to grow without re-measuring it. */
+   for its own per-section Test Date. Fits this header's own 17.5mm
+   layout budget -- see .patient-detail-fixed above and @page's own
+   comment for the 43.8mm anchor that IS tied to the scanned letterhead
+   image and must not move. */
 .patient-detail-table {
     border-top: 1.4pt solid #1F4E78;
     border-bottom: 1.4pt solid #1F4E78;
@@ -145,12 +161,12 @@ table {
     font-weight: bold;
     font-size: 14px;
     border-bottom: 2px solid #003399;
-    margin-top: 18px;
+    margin-top: 9px;
     padding-bottom: 2px;
 }
 
 .group-heading:first-of-type {
-    margin-top: 6px;
+    margin-top: 3px;
 }
 
 /* Requirement: each test group starts on its own page -- except the very
