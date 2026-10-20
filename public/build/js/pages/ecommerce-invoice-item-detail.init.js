@@ -193,6 +193,12 @@ function initialiseDataTable() {
             },
 
             {
+                data: 'patient_friendly_description_display',
+                name: 'invoice_item_details.patient_friendly_description',
+                orderable: false
+            },
+
+            {
                 data: 'rate',
                 name: 'invoice_item_details.rate',
                 className: 'text-end'
@@ -331,6 +337,8 @@ function clearForm() {
     $('#common_range').val('');
 
     $('#method').val('');
+
+    $('#patient_friendly_description').val('');
 
     $('#report_days').val('');
 
@@ -513,6 +521,7 @@ function editRecord() {
 
             $('#common_range').val(response.range_common);
             $('#method').val(response.method);
+            $('#patient_friendly_description').val(response.patient_friendly_description);
 
             $('#report_days').val(response.report_days);
 
@@ -670,6 +679,8 @@ function saveRecord() {
             common_range: $('#common_range').val(),
 
             method: $('#method').val(),
+
+            patient_friendly_description: $('#patient_friendly_description').val(),
 
             report_days: $('#report_days').val(),
 

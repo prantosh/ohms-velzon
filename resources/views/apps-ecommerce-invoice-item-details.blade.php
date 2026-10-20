@@ -274,6 +274,8 @@ width="100%">
 
     <th class="text-center align-middle">Test Description</th>
 
+    <th class="text-center align-middle">Patient Friendly Description</th>
+
     <th class="text-center align-middle">Rate (₹)</th>
 
     <th class="text-center align-middle">Discount</th>
@@ -792,6 +794,27 @@ width="100%">
                         <input type="number"
                                id="report_days"
                                class="form-control numeric">
+
+                    </div>
+
+                </div>
+
+                <!-- Row 7 -->
+
+                <div class="row mt-3">
+
+                    <div class="col-md-12">
+
+                        <label class="form-label">
+
+                            Patient Friendly Description <span class="text-muted">(optional)</span>
+
+                        </label>
+
+                        <textarea id="patient_friendly_description"
+                                  rows="2"
+                                  class="form-control"
+                                  placeholder="Plain-language name/explanation shown to patients. Leave blank to just use the Item Description above."></textarea>
 
                     </div>
 

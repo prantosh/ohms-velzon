@@ -35,6 +35,7 @@ class InvoiceItemDetail extends Model
         'range_common',
 
         'method',
+        'patient_friendly_description',
 
         'report_days',
 
@@ -66,6 +67,16 @@ class InvoiceItemDetail extends Model
 
     ];
 
+
+    /**
+     * patient_friendly_description is optional -- when an admin leaves it
+     * blank, item_description_sub (the test's own name) stands in for it
+     * wherever a patient-facing full name is needed.
+     */
+    public function effectivePatientFriendlyDescription(): string
+    {
+        return $this->patient_friendly_description ?: $this->item_description_sub;
+    }
 
     public function master()
     {

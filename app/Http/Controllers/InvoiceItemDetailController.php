@@ -98,6 +98,17 @@ class InvoiceItemDetailController extends Controller
 
             })
 
+            ->addColumn('patient_friendly_description_display', function ($row) {
+
+                // Blank when not set -- the fallback to item_description_sub
+                // (see InvoiceItemDetail::effectivePatientFriendlyDescription())
+                // only matters wherever this is actually shown to a patient;
+                // this column reflects what was literally typed in, nothing
+                // more.
+                return e((string) $row->patient_friendly_description);
+
+            })
+
             ->addColumn('discount_summary', function ($row) {
 
                 return '<button type="button" class="btn btn-sm btn-outline-primary view-discount"'
@@ -177,6 +188,7 @@ class InvoiceItemDetailController extends Controller
 
             ->rawColumns([
                 'status',
+                'patient_friendly_description_display',
                 'discount_summary',
                 'range_summary',
                 'is_package_label',
@@ -272,6 +284,8 @@ class InvoiceItemDetailController extends Controller
 
             'item_description_sub' => 'required|max:255',
 
+            'patient_friendly_description' => 'nullable|string',
+
             'rate' => 'nullable|numeric',
 
             'standard_discount' => 'nullable|numeric',
@@ -355,6 +369,17 @@ class InvoiceItemDetailController extends Controller
                 'item_code_sub' => $this->generateSubItemCode($request->item_code),
 
                 'item_description_sub' => $request->item_description_sub,
+
+                // Optional -- left null when blank rather than copying
+                // item_description_sub in at save time, so a later bulk
+                // re-seed (or a change to item_description_sub itself)
+                // never has to guess which rows were "really" filled in
+                // vs defaulted. Wherever this needs to be shown, fall back
+                // to item_description_sub there (see
+                // InvoiceItemDetail::effectivePatientFriendlyDescription()).
+                'patient_friendly_description' => $request->filled('patient_friendly_description')
+                    ? $request->patient_friendly_description
+                    : null,
 
                 'is_package' => $isPackage,
 
@@ -476,6 +501,8 @@ class InvoiceItemDetailController extends Controller
 
                 'item_description_sub' => 'required|max:255',
 
+                'patient_friendly_description' => 'nullable|string',
+
                 'test_group_code' => 'nullable|exists:test_group_masters,id',
 
                 'is_package' => 'nullable|boolean',
@@ -526,6 +553,11 @@ class InvoiceItemDetailController extends Controller
         $item->update([
 
             'item_description_sub' => $request->item_description_sub,
+
+            // Optional -- left null when blank, same reasoning as store().
+            'patient_friendly_description' => $request->filled('patient_friendly_description')
+                ? $request->patient_friendly_description
+                : null,
 
             'is_package' => $isPackage,
 
