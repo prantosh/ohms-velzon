@@ -283,7 +283,7 @@ function loadInvoices() {
                         }
                         </td>
 
-                        <td>${action}</td>
+                        <td class="invoice-action-cell">${action}</td>
 
                     </tr>
                     `);
@@ -291,7 +291,8 @@ function loadInvoices() {
 
             $('#invoiceTable')
                 .DataTable({
-                    responsive: true
+                    responsive: true,
+                    ordering: false
                 });
         },
 

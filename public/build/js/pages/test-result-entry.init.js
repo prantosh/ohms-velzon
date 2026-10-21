@@ -201,6 +201,8 @@ async function searchInvoice() {
     document.querySelector('#pathologyReportsWrap').innerHTML = '';
     document.querySelector('#pathologyReportsWrap').style.display = 'none';
     document.querySelector('#pathologyWhatsappBanner').classList.add('d-none');
+    document.querySelector('#pathologyOutsourcedMarquee').classList.add('d-none');
+    document.querySelector('#pathologyOutsourcedMarquee .pathology-outsourced-marquee-track').innerHTML = '';
     pathologyState = null;
 
     if (!invoiceNo) {
@@ -254,6 +256,7 @@ async function loadPathologyReports(invoiceNo) {
     renderInvoiceInfo(result.invoice);
 
     pathologyState = result;
+    renderPathologyOutsourcedMarquee(result.outsourced_items || []);
 
     let wrap = document.querySelector('#pathologyReportsWrap');
     wrap.style.display = 'block';
@@ -548,6 +551,22 @@ function renderPathologyWhatsappBanner() {
         textEl.innerText = `${confirmed} of ${total} Pathology test(s) confirmed. The combined report is sent via WhatsApp automatically once every test is confirmed.`;
         sendBtn.style.display = 'none';
     }
+}
+
+function renderPathologyOutsourcedMarquee(items) {
+
+    let marquee = document.querySelector('#pathologyOutsourcedMarquee');
+    let track = marquee.querySelector('.pathology-outsourced-marquee-track');
+
+    if (!items.length) {
+        marquee.classList.add('d-none');
+        track.innerHTML = '';
+        return;
+    }
+
+    let message = `Reports cannot be created here for ${items.map(escapeHtml).join('  •  ')}, as these are being tested through outsourced agencies.&nbsp;&nbsp;&nbsp;`;
+    track.innerHTML = `<span>${message}</span><span aria-hidden="true">${message}</span>`;
+    marquee.classList.remove('d-none');
 }
 
 function renderPathologyLegacyCard(wrap, invoiceId) {
@@ -1919,4 +1938,3 @@ document.addEventListener('click', function (e) {
         sendPathologyWhatsappNow(btn);
     }
 });
-

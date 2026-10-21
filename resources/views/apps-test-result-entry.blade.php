@@ -30,6 +30,38 @@
 .result-status-Complete { background:#0ab39c33; color:#03816f; }
 .result-status-NA { background:#74788d33; color:#4a4d5a; }
 
+.pathology-outsourced-marquee {
+    overflow: hidden;
+    white-space: nowrap;
+    color: #b02a37;
+    font-weight: 700;
+}
+
+.pathology-outsourced-marquee-track {
+    display: flex;
+    width: max-content;
+    animation: pathology-outsourced-scroll 24s linear infinite;
+}
+
+.pathology-outsourced-marquee:hover .pathology-outsourced-marquee-track {
+    animation-play-state: paused;
+}
+
+@keyframes pathology-outsourced-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pathology-outsourced-marquee-track {
+        animation: none;
+    }
+
+    .pathology-outsourced-marquee-track [aria-hidden="true"] {
+        display: none;
+    }
+}
+
 </style>
 
 @endsection
@@ -230,6 +262,10 @@
                         <i class="ri-whatsapp-line"></i>
                         Send Now
                     </button>
+                </div>
+
+                <div id="pathologyOutsourcedMarquee" class="pathology-outsourced-marquee alert alert-warning py-2 px-3 mb-3 d-none" aria-label="Tests being performed by an outside laboratory">
+                    <span class="pathology-outsourced-marquee-track"></span>
                 </div>
 
                 <div id="pathologyReportsWrap" style="display:none;"></div>

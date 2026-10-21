@@ -18,12 +18,23 @@ Diagnostic Invoice
     /* Invoice table */
     #invoiceTable {
         font-size: 11px;
+        table-layout: fixed;
+        min-width: 1320px;
     }
 
     #invoiceTable th,
     #invoiceTable td {
         padding: 6px 8px !important;
         vertical-align: middle;
+    }
+
+    #invoiceTable th:nth-child(-n+2),
+    #invoiceTable td:nth-child(-n+2) {
+        white-space: nowrap;
+    }
+
+    #invoiceTable .invoice-action-cell {
+        white-space: nowrap;
     }
 
     /* DataTables controls */
@@ -135,20 +146,36 @@ Diagnostic Invoice
                 <table class="table table-bordered align-middle"
                        id="invoiceTable">
 
+                    <colgroup>
+                        <col style="width: 115px;">
+                        <col style="width: 110px;">
+                        <col style="width: 180px;">
+                        <col style="width: 85px;">
+                        <col style="width: 85px;">
+                        <col style="width: 75px;">
+                        <col style="width: 75px;">
+                        <col style="width: 75px;">
+                        <col style="width: 75px;">
+                        <col style="width: 75px;">
+                        <col style="width: 85px;">
+                        <col style="width: 80px;">
+                        <col style="width: 205px;">
+                    </colgroup>
+
                     <thead class="table-light">
 
                         <tr>
 
-                            <th>Inv No</th>
+                            <th>Invoice No.</th>
 
-                            <th>PID</th>
+                            <th>Patient ID</th>
 
-                            <th>Patient</th>
+                            <th>Patient Name</th>
 
                            
 
-                           <th>Inv Dt</th>
-                            <th>Test Dt</th>
+                           <th>Invoice Date</th>
+                            <th>Test Date</th>
 
                             <th>Total</th>
 
@@ -156,7 +183,7 @@ Diagnostic Invoice
 
                             <th>Paid</th>
                             <th>Due</th>
-                            <th>Dr Pay</th>
+                            <th>Paid to Doctor</th>
                            
                             <th>Status</th>
                             <th>WA</th>

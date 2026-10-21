@@ -86,6 +86,23 @@ class PathologyReportController extends Controller
             ]);
         }
 
+        $outsourcedItems = DB::table('invoice_details as d')
+            ->join('invoice_item_details as iid', function ($join) {
+                $join->on('iid.item_code', '=', 'd.item_code')
+                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+            })
+            ->where('d.invoice_no', $invoice->invoice_no)
+            ->where('d.item_code', self::ITEM_CODE)
+            ->where('iid.is_package', 0)
+            ->where('iid.is_outsourced', 1)
+            ->where('iid.is_report_not_required', 0)
+            ->whereRaw(\App\Support\ReportableLines::sql())
+            ->orderBy('d.line_no')
+            ->pluck('d.item_description')
+            ->filter()
+            ->unique()
+            ->values();
+
         // Confirmed under the OLD analyte-grid system before this feature
         // existed -- there is no data for it in the new tables at all, so
         // stop here and let the frontend show the legacy read-only card
@@ -98,6 +115,7 @@ class PathologyReportController extends Controller
                 'invoice' => $this->invoicePayload($invoice),
                 'legacy_confirmed' => true,
                 'groups' => [],
+                'outsourced_items' => $outsourcedItems,
                 'pathology_whatsapp' => ['sent' => false, 'sent_at' => null],
             ]);
         }
@@ -136,6 +154,7 @@ class PathologyReportController extends Controller
                 'invoice' => $this->invoicePayload($invoice),
                 'legacy_confirmed' => false,
                 'groups' => [],
+                'outsourced_items' => $outsourcedItems,
                 'pathology_whatsapp' => ['sent' => false, 'sent_at' => null],
             ]);
         }
@@ -448,6 +467,7 @@ class PathologyReportController extends Controller
             'invoice' => $this->invoicePayload($invoice),
             'legacy_confirmed' => false,
             'groups' => $groups,
+            'outsourced_items' => $outsourcedItems,
             'pathology_whatsapp' => $this->pathologyWhatsappStatus($invoice->invoice_no),
             'can_delete_reports' => optional(Auth::user())->role === 'Admin',
             'key_parameters' => $keyParameters,
