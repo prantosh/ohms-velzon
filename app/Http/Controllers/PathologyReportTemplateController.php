@@ -53,9 +53,15 @@ class PathologyReportTemplateController extends Controller
         // text already, so it's passed straight through for the frontend
         // to decode.
         $keyParameters = DB::table('key_parameters')
+            ->leftJoin('invoice_item_details as item', 'item.item_code_sub', '=', 'key_parameters.item_code_sub')
             ->where('is_active', true)
             ->orderBy('sort_order')
-            ->get(['item_code_sub', 'parameter_name', 'uom', 'trigger_item_code_subs']);
+            ->get([
+                'key_parameters.item_code_sub',
+                'item.item_description_sub as parameter_name',
+                'key_parameters.uom',
+                'key_parameters.trigger_item_code_subs',
+            ]);
 
         return view('apps-pathology-report-template', compact('testGroups', 'keyParameters'));
     }

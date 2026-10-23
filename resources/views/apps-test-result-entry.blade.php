@@ -525,8 +525,8 @@
 
 <script src="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.umd.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/test-result-entry.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/test-result-entry.init.js') }}?v={{ filemtime(public_path('build/js/pages/test-result-entry.init.js')) }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/test-result-entry-dashboard.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/test-result-entry-dashboard.init.js') }}?v={{ filemtime(public_path('build/js/pages/test-result-entry-dashboard.init.js')) }}"></script>
 
 @endsection

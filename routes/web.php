@@ -49,6 +49,7 @@ use App\Http\Controllers\NonPathologyReportController;
 use App\Http\Controllers\NonPathologyReportTemplateController;
 use App\Http\Controllers\PathologyReportTemplateController;
 use App\Http\Controllers\PathologyReportController;
+use App\Http\Controllers\KeyParameterController;
 use App\Http\Controllers\TestReportDashboardController;
 use App\Http\Controllers\DiagnosticTestReportController;
 use App\Http\Controllers\AmbulanceDestinationController;
@@ -103,7 +104,17 @@ use App\Http\Controllers\EmployeePerformanceController;
 use App\Http\Controllers\InvoiceCancellationHistoryController;
 use App\Http\Controllers\ReportingGroupController;
 
-
+Route::middleware(['auth'])
+    ->prefix('pathology-key-parameters')
+    ->name('pathology-key-parameters.')
+    ->controller(KeyParameterController::class)
+    ->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/list', 'list')->name('list');
+        Route::get('/options', 'options')->name('options');
+        Route::post('/save', 'save')->name('save');
+        Route::post('/reorder', 'reorder')->name('reorder');
+    });
 
 /*
 |--------------------------------------------------------------------------

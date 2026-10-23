@@ -1905,7 +1905,21 @@ $(document).on(
 
                 buildTestDropdown(newRow.find('.test'), categoryTests);
 
-                newRow.find('.test').val(testData.components[i].item_code_sub);
+                let componentTest =
+                    newRow.find('.test');
+
+                if (componentTest.find('option').filter(function () {
+                    return $(this).val() === testData.components[i].item_code_sub;
+                }).length === 0) {
+                    componentTest.append(
+                        $('<option>', {
+                            value: testData.components[i].item_code_sub,
+                            text: testData.components[i].item_description_sub
+                        })
+                    );
+                }
+
+                componentTest.val(testData.components[i].item_code_sub);
 
                 populateTestRow(newRow, testData.components[i], true);
 

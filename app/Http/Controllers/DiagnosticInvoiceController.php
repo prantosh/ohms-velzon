@@ -280,12 +280,19 @@ class DiagnosticInvoiceController extends Controller
 
     public function getTests($itemCode)
     {
-        $tests = InvoiceItemDetail::where('item_code', $itemCode)
+        $query = InvoiceItemDetail::where('item_code', $itemCode)
+            ->where('status', 'Y');
 
-            ->where('status', 'Y')
+        // Manually priced categories intentionally use a zero master rate;
+        // their amount is entered during invoice creation. For regular
+        // categories, zero-rated items are report-only and must not be
+        // offered as individually selectable invoice lines.
+        if (!$this->isManualDiagnosticItem($itemCode)) {
+            $query->where('rate', '<>', 0);
+        }
 
+        $tests = $query
             ->orderBy('item_description_sub')
-
             ->get([
                 'id',
                 'item_code_sub',
@@ -462,8 +469,9 @@ class DiagnosticInvoiceController extends Controller
                 ->where('authorised', 'YES')
                 ->pluck('id')
                 ->all();
+            $doctorPaymentRulesByItem = [];
 
-            foreach ($tests as $test) {
+            foreach ($tests as &$test) {
 
                 $manualDiscount =
                     (float) ($test['additional_discount_percent'] ?? 0) +
@@ -480,18 +488,81 @@ class DiagnosticInvoiceController extends Controller
                     ], 422);
                 }
 
-                // The doctor's payable for this item is fixed per the
-                // master table regardless of discount, so a discount can
-                // never push the patient's payable for that item below
-                // what's owed to the doctor -- otherwise ABSSRK would be
-                // paying the doctor more than it collected for the item.
-                // Exempted when the doctor is waiving their fee for this
-                // line entirely (doctor_payment_waived) -- there the patient
-                // amount is *expected* to drop below the scheduled figure,
-                // by design.
-                $doctorPayable = (float) ($test['payment_value'] ?? 0);
-
                 $isManualTest = $this->isManualDiagnosticItem($test['item_code'] ?? null);
+                $hasDoctorRule = false;
+
+                if (!$isManualTest) {
+                    $itemCodeSub = $test['item_code_sub'] ?? '';
+                    if (!array_key_exists($itemCodeSub, $doctorPaymentRulesByItem)) {
+                        $doctorPaymentRulesByItem[$itemCodeSub] = DB::table('doctor_test_payment_masters')
+                            ->where('item_code_sub', $itemCodeSub)
+                            ->where('status', 'A')
+                            ->lockForUpdate()
+                            ->get(['doctor_id', 'payment_value']);
+                    }
+
+                    $paymentRules = $doctorPaymentRulesByItem[$itemCodeSub];
+                    $hasDoctorRule = $paymentRules->isNotEmpty();
+
+                    if ($hasDoctorRule) {
+                        $selectedDoctorId = (string) ($test['doctor_id'] ?? '');
+                        if ($selectedDoctorId === '') {
+                            DB::rollBack();
+
+                            return response()->json([
+                                'status' => false,
+                                'message' => 'Select a Doctor for "' . ($test['test_name'] ?? 'a test') .
+                                    '" -- it has a doctor payment rule configured.'
+                            ], 422);
+                        }
+
+                        $doctorRule = $paymentRules->first(
+                            fn ($rule) => (string) $rule->doctor_id === $selectedDoctorId
+                        );
+
+                        if (!$doctorRule) {
+                            DB::rollBack();
+
+                            return response()->json([
+                                'status' => false,
+                                'message' => 'The selected doctor does not have an active payment rule for "' .
+                                    ($test['test_name'] ?? $itemCodeSub) . '". Select a doctor with a configured rate and try again.'
+                            ], 422);
+                        }
+
+                        $configuredPayable = round((float) $doctorRule->payment_value, 2);
+                        $submittedPayable = round((float) ($test['payment_value'] ?? 0), 2);
+                        $isWaived = !empty($test['doctor_payment_waived']);
+
+                        if (!$isWaived && $submittedPayable !== $configuredPayable) {
+                            DB::rollBack();
+
+                            return response()->json([
+                                'status' => false,
+                                'message' => 'The doctor payment for "' . ($test['test_name'] ?? $itemCodeSub) .
+                                    '" must match the configured rate of ' . number_format($configuredPayable, 2) .
+                                    '. Refresh the invoice and try again.'
+                            ], 422);
+                        }
+
+                        // Use the server-validated rule for all subsequent
+                        // invoice and payable calculations, including waivers.
+                        $test['payment_value'] = $configuredPayable;
+                    } elseif (!empty($test['doctor_id'])
+                        || round((float) ($test['payment_value'] ?? 0), 2) !== 0.0) {
+                        DB::rollBack();
+
+                        return response()->json([
+                            'status' => false,
+                            'message' => 'No active doctor payment rule exists for "' .
+                                ($test['test_name'] ?? $itemCodeSub) . '". Remove the doctor payment or configure an active rule before saving.'
+                        ], 422);
+                    }
+                }
+
+                // The doctor's payable for a configured test comes from its
+                // selected doctor's rule, not from the submitted form value.
+                $doctorPayable = (float) ($test['payment_value'] ?? 0);
 
                 // Recomputed from rate/discounts (rounded to the nearest 10)
                 // rather than trusting the submitted 'amount' -- see
@@ -512,28 +583,9 @@ class DiagnosticInvoiceController extends Controller
                     ], 422);
                 }
 
-                // Mirrors the client-side check in apps-diagnostic-invoice.init.js
-                // (doctor selection is mandatory whenever the doctor dropdown got
-                // populated, i.e. a payment rule exists) -- but re-derived here
-                // from doctor_test_payment_masters directly rather than trusting
-                // the submitted doctor_id/payment_value, since a request that
-                // skips the browser entirely could otherwise leave a
-                // doctor-payable line with no doctor attributed to it at all.
-                $hasDoctorRule = !$isWaived && DB::table('doctor_test_payment_masters')
-                    ->where('item_code_sub', $test['item_code_sub'] ?? null)
-                    ->where('status', 'A')
-                    ->exists();
-
-                if ($hasDoctorRule && empty($test['doctor_id'])) {
-
-                    DB::rollBack();
-
-                    return response()->json([
-                        'status' => false,
-                        'message' => 'Select a Doctor for "' . ($test['test_name'] ?? 'a test') . '" -- it has a doctor payment rule configured.'
-                    ], 422);
-                }
             }
+            unset($test);
+            $request->merge(['tests' => $tests]);
 
             $firstIsPathology = null;
 

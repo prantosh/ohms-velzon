@@ -25,7 +25,7 @@ class KeyParameterService
 
     /**
      * Which key parameters apply to this set of billed item_code_subs,
-     * grouped by group_label -- e.g. billing PAT176 (LFT) returns all six
+     * grouped by group_label -- e.g. billing PAT176 (LFT) returns all ten
      * LFT sub-parameters even though only PAT176 itself was billed.
      *
      * @return \Illuminate\Support\Collection<int, \Illuminate\Support\Collection>
@@ -38,12 +38,31 @@ class KeyParameterService
         }
 
         return DB::table('key_parameters')
+            ->leftJoin('invoice_item_details as report_item', 'report_item.item_code_sub', '=', 'key_parameters.item_code_sub')
+            ->leftJoin('invoice_item_details as group_item', 'group_item.item_code_sub', '=', 'key_parameters.group_item_code_sub')
             ->where('is_active', true)
             ->orderBy('sort_order')
-            ->get()
+            ->get([
+                'key_parameters.*',
+                'report_item.item_description_sub as configured_report_item_name',
+                'group_item.item_description_sub as configured_group_name',
+            ])
             ->filter(function ($param) use ($billedItemCodeSubs) {
                 $triggers = json_decode($param->trigger_item_code_subs, true) ?: [];
+                if (!empty($param->group_item_code_sub)) {
+                    $triggers[] = $param->group_item_code_sub;
+                }
                 return !empty(array_intersect($triggers, $billedItemCodeSubs));
+            })
+            ->map(function ($param) {
+                if ($param->configured_report_item_name !== null) {
+                    $param->parameter_name = $param->configured_report_item_name;
+                }
+                if (!empty($param->group_item_code_sub) && $param->configured_group_name !== null) {
+                    $param->group_label = $param->configured_group_name;
+                }
+
+                return $param;
             })
             ->groupBy('group_label');
     }
@@ -151,7 +170,7 @@ class KeyParameterService
             $rows[] = [
                 'patient_id' => $invoice->patient_id,
                 'item_code_sub' => $itemCodeSub,
-                'parameter_name' => $meta->parameter_name ?? $itemCodeSub,
+                'parameter_name' => $item->item_description_sub ?? $meta->parameter_name ?? $itemCodeSub,
                 'result_value' => trim((string) $resultValue),
                 'uom' => $meta->uom ?? ($item->uom ?? null),
                 'reference_range' => $range,
@@ -235,7 +254,7 @@ class KeyParameterService
             $range = $this->combinedRangeHtml($item);
 
             $data[$code] = [
-                'parameter_name' => $meta->parameter_name ?? ($item->item_description_sub ?? $code),
+                'parameter_name' => $item->item_description_sub ?? $meta->parameter_name ?? $code,
                 'uom' => $meta->uom ?? null,
                 'range' => $range,
                 'method' => $item->method ?? null,

@@ -210,6 +210,11 @@
                                         <a href="{{ route('test-parameter.index') }}" class="nav-link">@lang('translation.testparametermaster')</a>
                                         </li>
                                         @endif
+                                        @if(Auth::user()->role === 'Admin')
+                                        <li class="nav-item">
+                                        <a href="{{ route('pathology-key-parameters.index') }}" class="nav-link">Pathology Key Parameter Groups</a>
+                                        </li>
+                                        @endif
                                     </ul>
                                 </div>
                             </li>
