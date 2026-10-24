@@ -101,6 +101,11 @@
                                         <a href="{{ route('system-log.index') }}" class="nav-link">@lang('translation.systemlog')</a>
                                         </li>
                             @endif
+                            @if(optional(Auth::user())->role === 'Admin')
+                            <li class="nav-item">
+                                        <a href="{{ route('system-migration.index') }}" class="nav-link">Database Migrations</a>
+                                        </li>
+                            @endif
                             @if(is_null($allowedPages) || in_array('maintenance-mode', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('maintenance-mode.index') }}" class="nav-link">@lang('translation.maintenancemode')</a>

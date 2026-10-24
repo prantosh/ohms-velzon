@@ -40,11 +40,13 @@
                 <thead class="table-light">
                     <tr>
                         <th>Group invoice item / package</th>
+                        <th>Section</th>
                         <th>Report item</th>
                         <th>Invoice item</th>
                         <th>Rate</th>
                         <th>Captured when billed item is</th>
                         <th>Unit</th>
+                        <th>Default value</th>
                         <th>Order</th>
                         <th>Status</th>
                         <th>Action</th>
@@ -80,6 +82,17 @@
                             <label for="parameterItem" class="form-label">Report item</label>
                             <select id="parameterItem" class="form-select" required></select>
                             <small class="text-muted">Choose an invoice item to capture under the group. Its rate may be zero.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="sectionLabel" class="form-label">Section heading</label>
+                            <input id="sectionLabel" class="form-control" maxlength="60" list="sectionLabelOptions" placeholder="e.g. PHYSICAL">
+                            <datalist id="sectionLabelOptions"></datalist>
+                            <small class="text-muted">Optional. Printed as a heading row above this item when it differs from the previous item's section.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="defaultValue" class="form-label">Default value</label>
+                            <input id="defaultValue" class="form-control" maxlength="100" placeholder="e.g. Nil">
+                            <small class="text-muted">Optional. Pre-filled on new reports; staff can change it.</small>
                         </div>
                         <div class="col-md-3">
                             <label for="parameterUom" class="form-label">Unit</label>
@@ -132,7 +145,7 @@
     let testItems = [];
     let groupItems = [];
     let parameters = [];
-    let editingCode = null;
+    let editingId = null;
 
     const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
@@ -207,6 +220,9 @@
         }
 
         parameters = list.data;
+        document.getElementById('sectionLabelOptions').innerHTML = [...new Set(
+            parameters.map(parameter => parameter.section_label).filter(Boolean)
+        )].map(section => `<option value="${escapeHtml(section)}"></option>`).join('');
         const selectedGroup = groupFilter.value;
         const groups = list.groups;
         groupFilter.innerHTML = '<option value="">All invoice items</option>' +
@@ -242,26 +258,28 @@
                 : '';
             return `<tr>
                 <td>${escapeHtml(groupTrigger)}</td>
+                <td>${escapeHtml(parameter.section_label || '—')}</td>
                 <td>${escapeHtml(parameter.report_item_name || parameter.item_description_sub || 'Unknown invoice item')}</td>
                 <td>${escapeHtml(parameter.item_description_sub || 'Unknown invoice item')} (${escapeHtml(parameter.item_code_sub)})</td>
                 <td>${escapeHtml(Number(parameter.item_rate || 0).toFixed(2))}</td>
                 <td>${escapeHtml(groupTrigger === 'Standalone item' ? `${parameter.item_description_sub} (${parameter.item_code_sub})` : `${groupTrigger}${individualTrigger}`)}</td>
                 <td>${escapeHtml(parameter.uom || '—')}</td>
+                <td>${escapeHtml(parameter.default_value || '—')}</td>
                 <td>
                     ${escapeHtml(parameter.sort_order)}
                     ${canReorder && parameter.group_item_code_sub ? `
-                        <button class="btn btn-sm btn-outline-secondary reorder-button" data-code="${escapeHtml(parameter.item_code_sub)}" data-direction="-1" type="button" aria-label="Move ${escapeHtml(parameter.report_item_name || parameter.item_description_sub)} up" ${groupIndex === 0 ? 'disabled' : ''}>Up</button>
-                        <button class="btn btn-sm btn-outline-secondary reorder-button" data-code="${escapeHtml(parameter.item_code_sub)}" data-direction="1" type="button" aria-label="Move ${escapeHtml(parameter.report_item_name || parameter.item_description_sub)} down" ${groupIndex === groupParameters.length - 1 ? 'disabled' : ''}>Down</button>
+                        <button class="btn btn-sm btn-outline-secondary reorder-button" data-id="${escapeHtml(parameter.id)}" data-direction="-1" type="button" aria-label="Move ${escapeHtml(parameter.report_item_name || parameter.item_description_sub)} up" ${groupIndex === 0 ? 'disabled' : ''}>Up</button>
+                        <button class="btn btn-sm btn-outline-secondary reorder-button" data-id="${escapeHtml(parameter.id)}" data-direction="1" type="button" aria-label="Move ${escapeHtml(parameter.report_item_name || parameter.item_description_sub)} down" ${groupIndex === groupParameters.length - 1 ? 'disabled' : ''}>Down</button>
                     ` : ''}
                 </td>
                 <td><span class="badge ${parameter.is_active ? 'bg-success' : 'bg-secondary'}">${parameter.is_active ? 'Active' : 'Inactive'}</span></td>
-                <td><button class="btn btn-sm btn-outline-primary edit-button" data-code="${escapeHtml(parameter.item_code_sub)}" type="button">Edit</button></td>
+                <td><button class="btn btn-sm btn-outline-primary edit-button" data-id="${escapeHtml(parameter.id)}" type="button">Edit</button></td>
             </tr>`;
         }).join('');
 
         document.getElementById('emptyState').classList.toggle('d-none', parameters.length > 0);
         rowsBody.querySelectorAll('.edit-button').forEach(button => {
-            button.addEventListener('click', () => editParameter(button.dataset.code));
+            button.addEventListener('click', () => editParameter(Number(button.dataset.id)));
         });
         rowsBody.querySelectorAll('.reorder-button').forEach(button => {
             button.addEventListener('click', () => moveParameter(button));
@@ -269,12 +287,12 @@
     }
 
     async function moveParameter(button) {
-        const parameter = parameters.find(item => item.item_code_sub === button.dataset.code);
+        const parameter = parameters.find(item => Number(item.id) === Number(button.dataset.id));
         if (!parameter || !parameter.group_item_code_sub) return;
         const groupParameters = parameters.filter(item =>
             item.group_item_code_sub === parameter.group_item_code_sub
         );
-        const currentIndex = groupParameters.findIndex(item => item.item_code_sub === parameter.item_code_sub);
+        const currentIndex = groupParameters.findIndex(item => item.id === parameter.id);
         const targetIndex = currentIndex + Number(button.dataset.direction);
         if (targetIndex < 0 || targetIndex >= groupParameters.length) return;
 
@@ -297,7 +315,7 @@
     }
 
     function openNewForm() {
-        editingCode = null;
+        editingId = null;
         document.getElementById('parameterForm').reset();
         document.getElementById('modalTitle').textContent = 'Add report item';
         document.getElementById('parameterActive').checked = true;
@@ -309,10 +327,11 @@
         modal.show();
     }
 
-    function editParameter(code) {
-        const parameter = parameters.find(row => row.item_code_sub === code);
+    function editParameter(id) {
+        const parameter = parameters.find(row => Number(row.id) === id);
         if (!parameter) return;
-        editingCode = code;
+        const code = parameter.item_code_sub;
+        editingId = id;
         document.getElementById('modalTitle').textContent = 'Edit report item';
         groupItemSelect.disabled = false;
         itemSelect.disabled = true;
@@ -320,6 +339,8 @@
         itemSelect.value = code;
         groupItemSelect.value = parameter.group_item_code_sub || '';
         document.getElementById('parameterUom').value = parameter.uom || '';
+        document.getElementById('sectionLabel').value = parameter.section_label || '';
+        document.getElementById('defaultValue').value = parameter.default_value || '';
         document.getElementById('sortOrder').value = parameter.sort_order;
         document.getElementById('parameterActive').checked = Boolean(parameter.is_active);
         document.getElementById('triggerWhenItemBilled').checked =
@@ -353,9 +374,12 @@
                 method: 'POST',
                 headers: { 'X-CSRF-TOKEN': csrfToken },
                 body: JSON.stringify({
-                    item_code_sub: editingCode || itemSelect.value,
+                    id: editingId,
+                    item_code_sub: itemSelect.value,
                     group_item_code_sub: groupItemSelect.value || null,
                     uom: document.getElementById('parameterUom').value,
+                    section_label: document.getElementById('sectionLabel').value,
+                    default_value: document.getElementById('defaultValue').value,
                     trigger_when_item_billed: document.getElementById('triggerWhenItemBilled').checked,
                     sort_order: document.getElementById('sortOrder').value,
                     is_active: document.getElementById('parameterActive').checked

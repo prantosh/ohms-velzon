@@ -479,8 +479,11 @@ class InvoiceItemDetailController extends Controller
         // if any -- lets the edit form show/prefill it instead of needing a
         // separate screen. Keyed by item_code_sub, same identity the
         // key_parameters table uses.
+        // An item can be tracked under several groups (Key Parameter
+        // Master); this form edits only its original (oldest) row.
         $item->key_parameter = DB::table('key_parameters')
             ->where('item_code_sub', $item->item_code_sub)
+            ->orderBy('id')
             ->first();
 
         return response()->json($item);
@@ -701,7 +704,9 @@ class InvoiceItemDetailController extends Controller
      */
     private function syncKeyParameter(InvoiceItemDetail $item, Request $request): void
     {
-        $existing = DB::table('key_parameters')->where('item_code_sub', $item->item_code_sub)->first();
+        // Oldest row only -- the same one show() loads into the form; rows
+        // added under other groups in Key Parameter Master are left alone.
+        $existing = DB::table('key_parameters')->where('item_code_sub', $item->item_code_sub)->orderBy('id')->first();
 
         $wantsTracking = $request->boolean('kp_enabled')
             || (!$existing && trim((string) $item->uom) !== '');

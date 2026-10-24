@@ -60,9 +60,15 @@ Create Diagnostic Invoice
         transition: all .2s;
     }
 
-        .patientRow:hover {
+        .patientRow:hover,
+        .patientRow:focus {
             background-color: #cfe2ff !important;
             transform: scale(1.01);
+        }
+
+        .patientRow:focus {
+            outline: 2px solid #0d6efd;
+            outline-offset: -2px;
         }
 </style>
 
@@ -570,7 +576,7 @@ Create Diagnostic Invoice
             </a>
 
             <button type="submit" id="saveInvoiceBtn"
-                    class="btn btn-success">
+                    class="btn btn-success d-none">
 
                 Save Invoice
 
@@ -740,6 +746,6 @@ Select
 <script src="{{ URL::asset('build/libs/flatpickr/flatpickr.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/pages/flatpickr-dmy.init.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}?v={{ filemtime(public_path('build/js/pages/apps-diagnostic-invoice.init.js')) }}"></script>
 
 @endsection

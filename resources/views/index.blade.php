@@ -120,6 +120,13 @@
             <h5>Today's Invoices By {{ $userSummary['user_name'] }}</h5>
 
             <div class="ms-auto text-end">
+                <div class="fw-bold text-danger">
+                    ₹ {{ number_format($userSummary['doctor_payable_pending'], 0) }}
+                </div>
+                <small class="text-muted">Pending Payable To Doctor</small>
+            </div>
+
+            <div class="ms-4 text-end">
                 <div class="fw-bold text-success">
                     ₹ {{ number_format($userSummary['cash_in_hand'], 0) }}
                 </div>
@@ -153,6 +160,13 @@
         <h5>Today's Invoices By Me</h5>
 
         <div class="ms-auto text-end">
+            <div class="fw-bold text-danger">
+                ₹ {{ number_format($doctorPayablePending, 0) }}
+            </div>
+            <small class="text-muted">Pending Payable To Doctor</small>
+        </div>
+
+        <div class="ms-4 text-end">
             <div class="fw-bold text-success">
                 ₹ {{ number_format($cashInHand, 0) }}
             </div>

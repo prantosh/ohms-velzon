@@ -243,6 +243,18 @@ class DoctorPayableByUserController extends Controller
     }
 
     /**
+     * Total still owed to doctors out of money this user has already
+     * collected -- the same unsettled balance this page shows for one user
+     * (pendingBaseQuery(), all dates), surfaced next to Cash In Hand on the
+     * home dashboard.
+     */
+    public function pendingBalanceForUser($userId): float
+    {
+        return round((float) $this->pendingBaseQuery($userId, false)
+            ->sum(DB::raw('doctor_payables.payable_amount - doctor_payables.paid_amount')), 2);
+    }
+
+    /**
      * The Settled base query (join + user filter), shared by buildDashboard()
      * and dailySummary() -- date/range scoping is applied by each caller on
      * top of this.

@@ -155,9 +155,12 @@ class KeyParameterController extends Controller
             ->all();
 
         $validated = $request->validate([
+            'id' => ['nullable', 'integer', Rule::exists('key_parameters', 'id')],
             'item_code_sub' => ['required', 'string', Rule::in($eligibleItemCodes)],
             'group_item_code_sub' => ['nullable', 'string', Rule::in($groupItemCodes)],
             'uom' => ['nullable', 'string', 'max:50'],
+            'section_label' => ['nullable', 'string', 'max:60'],
+            'default_value' => ['nullable', 'string', 'max:100'],
             'trigger_when_item_billed' => ['required', 'boolean'],
             'sort_order' => ['required', 'integer', 'min:0', 'max:65535'],
             'is_active' => ['required', 'boolean'],
@@ -173,6 +176,8 @@ class KeyParameterController extends Controller
             ]);
         }
         $validated['uom'] = filled($validated['uom'] ?? null) ? trim($validated['uom']) : null;
+        $validated['section_label'] = filled($validated['section_label'] ?? null) ? trim($validated['section_label']) : null;
+        $validated['default_value'] = filled($validated['default_value'] ?? null) ? trim($validated['default_value']) : null;
         $validated['is_active'] = (bool) $validated['is_active'];
 
         $item = InvoiceItemDetail::where('item_code_sub', $validated['item_code_sub'])->firstOrFail();
@@ -197,7 +202,30 @@ class KeyParameterController extends Controller
         }
         $validated['trigger_item_code_subs'] = array_values(array_unique($validated['trigger_item_code_subs']));
 
-        $existing = KeyParameter::where('item_code_sub', $validated['item_code_sub'])->first();
+        // A row is identified by its id -- the same item can be tracked
+        // under several groups (e.g. HB under CBC and Blood RE), so the item
+        // code alone no longer picks one row.
+        $existing = filled($validated['id'] ?? null) ? KeyParameter::find($validated['id']) : null;
+        unset($validated['id']);
+
+        if ($existing && $existing->item_code_sub !== $validated['item_code_sub']) {
+            throw ValidationException::withMessages([
+                'item_code_sub' => 'The report item of an existing entry cannot be changed.',
+            ]);
+        }
+
+        $duplicate = KeyParameter::where('item_code_sub', $validated['item_code_sub'])
+            ->where(fn ($q) => $validated['group_item_code_sub']
+                ? $q->where('group_item_code_sub', $validated['group_item_code_sub'])
+                : $q->whereNull('group_item_code_sub'))
+            ->when($existing, fn ($q) => $q->where('id', '!=', $existing->id))
+            ->exists();
+
+        if ($duplicate) {
+            throw ValidationException::withMessages([
+                'item_code_sub' => 'This report item is already in the selected group.',
+            ]);
+        }
 
         $oldData = null;
         $parameter = null;

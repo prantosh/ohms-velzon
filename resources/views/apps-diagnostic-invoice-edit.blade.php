@@ -1048,7 +1048,7 @@ Select
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}?v={{ filemtime(public_path('build/js/pages/apps-diagnostic-invoice.init.js')) }}"></script>
 
 
 @endsection

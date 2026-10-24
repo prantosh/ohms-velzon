@@ -285,6 +285,7 @@ class HomeController extends Controller
                     'user_name' => $name,
                     'tiles' => $this->buildInvoiceSummaryTiles($userId, $today),
                     'cash_in_hand' => DB::table('users')->where('id', $userId)->value('cash_in_hand') ?? 0,
+                    'doctor_payable_pending' => app(\App\Http\Controllers\DoctorPayableByUserController::class)->pendingBalanceForUser($userId),
                 ];
             })->values();
 
@@ -433,6 +434,10 @@ class HomeController extends Controller
 
         $cashInHand = DB::table('users')->where('id', Auth::id())->value('cash_in_hand') ?? 0;
 
+        $doctorPayablePending = $isAdmin
+            ? 0
+            : app(\App\Http\Controllers\DoctorPayableByUserController::class)->pendingBalanceForUser(Auth::id());
+
         return view(
             'index',
             compact(
@@ -441,6 +446,7 @@ class HomeController extends Controller
                 'myInvoiceSummary',
                 'allUserInvoiceSummaries',
                 'cashInHand',
+                'doctorPayablePending',
                 'todayCollection',
                 'pendingDue',
                 'doctorAppointments',

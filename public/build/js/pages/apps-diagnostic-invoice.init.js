@@ -2290,7 +2290,22 @@ $(document).on(
 |--------------------------------------------------------------------------
 */
 
+// Save Invoice stays hidden until at least one row has a test picked --
+// an invoice with no test items can't be saved anyway.
+function toggleSaveInvoiceBtn() {
+
+    let hasTest = $('#testTable tbody tr.mainRow .test').filter(function () {
+        return $(this).val();
+    }).length > 0;
+
+    $('#saveInvoiceBtn').toggleClass('d-none', !hasTest);
+}
+
+$(document).on('change', '#testTable .test', toggleSaveInvoiceBtn);
+
 function calculateTotal() {
+    toggleSaveInvoiceBtn();
+
     let total = 0;
 
     let totalDiscount = 0;
@@ -3479,6 +3494,7 @@ $(document).on('click', '#searchPatient', function () {
 
                         <tr
                             class="patientRow ${i % 2 === 0 ? 'table-light' : 'table-info'}"
+                            tabindex="0"
                             data-patient-id="${row.patient_id}">
 
                             <td class="text-center">
@@ -3548,9 +3564,11 @@ $(document).on('click', '#searchPatient', function () {
 
                 $('#patientSearchResult').show();
 
-               
+
 
                 $('#patientSearchResult').show();
+
+                $('#search_mobile_no').data('searched-mobile', mobile);
             }
             else {
 
@@ -3627,9 +3645,26 @@ $(document).on('input', '#search_mobile_no', function () {
 
 $(document).on('keydown', '#search_mobile_no', function (e) {
 
-    if (e.key === 'Tab') {
+    if (e.key === 'Tab' || e.key === 'Enter') {
 
         let mobile = $(this).val().trim();
+
+        // Patient list already showing for this same number (e.g. searched
+        // with Enter) -- Tab moves into the list instead of searching again,
+        // so the patient can be picked with Up/Down + Enter.
+        let firstRow = $('#patientListBody .patientRow:first');
+
+        if (
+            e.key === 'Tab'
+            && !e.shiftKey
+            && firstRow.length
+            && $('#patientSearchResult').is(':visible')
+            && $(this).data('searched-mobile') === mobile
+        ) {
+            e.preventDefault();
+            firstRow.trigger('focus');
+            return;
+        }
 
         if (!/^[1-9][0-9]{9}$/.test(mobile)) {
 
@@ -3684,6 +3719,30 @@ $(document).on(
         $('#patient_name').focus();
     }
 );
+// Keyboard selection in the patient list: Up/Down moves between patients,
+// Enter picks the focused one (same as clicking it). Keys pressed on the
+// row's own checkboxes are left alone.
+$(document).on('keydown', '.patientRow', function (e) {
+
+    if (e.target !== this) return;
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+
+        e.preventDefault();
+
+        let target = e.key === 'ArrowDown'
+            ? $(this).nextAll('.patientRow:first')
+            : $(this).prevAll('.patientRow:first');
+
+        if (target.length) target.trigger('focus');
+
+    } else if (e.key === 'Enter') {
+
+        e.preventDefault();
+        $(this).trigger('click');
+    }
+});
+
 $(document).on(
     'click',
     '.patientRow',

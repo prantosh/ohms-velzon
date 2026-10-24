@@ -139,10 +139,7 @@ class KeyParameterService
 
         $itemCodeSubs = array_keys($values);
 
-        $paramMeta = DB::table('key_parameters')
-            ->whereIn('item_code_sub', $itemCodeSubs)
-            ->get()
-            ->keyBy('item_code_sub');
+        $paramMeta = $this->paramMetaFor($itemCodeSubs, $this->findingItemCodeSubs($finding), $finding->invoice_no);
 
         // The test master's own range_male/range_female/range_common.
         $itemMaster = DB::table('invoice_item_details')
@@ -205,6 +202,69 @@ class KeyParameterService
      *
      * @return array<string, array{uom: ?string, current: ?string, history: array}>
      */
+    /**
+     * The key_parameters row for each item, keyed by item_code_sub. An item
+     * can be tracked under several groups (HB under both CBC and Blood RE),
+     * each with its own sort order and section -- the row used is the one
+     * whose group/triggers were billed on THIS report, else on this
+     * invoice, else the oldest row.
+     */
+    private function paramMetaFor(array $itemCodeSubs, array $findingItemCodeSubs, string $invoiceNo): \Illuminate\Support\Collection
+    {
+        $rowsByCode = DB::table('key_parameters')
+            ->whereIn('item_code_sub', $itemCodeSubs)
+            ->orderBy('id')
+            ->get()
+            ->groupBy('item_code_sub');
+
+        $invoiceItemCodeSubs = null;
+
+        $triggeredBy = function ($row, array $billed) {
+            $triggers = json_decode($row->trigger_item_code_subs ?? '[]', true) ?: [];
+            if (!empty($row->group_item_code_sub)) {
+                $triggers[] = $row->group_item_code_sub;
+            }
+            return !empty(array_intersect($triggers, $billed));
+        };
+
+        return $rowsByCode->map(function ($rows) use ($findingItemCodeSubs, $invoiceNo, &$invoiceItemCodeSubs, $triggeredBy) {
+
+            if ($rows->count() === 1) {
+                return $rows->first();
+            }
+
+            $match = $rows->first(fn ($row) => $triggeredBy($row, $findingItemCodeSubs));
+            if ($match) {
+                return $match;
+            }
+
+            $invoiceItemCodeSubs ??= DB::table('invoice_details')
+                ->where('invoice_no', $invoiceNo)
+                ->pluck('item_code_sub')
+                ->all();
+
+            return $rows->first(fn ($row) => $triggeredBy($row, $invoiceItemCodeSubs)) ?? $rows->first();
+        });
+    }
+
+    /**
+     * The billed item codes this report covers: a saved finding's own
+     * lines, or (for an unsaved preview draft, a plain stdClass) whatever
+     * the caller put in ->item_code_subs.
+     */
+    private function findingItemCodeSubs(object $finding): array
+    {
+        if (isset($finding->item_code_subs)) {
+            return array_values(array_filter((array) $finding->item_code_subs));
+        }
+
+        if ($finding instanceof PathologyReportFinding) {
+            return $finding->items->pluck('item_code_sub')->filter()->values()->all();
+        }
+
+        return [];
+    }
+
     public function tableDataFor(object $finding, Invoice $invoice): array
     {
         $current = $finding->key_parameter_values;
@@ -215,10 +275,7 @@ class KeyParameterService
 
         $itemCodeSubs = array_keys($current);
 
-        $paramMeta = DB::table('key_parameters')
-            ->whereIn('item_code_sub', $itemCodeSubs)
-            ->get()
-            ->keyBy('item_code_sub');
+        $paramMeta = $this->paramMetaFor($itemCodeSubs, $this->findingItemCodeSubs($finding), $invoice->invoice_no);
 
         // Combined range -- see combinedRangeHtml() -- needed here as
         // ready-to-print HTML so buildAutoTable() doesn't have to re-derive
@@ -259,6 +316,7 @@ class KeyParameterService
                 'range' => $range,
                 'method' => $item->method ?? null,
                 'sort_order' => $meta->sort_order ?? 0,
+                'section_label' => $meta->section_label ?? null,
                 'current' => $value,
                 'history' => $history[$code] ?? [],
                 'test_date' => ReportTestDates::clean($lineDates->get($code)) ?? $invoiceDate,
@@ -310,13 +368,25 @@ class KeyParameterService
         // fit it.
         $wordWrap = 'word-wrap:break-word;overflow-wrap:break-word;';
 
+        // A table where no row has a unit or a range at all (e.g. Urine
+        // RE: Colour / Straw, Protein / Nil) prints as just Investigation |
+        // Result -- two all-'-' columns would only add noise.
+        $twoColumn = collect($tableData)->every(fn ($info) => empty($info['uom']) && empty($info['range']));
+
+        // Two-column tables print every font 2pt larger than the base px
+        // sizes below -- with half the columns there's room, and the lab
+        // asked for the larger text on these (e.g. Urine RE).
+        $fontSize = fn (float $px) => $twoColumn
+            ? 'font-size:' . round($px * 0.75 + 2, 3) . 'pt;'
+            : 'font-size:' . $px . 'px;';
+
         // Light tint (not the data cells' own #F7FAFC, so the header still
         // reads as a distinct band above them) with a solid navy bottom
         // rule, bold black text sized bigger than the body content below
         // it (8px) so it reads as a clear heading rather than just another
         // row.
-        $headerCellStyle = 'background-color:#E3EBF3;border-color:#B8C8D4;border-width:1pt;border-bottom:1.4pt solid #1F4E78;padding:4.5pt 6pt;font-size:9.5px;' . $wordWrap;
-        $contentFontSize = 'font-size:8px;';
+        $headerCellStyle = 'background-color:#E3EBF3;border-color:#B8C8D4;border-width:1pt;border-bottom:1.4pt solid #1F4E78;padding:4.5pt 6pt;' . $fontSize(9.5) . $wordWrap;
+        $contentFontSize = $fontSize(8);
         // Percentages, not absolute inches -- paired with the table's own
         // width:100% below, this is what makes the table span exactly the
         // same left-to-right extent as every other table in this report
@@ -332,6 +402,13 @@ class KeyParameterService
         $resultValueWidth = 'width:15%;';
         $rangeWidth = 'width:40%;';
 
+        if ($twoColumn) {
+            $investigationWidth = 'width:50%;';
+            $resultValueWidth = 'width:50%;';
+        }
+
+        $columnCount = $twoColumn ? 2 : 4;
+
         $makeHeaderCell = function (string $text, string $widthStyle) use ($headerCellStyle) {
             $td = '<td style="' . $headerCellStyle . $widthStyle . '">';
             $td .= '<p style="text-align:center;"><span style="color:#000000;letter-spacing:0.4px;"><strong>' . e($text) . '</strong></span></p>';
@@ -345,9 +422,11 @@ class KeyParameterService
         // margin.
         $html = '<table style="border-width:0px;table-layout:fixed;width:100%;"><tbody><tr>';
         $html .= $makeHeaderCell('INVESTIGATION', $investigationWidth);
-        $html .= $makeHeaderCell('UNIT', $unitWidth);
         $html .= $makeHeaderCell('RESULT', $resultValueWidth);
-        $html .= $makeHeaderCell('REFERENCE RANGE', $rangeWidth);
+        if (!$twoColumn) {
+            $html .= $makeHeaderCell('UNIT', $unitWidth);
+            $html .= $makeHeaderCell('REFERENCE RANGE', $rangeWidth);
+        }
         $html .= '</tr>';
 
         $dataCellBorder = 'border-color:#B8C8D4;border-width:1pt;';
@@ -357,7 +436,25 @@ class KeyParameterService
             return '<td style="' . $style . '"><p style="text-align:center;">' . e($text) . '</p></td>';
         };
 
+        $currentSection = null;
+
         foreach ($tableData as $info) {
+
+            // A section heading (key_parameters.section_label, e.g. Urine
+            // RE's PHYSICAL / CHEMICAL / MICROSCOPIC) has no value of its
+            // own -- just a full-width row wherever the section changes,
+            // kept with the row below it across a page break.
+            $section = trim((string) ($info['section_label'] ?? ''));
+            if ($section !== '' && $section !== $currentSection) {
+                $html .= '<tr style="page-break-inside:avoid;page-break-after:avoid;">'
+                    . '<td colspan="' . $columnCount . '" style="' . $dataCellBorder . 'padding:4.5pt 6pt;' . $fontSize(8.5) . '">'
+                    // Extra space above every heading but the first, so each
+                    // section reads as its own block -- as a margin on the
+                    // <p>, since the PDF views force td padding with
+                    // !important.
+                    . '<p style="margin:' . ($currentSection === null ? '0' : '8pt 0 0') . ';color:#000000;"><strong><u>' . e($section) . '</u></strong></p></td></tr>';
+            }
+            $currentSection = $section !== '' ? $section : $currentSection;
 
             // Method prints right under the investigation name, same spot
             // and convention admin-authored templates already use for it
@@ -365,14 +462,13 @@ class KeyParameterService
             // method)" in a muted, smaller line below) -- just a plain
             // sibling <p>, not bold like the name itself.
             $methodLine = !empty($info['method'])
-                ? '<p style="margin:0;font-size:7.5px;color:#5B6570;font-weight:normal;"><strong>Method :</strong> ' . e($info['method']) . '</p>'
+                ? '<p style="margin:0;' . $fontSize(7.5) . 'color:#5B6570;font-weight:normal;"><strong>Method :</strong> ' . e($info['method']) . '</p>'
                 : '';
 
             $html .= '<tr>';
             $html .= '<td style="border-color:#B8C8D4;border-width:1pt;padding:4.5pt 6pt;' . $investigationWidth . $wordWrap . $contentFontSize . '">'
                 . '<p style="margin:0;font-weight:bold;color:#222222;">' . e($info['parameter_name']) . '</p>'
                 . $methodLine . '</td>';
-            $html .= $makeDataCell((string) ($info['uom'] ?: '-'), $unitWidth);
 
             $resultText = e((string) ($info['current'] !== null && $info['current'] !== '' ? $info['current'] : '-'));
 
@@ -382,12 +478,19 @@ class KeyParameterService
             // no invoice test_date either) says nothing rather than
             // guessing it matches.
             $testDoneNote = ($headerDateRaw && !empty($info['test_date']) && $info['test_date'] !== $headerDateRaw)
-                ? '<p style="margin:2px 0 0;font-size:6.5px;color:#5B6570;font-weight:normal;">(Test Done : ' . e(\Carbon\Carbon::parse($info['test_date'])->format('d/m/Y')) . ')</p>'
+                ? '<p style="margin:2px 0 0;' . $fontSize(6.5) . 'color:#5B6570;font-weight:normal;">(Test Done : ' . e(\Carbon\Carbon::parse($info['test_date'])->format('d/m/Y')) . ')</p>'
                 : '';
 
             $html .= '<td style="' . $dataCellBorder . 'background-color:#F7FAFC;padding:4.5pt 6pt;' . $resultValueWidth . $wordWrap . $contentFontSize . '">'
                 . '<p style="text-align:center;font-weight:bold;">' . $resultText . '</p>'
                 . $testDoneNote . '</td>';
+
+            if ($twoColumn) {
+                $html .= '</tr>';
+                continue;
+            }
+
+            $html .= $makeDataCell((string) ($info['uom'] ?: '-'), $unitWidth);
             // $info['range'] is already-escaped HTML from combinedRange()
             // (may contain a real <br> between Male/Female/Common lines) --
             // must NOT be escaped again here, or the <br> prints as literal
@@ -414,7 +517,7 @@ class KeyParameterService
     public function spliceAutoTable(string $contentHtml, string $tableHtml): string
     {
         if (strpos($contentHtml, 'data-auto-key-param-table') === false) {
-            return $contentHtml;
+            return $this->replaceKeyParamBlock($contentHtml, $tableHtml);
         }
 
         // [^<]* rather than \s* -- CKEditor's editing view can't display a
@@ -431,6 +534,48 @@ class KeyParameterService
             $contentHtml,
             1
         );
+    }
+
+    /**
+     * A template with no placeholder and no per-row markers gets its
+     * tracked values as the plain "Key Parameters" block the result-entry
+     * JS writes into the content (data-key-param-block). That block is a
+     * snapshot from the last save -- its own styling, and whatever column
+     * order was current then -- so printing it as-is made the PDF differ
+     * from the on-screen table preview, which always shows
+     * buildAutoTable(). Swapping it for the same auto table at print time
+     * keeps the two identical. An empty $tableHtml leaves content untouched.
+     */
+    private function replaceKeyParamBlock(string $contentHtml, string $tableHtml): string
+    {
+        if ($tableHtml === '' || strpos($contentHtml, 'data-key-param-block') === false) {
+            return $contentHtml;
+        }
+
+        $dom = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $dom->loadHTML('<?xml encoding="utf-8" ?><div id="__root__">' . $contentHtml . '</div>', LIBXML_NOERROR | LIBXML_NOWARNING);
+        libxml_clear_errors();
+
+        $root = $dom->getElementById('__root__');
+        if (!$root) {
+            return $contentHtml;
+        }
+
+        $block = (new \DOMXPath($dom))->query('//*[@data-key-param-block]')->item(0);
+        if (!$block) {
+            return $contentHtml;
+        }
+
+        $marker = $dom->createComment('__AUTO_KEY_PARAM_TABLE__');
+        $block->parentNode->replaceChild($marker, $block);
+
+        $html = '';
+        foreach ($root->childNodes as $child) {
+            $html .= $dom->saveHTML($child);
+        }
+
+        return str_replace('<!--__AUTO_KEY_PARAM_TABLE__-->', $tableHtml, $html);
     }
 
     /**

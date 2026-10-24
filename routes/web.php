@@ -1676,6 +1676,16 @@ Route::prefix('system-log')->group(function () {
 
 });
 
+Route::middleware(['auth'])
+    ->prefix('system/migrations')
+    ->name('system-migration.')
+    ->controller(App\Http\Controllers\SystemMigrationController::class)
+    ->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('/mark-applied', 'markApplied')->name('mark-applied');
+        Route::post('/run', 'run')->name('run');
+    });
+
 Route::prefix('maintenance-mode')->group(function () {
 
     Route::get('/', [MaintenanceController::class, 'index'])

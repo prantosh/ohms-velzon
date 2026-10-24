@@ -132,11 +132,22 @@ function fmtMoney6($v)
      DETAIL
 ======================================================= -->
 
+@php
+// "All Doctors" prints doctor-wise: one section per doctor with its own
+// heading and subtotal (see DoctorPaymentReportController::buildReport()).
+// A single doctor is just one section with no heading of its own.
+$labelColspan = 7 + ($isAllUsers ? 1 : 0);
+$totalColspan = $labelColspan + 3;
+$sections = $isAllDoctors
+    ? $doctorGroups
+    : ($rows->isEmpty() ? collect() : collect([['doctor_name' => null, 'rows' => $rows]]));
+@endphp
+
 <table>
 
 <thead>
 <tr>
-    <th colspan="{{ 10 + ($isAllUsers ? 1 : 0) + ($isAllDoctors ? 1 : 0) }}" style="text-align:left; background-color:#e6e6e6;">
+    <th colspan="{{ $totalColspan }}" style="text-align:left; background-color:#e6e6e6;">
         {{ $doctorLabel }} &mdash; {{ $userLabel }} &mdash; Doctor Payment Report for {{ $date->format('d-m-Y (l)') }}
     </th>
 </tr>
@@ -144,9 +155,6 @@ function fmtMoney6($v)
     <th>Invoice No</th>
     @if($isAllUsers)
     <th>User</th>
-    @endif
-    @if($isAllDoctors)
-    <th>Doctor</th>
     @endif
     <th>Patient Name</th>
     <th width="7%">Gender</th>
@@ -162,14 +170,19 @@ function fmtMoney6($v)
 
 <tbody>
 
-@forelse($rows as $row)
+@forelse($sections as $section)
+
+@if($section['doctor_name'] !== null)
+<tr style="background-color:#dce6f1; font-weight:bold;">
+    <td colspan="{{ $totalColspan }}">{{ $section['doctor_name'] }} ({{ $section['total_items'] }} {{ $section['total_items'] == 1 ? 'item' : 'items' }})</td>
+</tr>
+@endif
+
+@foreach($section['rows'] as $row)
 <tr>
     <td>{{ $row->invoice_no }}</td>
     @if($isAllUsers)
     <td>{{ $row->user_name }}</td>
-    @endif
-    @if($isAllDoctors)
-    <td>{{ $row->doctor_name }}</td>
     @endif
     <td>{{ $row->patient_name }}</td>
     <td>{{ $row->patient_gender ?: '-' }}</td>
@@ -181,14 +194,25 @@ function fmtMoney6($v)
     <td class="text-end">{{ fmtMoney6($row->clinic_charge) }}</td>
     <td>{{ $row->settlement_display }}</td>
 </tr>
+@endforeach
+
+@if($section['doctor_name'] !== null)
+<tr style="background-color:#f7f7f7; font-weight:bold;">
+    <td colspan="{{ $labelColspan }}" class="text-end">Subtotal - {{ $section['doctor_name'] }}</td>
+    <td class="text-end">{{ fmtMoney6($section['total_doctor_fees']) }}</td>
+    <td class="text-end">{{ fmtMoney6($section['total_clinic_charge']) }}</td>
+    <td></td>
+</tr>
+@endif
+
 @empty
 <tr>
-    <td colspan="{{ 10 + ($isAllUsers ? 1 : 0) + ($isAllDoctors ? 1 : 0) }}" class="text-center">No invoices found for this user and doctor on this date.</td>
+    <td colspan="{{ $totalColspan }}" class="text-center">No invoices found for this user and doctor on this date.</td>
 </tr>
 @endforelse
 
 <tr style="background-color:#f0f0f0; font-weight:bold;">
-    <td colspan="{{ 7 + ($isAllUsers ? 1 : 0) + ($isAllDoctors ? 1 : 0) }}" class="text-end">Total</td>
+    <td colspan="{{ $labelColspan }}" class="text-end">{{ $isAllDoctors ? 'Grand Total' : 'Total' }}</td>
     <td class="text-end">{{ fmtMoney6($summary['total_doctor_fees']) }}</td>
     <td class="text-end">{{ fmtMoney6($summary['total_clinic_charge']) }}</td>
     <td></td>

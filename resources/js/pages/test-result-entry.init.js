@@ -778,7 +778,13 @@ function buildKeyParametersHtml(finding) {
 
     let itemCodeSubs = pathologyFindingItemCodeSubs(finding);
 
-    let applicable = allParams.filter(p => (p.triggers || []).some(t => itemCodeSubs.includes(t)));
+    // One input per item -- the same item can be tracked under several
+    // groups (HB under CBC and Blood RE), and a report covering both would
+    // otherwise get two boxes writing the same value.
+    let seenCodes = {};
+    let applicable = allParams
+        .filter(p => (p.triggers || []).some(t => itemCodeSubs.includes(t)))
+        .filter(p => !seenCodes[p.item_code_sub] && (seenCodes[p.item_code_sub] = true));
 
     if (!applicable.length) return '';
 
@@ -791,14 +797,33 @@ function buildKeyParametersHtml(finding) {
 
     let groupsHtml = Object.keys(byGroup).map(groupLabel => {
 
-        let fieldsHtml = byGroup[groupLabel].map(p => {
+        // Consecutive parameters sharing a section_label (e.g. Urine RE's
+        // PHYSICAL / CHEMICAL / MICROSCOPIC) go under their own sub-heading,
+        // same as the printed table (KeyParameterService::buildAutoTable()).
+        let sections = [];
+        byGroup[groupLabel].forEach(p => {
+            let section = p.section_label || '';
+            let last = sections[sections.length - 1];
+            if (last && (last.label === section || !section)) {
+                last.params.push(p);
+            } else {
+                sections.push({ label: section, params: [p] });
+            }
+        });
+
+        let fieldHtml = p => {
 
             let past = history[p.item_code_sub] || [];
             let pastText = past.length
                 ? 'Past: ' + past.map(h => `${escapeHtml(h.result_value)} (${escapeHtml(h.test_date_fmt)})`).join(', ')
                 : '';
 
-            let val = draft[p.item_code_sub] || '';
+            // Only a report never saved yet starts at the configured
+            // default. Blank values aren't stored on save, so a saved report
+            // missing one was either cleared on purpose or saved before this
+            // parameter existed (its old hand-typed table already holds the
+            // value) -- either way it must stay blank.
+            let val = draft[p.item_code_sub] || (finding.id ? '' : (p.default_value || ''));
             let uomText = p.uom ? ` (${escapeHtml(p.uom)})` : '';
 
             return `
@@ -809,16 +834,22 @@ function buildKeyParametersHtml(finding) {
                        data-param-label="${escapeHtml(p.parameter_name)}"
                        data-param-uom="${escapeHtml(p.uom || '')}"
                        data-param-range="${escapeHtml(p.reference_range || '')}"
+                       data-param-section="${escapeHtml(p.section_label || '')}"
                        value="${escapeHtml(val)}">
                 ${pastText ? `<div class="small text-muted">${pastText}</div>` : ''}
             </div>
             `;
-        }).join('');
+        };
+
+        let sectionsHtml = sections.map(section => `
+            ${section.label ? `<div class="small fw-semibold text-decoration-underline mt-1">${escapeHtml(section.label)}</div>` : ''}
+            <div class="d-flex flex-wrap gap-3">${section.params.map(fieldHtml).join('')}</div>
+        `).join('');
 
         return `
         <div class="mb-2">
             <div class="text-muted small fw-semibold">${escapeHtml(groupLabel)}</div>
-            <div class="d-flex flex-wrap gap-3">${fieldsHtml}</div>
+            ${sectionsHtml}
         </div>
         `;
     }).join('');
@@ -1023,6 +1054,7 @@ function mergeKeyParametersIntoContent(card, contentHtml) {
                 label: input.dataset.paramLabel || input.dataset.itemCodeSub,
                 uom: input.dataset.paramUom || '',
                 range: input.dataset.paramRange || '',
+                section: input.dataset.paramSection || '',
                 value: val
             });
         }
@@ -1101,22 +1133,6 @@ function mergeKeyParametersIntoContent(card, contentHtml) {
         heading.textContent = 'Key Parameters';
         block.appendChild(heading);
 
-        let table = doc.createElement('table');
-        table.style.width = '100%';
-        table.style.borderCollapse = 'collapse';
-        table.innerHTML = `
-            <thead>
-                <tr>
-                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;">INVESTIGATION</td>
-                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;text-align:center;">UNIT</td>
-                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;text-align:center;">RESULT</td>
-                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;">REFERENCE RANGE</td>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        `;
-        block.appendChild(table);
-
         // At the TOP, not appended at the end -- the result table reads
         // first, with any supplementary free text (instrument notes,
         // method, etc.) printing below it, same ordering the stripped-
@@ -1129,52 +1145,51 @@ function mergeKeyParametersIntoContent(card, contentHtml) {
     // self-heals a block found only via the text fallback above.
     block.setAttribute('data-key-param-block', '1');
 
-    let tbody = block.querySelector('tbody');
+    // The table itself is rebuilt from the inputs on every save (every cell
+    // is derived from them anyway), so it always has the same shape as the
+    // printed table (KeyParameterService::buildAutoTable()): only
+    // Investigation | Result, 2pt larger, when no row has a unit or range,
+    // and a heading row wherever the section changes.
+    block.querySelectorAll('table').forEach(t => t.remove());
 
-    // Every row, tagged or not -- an untagged one (same attribute-loss
-    // risk as the block itself) is matched by its own first cell's text,
-    // scoped to just these few rows this code owns, not the whole report,
-    // so an exact match here is reliable.
-    let rowFor = (itemCodeSub, label) => {
+    let twoColumn = entries.every(e => !e.uom && !e.range);
+    let fontSize = twoColumn ? '9.5pt' : '10px';
+    let cell = (extra = '') => `padding:3px 6px;border:1px solid #B8C8D4;font-size:${fontSize};${extra}`;
 
-        let tr = tbody.querySelector(`tr[data-key-param="${itemCodeSub}"]`);
-        if (tr) return tr;
+    let table = doc.createElement('table');
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
 
-        return Array.from(tbody.querySelectorAll('tr')).find(row => {
-            let firstCellText = (row.querySelector('td')?.textContent || '').trim();
-            return firstCellText.indexOf(label) === 0;
-        }) || null;
-    };
+    let headerHtml = `<td style="${cell('font-weight:bold;')}">INVESTIGATION</td>`
+        + `<td style="${cell('font-weight:bold;text-align:center;')}">RESULT</td>`;
+    if (!twoColumn) {
+        headerHtml += `<td style="${cell('font-weight:bold;text-align:center;')}">UNIT</td>`
+            + `<td style="${cell('font-weight:bold;')}">REFERENCE RANGE</td>`;
+    }
 
-    // drop rows for fields that were cleared since the last save
-    Array.from(tbody.querySelectorAll('tr')).forEach(tr => {
-        let stillWanted = entries.some(e => tr === rowFor(e.itemCodeSub, e.label));
-        if (!stillWanted) tr.remove();
-    });
+    let currentSection = '';
+    let rowsHtml = entries.map(e => {
 
-    entries.forEach(e => {
+        let sectionRow = '';
+        if (e.section && e.section !== currentSection) {
+            // Extra space above every heading but the first, same as the print.
+            let gap = currentSection ? 'padding-top:14px;' : '';
+            sectionRow = `<tr><td colspan="${twoColumn ? 2 : 4}" style="${cell('font-weight:bold;text-decoration:underline;' + gap)}">${escapeHtml(e.section)}</td></tr>`;
+        }
+        currentSection = e.section || currentSection;
 
-        let tr = rowFor(e.itemCodeSub, e.label);
-
-        if (!tr) {
-            tr = doc.createElement('tr');
-            tr.innerHTML = `
-                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;"></td>
-                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;text-align:center;"></td>
-                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;text-align:center;"></td>
-                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;"></td>
-            `;
-            tbody.appendChild(tr);
+        let row = `<td style="${cell()}">${escapeHtml(e.label)}</td>`
+            + `<td style="${cell('text-align:center;')}">${escapeHtml(e.value)}</td>`;
+        if (!twoColumn) {
+            row += `<td style="${cell('text-align:center;')}">${escapeHtml(e.uom || '-')}</td>`
+                + `<td style="${cell()}">${escapeHtml(e.range || '')}</td>`;
         }
 
-        tr.setAttribute('data-key-param', e.itemCodeSub);
+        return `${sectionRow}<tr data-key-param="${escapeHtml(e.itemCodeSub)}">${row}</tr>`;
+    }).join('');
 
-        let cells = tr.querySelectorAll('td');
-        cells[0].textContent = e.label;
-        cells[1].textContent = e.uom || '-';
-        cells[2].textContent = e.value;
-        cells[3].textContent = e.range || '';
-    });
+    table.innerHTML = `<thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody>`;
+    block.appendChild(table);
 
     applyRestrictedEditingExceptions(root);
 

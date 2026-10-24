@@ -88,6 +88,10 @@ class DoctorPaymentReportController extends Controller
 
         $result = $this->buildReport($request->user_id, $request->doctor_id, $request->date);
 
+        // All Users + All Doctors on a busy day runs to hundreds of rows --
+        // DomPDF needs ~230MB for ~440 rows, past the default 128M.
+        ini_set('memory_limit', '512M');
+
         $date = Carbon::parse($request->date);
 
         $pdf = Pdf::loadView(
@@ -98,6 +102,7 @@ class DoctorPaymentReportController extends Controller
                 'isAllUsers' => $isAllUsers,
                 'isAllDoctors' => $isAllDoctors,
                 'rows' => $result['rows'],
+                'doctorGroups' => $result['doctor_groups'],
                 'summary' => $result['summary'],
                 'date' => $date,
             ]
@@ -209,10 +214,27 @@ class DoctorPaymentReportController extends Controller
             $rows = $rows->where('collector_id', (int) $userId)->values();
         }
 
+        // "All Doctors" is shown doctor-wise: one section per doctor (by
+        // name), each with its own rows (still in time order) and subtotal.
+        $doctorGroups = $isAllDoctors
+            ? $rows->groupBy('doctor_name')
+                ->sortKeys(SORT_NATURAL | SORT_FLAG_CASE)
+                ->map(fn ($group, $doctorName) => [
+                    'doctor_name' => $doctorName,
+                    'rows' => $group->values(),
+                    'total_items' => $group->count(),
+                    'total_gross' => round($group->sum('gross_amount'), 2),
+                    'total_doctor_fees' => round($group->sum('doctor_fees'), 2),
+                    'total_clinic_charge' => round($group->sum('clinic_charge'), 2),
+                ])
+                ->values()
+            : collect();
+
         return [
             'is_all_users' => $isAllUsers,
             'is_all_doctors' => $isAllDoctors,
             'rows' => $rows->values(),
+            'doctor_groups' => $doctorGroups,
             'summary' => [
                 'total_items' => $rows->count(),
                 'total_gross' => round($rows->sum('gross_amount'), 2),
