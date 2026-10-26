@@ -482,6 +482,134 @@
                 </li> <!-- end Dashboard Menu -->
 
                 <li class="nav-item">
+                    <a class="nav-link menu-link" href="#sidebarUsers" data-bs-toggle="collapse" role="button"
+                        aria-expanded="false" aria-controls="sidebarUsers">
+                        <i class="ri-bar-chart-2-line"></i> <span>@lang('translation.report')</span>
+                    </a>
+                    <div class="collapse menu-dropdown" id="sidebarUsers">
+                        <ul class="nav nav-sm flex-column">
+                            @if(is_null($allowedPages) || in_array('patient-history', $allowedPages) || in_array('user-history', $allowedPages) || in_array('doctor-activity-history', $allowedPages) || in_array('invoice-cancellation-history', $allowedPages))
+                            <li class="nav-item">
+                                <a class="nav-link menu-link" href="#sidebarReportHistory" data-bs-toggle="collapse" role="button"
+                                    aria-expanded="false" aria-controls="sidebarReportHistory">
+                                    <span>@lang('translation.history')</span>
+                                </a>
+                                <div class="collapse menu-dropdown" id="sidebarReportHistory">
+                                    <ul class="nav nav-sm flex-column">
+                                        @if(is_null($allowedPages) || in_array('patient-history', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('patient-history.index') }}" class="nav-link">@lang('translation.patienthistory')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('user-history', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('user-history.index') }}" class="nav-link">@lang('translation.userhistory')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('doctor-activity-history', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('doctor-activity-history.index') }}" class="nav-link">@lang('translation.doctoractivityhistory')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('invoice-cancellation-history', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('invoice-cancellation-history.index') }}" class="nav-link">@lang('translation.invoicecancellationhistory')</a>
+                                                    </li>
+                                        @endif
+                                    </ul>
+                                </div>
+                            </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('cash-submission-report', $allowedPages) || in_array('daily-cash-settlement', $allowedPages) || in_array('daily-transaction-report', $allowedPages) || in_array('all-invoices-report', $allowedPages))
+                            <li class="nav-item">
+                                <a class="nav-link menu-link" href="#sidebarReportDaily" data-bs-toggle="collapse" role="button"
+                                    aria-expanded="false" aria-controls="sidebarReportDaily">
+                                    <span>@lang('translation.dailyreport')</span>
+                                </a>
+                                <div class="collapse menu-dropdown" id="sidebarReportDaily">
+                                    <ul class="nav nav-sm flex-column">
+                                        @if(is_null($allowedPages) || in_array('cash-submission-report', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('cash-submission-report.index') }}" class="nav-link">@lang('translation.cashsubmissionreport')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('daily-cash-settlement', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('daily-cash-settlement.index') }}" class="nav-link">@lang('translation.dailycashsettlement')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('daily-transaction-report', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('daily-transaction-report.index') }}" class="nav-link">@lang('translation.dailytransactionreport')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('all-invoices-report', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('all-invoices-report.index') }}" class="nav-link">@lang('translation.allinvoicesreport')</a>
+                                                    </li>
+                                        @endif
+                                    </ul>
+                                </div>
+                            </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('employee-performance', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('employee-performance.index') }}" class="nav-link">@lang('translation.employeeperformance')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('whatsapp-message-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('whatsapp-message-report.index') }}" class="nav-link">@lang('translation.whatsappmessagereport')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('item-wise-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('item-wise-report.index') }}" class="nav-link">@lang('translation.itemwisereport')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('monthly-reconciliation-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('monthly-reconciliation-report.index') }}" class="nav-link">@lang('translation.monthlyreconciliationreport')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('expenditure-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('expenditure-report.index') }}" class="nav-link">@lang('translation.expenditurereport')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('user-reconciliation', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('user-reconciliation.index') }}" class="nav-link">@lang('translation.userreconciliationdashboard')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('reporting-group-summary-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('reporting-group-summary-report.index') }}" class="nav-link">@lang('translation.reportinggroupsummaryreport')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('user-invoice-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('user-invoice-report.index') }}" class="nav-link">@lang('translation.userinvoicereport')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('test-report-delivery-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('test-report-delivery-report.index') }}" class="nav-link">@lang('translation.testreportdeliveryreport')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('doctor-visit-collection-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('doctor-visit-collection-report.index') }}" class="nav-link">@lang('translation.doctorvisitcollectionreport')</a>
+                                        </li>
+                            @endif
+                            
+                                                     
+                            
+
+                        </ul>
+                    </div>
+                </li> <!-- end Users Menu -->
+                <li class="nav-item">
                     <a class="nav-link menu-link" href="#sidebarLayouts" data-bs-toggle="collapse" role="button"
                         aria-expanded="false" aria-controls="sidebarLayouts">
                         <i class="ri-archive-2-line"></i> <span>@lang('translation.inventory')</span>
@@ -541,122 +669,6 @@
                         </ul>
                     </div>
                 </li> <!-- end Inventory Menu -->
-                <li class="nav-item">
-                    <a class="nav-link menu-link" href="#sidebarUsers" data-bs-toggle="collapse" role="button"
-                        aria-expanded="false" aria-controls="sidebarUsers">
-                        <i class="ri-bar-chart-2-line"></i> <span>@lang('translation.report')</span>
-                    </a>
-                    <div class="collapse menu-dropdown" id="sidebarUsers">
-                        <ul class="nav nav-sm flex-column">
-                            @if(is_null($allowedPages) || in_array('patient-history', $allowedPages) || in_array('user-history', $allowedPages) || in_array('doctor-activity-history', $allowedPages) || in_array('invoice-cancellation-history', $allowedPages))
-                            <li class="nav-item">
-                                <a class="nav-link menu-link" href="#sidebarReportHistory" data-bs-toggle="collapse" role="button"
-                                    aria-expanded="false" aria-controls="sidebarReportHistory">
-                                    <span>@lang('translation.history')</span>
-                                </a>
-                                <div class="collapse menu-dropdown" id="sidebarReportHistory">
-                                    <ul class="nav nav-sm flex-column">
-                                        @if(is_null($allowedPages) || in_array('patient-history', $allowedPages))
-                                        <li class="nav-item">
-                                                    <a href="{{ route('patient-history.index') }}" class="nav-link">@lang('translation.patienthistory')</a>
-                                                    </li>
-                                        @endif
-                                        @if(is_null($allowedPages) || in_array('user-history', $allowedPages))
-                                        <li class="nav-item">
-                                                    <a href="{{ route('user-history.index') }}" class="nav-link">@lang('translation.userhistory')</a>
-                                                    </li>
-                                        @endif
-                                        @if(is_null($allowedPages) || in_array('doctor-activity-history', $allowedPages))
-                                        <li class="nav-item">
-                                                    <a href="{{ route('doctor-activity-history.index') }}" class="nav-link">@lang('translation.doctoractivityhistory')</a>
-                                                    </li>
-                                        @endif
-                                        @if(is_null($allowedPages) || in_array('invoice-cancellation-history', $allowedPages))
-                                        <li class="nav-item">
-                                                    <a href="{{ route('invoice-cancellation-history.index') }}" class="nav-link">@lang('translation.invoicecancellationhistory')</a>
-                                                    </li>
-                                        @endif
-                                    </ul>
-                                </div>
-                            </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('cash-submission-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('cash-submission-report.index') }}" class="nav-link">@lang('translation.cashsubmissionreport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('daily-cash-settlement', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('daily-cash-settlement.index') }}" class="nav-link">@lang('translation.dailycashsettlement')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('employee-performance', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('employee-performance.index') }}" class="nav-link">@lang('translation.employeeperformance')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('daily-transaction-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('daily-transaction-report.index') }}" class="nav-link">@lang('translation.dailytransactionreport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('whatsapp-message-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('whatsapp-message-report.index') }}" class="nav-link">@lang('translation.whatsappmessagereport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('item-wise-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('item-wise-report.index') }}" class="nav-link">@lang('translation.itemwisereport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('monthly-reconciliation-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('monthly-reconciliation-report.index') }}" class="nav-link">@lang('translation.monthlyreconciliationreport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('expenditure-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('expenditure-report.index') }}" class="nav-link">@lang('translation.expenditurereport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('user-reconciliation', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('user-reconciliation.index') }}" class="nav-link">@lang('translation.userreconciliationdashboard')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('reporting-group-summary-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('reporting-group-summary-report.index') }}" class="nav-link">@lang('translation.reportinggroupsummaryreport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('user-invoice-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('user-invoice-report.index') }}" class="nav-link">@lang('translation.userinvoicereport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('all-invoices-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('all-invoices-report.index') }}" class="nav-link">@lang('translation.allinvoicesreport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('test-report-delivery-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('test-report-delivery-report.index') }}" class="nav-link">@lang('translation.testreportdeliveryreport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('doctor-visit-collection-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('doctor-visit-collection-report.index') }}" class="nav-link">@lang('translation.doctorvisitcollectionreport')</a>
-                                        </li>
-                            @endif
-                            
-                                                     
-                            
-
-                        </ul>
-                    </div>
-                </li> <!-- end Users Menu -->
                 <li class="menu-title"><i class="ri-more-fill"></i> <span>@lang('translation.pages')</span></li>
 
 

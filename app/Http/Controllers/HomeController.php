@@ -438,11 +438,20 @@ class HomeController extends Controller
             ? 0
             : app(\App\Http\Controllers\DoctorPayableByUserController::class)->pendingBalanceForUser(Auth::id());
 
+        // Gates the "Daily Cash Submission" shortcut beside each "Today's
+        // Invoices By ..." heading -- same rule CheckPageAccess applies, so
+        // the link is never shown to a role that would just get a 403.
+        $canViewCashSubmission = $isAdmin || in_array(
+            'cash-submission-report',
+            \App\Models\RolePageAccess::where('role', Auth::user()->role)->value('page_access') ?? []
+        );
+
         return view(
             'index',
             compact(
                 'todayInvoices',
                 'isAdmin',
+                'canViewCashSubmission',
                 'myInvoiceSummary',
                 'allUserInvoiceSummaries',
                 'cashInHand',

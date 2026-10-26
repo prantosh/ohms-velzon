@@ -118,6 +118,12 @@
                 <i class="ri-file-list-3-line"></i>
             </span>
             <h5>Today's Invoices By {{ $userSummary['user_name'] }}</h5>
+            @if($canViewCashSubmission)
+            <a href="{{ url('/cash-submission-report/print') . '?' . http_build_query(['user_id' => $userSummary['user_id'], 'date' => now()->toDateString()]) }}"
+               target="_blank" rel="noopener" class="ms-2 small fw-bold">
+                <i class="ri-file-pdf-line align-middle"></i> Show Cash Deposit Detail Statement
+            </a>
+            @endif
 
             <div class="ms-auto text-end">
                 <div class="fw-bold text-danger">
@@ -158,6 +164,12 @@
             <i class="ri-file-list-3-line"></i>
         </span>
         <h5>Today's Invoices By Me</h5>
+        @if($canViewCashSubmission)
+        <a href="{{ url('/cash-submission-report/print') . '?' . http_build_query(['user_id' => Auth::id(), 'date' => now()->toDateString()]) }}"
+           target="_blank" rel="noopener" class="ms-2 small fw-bold">
+            <i class="ri-file-pdf-line align-middle"></i> Show Cash Deposit Detail Statement
+        </a>
+        @endif
 
         <div class="ms-auto text-end">
             <div class="fw-bold text-danger">

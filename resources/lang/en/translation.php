@@ -42,6 +42,7 @@ return [
     "doctoractivityhistory" => "Doctor History",
     "invoicecancellationhistory" => "Invoice Cancellation History",
     "history" => "History",
+    "dailyreport" => "Daily Report",
 
     "inventory" => "Inventory",
     "inventorycategorymaster" => "Inventory Category Master",
@@ -70,7 +71,7 @@ return [
     "maintenancemode" => "Maintenance Mode",
     "whatsappautosendsettings" => "WhatsApp Auto-Send Settings",
     "userinvoicereport" => "Reconciliation for any User",
-    "allinvoicesreport" => "All Invoices for Any Day",
+    "allinvoicesreport" => "All Invoices of Any Day",
     "doctorsettlementbyuser" => "Doctor Settlement (By User)",
     "doctorpayablebyuser" => "Doctor Payable Status (By User)",
     "dailycashsettlement" => "Daily Cash Settlement",
