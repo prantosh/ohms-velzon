@@ -88,6 +88,7 @@ return [
     'test-parameter' => 'Test Parameter Entry',
     'test-report-template' => 'Test Report Template Master',
     'pathology-report-template' => 'Pathology Report Template Master',
+    'pathology-key-parameters' => 'Pathology Key Parameter Groups',
     'non-pathology-report' => 'Rest Test Result Entry',
     'non-pathology-report-template' => 'Non-Pathology Report Template Master',
     'test-result-entry' => 'Pathology Test Result Entry',

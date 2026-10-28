@@ -17,15 +17,11 @@ class KeyParameterController extends Controller
 
     public function index()
     {
-        $this->ensureAdmin();
-
         return view('apps-key-parameter-master');
     }
 
     public function list(Request $request)
     {
-        $this->ensureAdmin();
-
         $query = KeyParameter::query()
             ->leftJoin('invoice_item_details as item', 'item.item_code_sub', '=', 'key_parameters.item_code_sub')
             ->leftJoin('invoice_item_masters as category', 'category.item_code', '=', 'item.item_code')
@@ -91,8 +87,6 @@ class KeyParameterController extends Controller
 
     public function options()
     {
-        $this->ensureAdmin();
-
         $items = InvoiceItemDetail::query()
             ->join('invoice_item_masters as category', 'category.item_code', '=', 'invoice_item_details.item_code')
             ->where('category.test_parameter_required', 'YES')
@@ -135,8 +129,6 @@ class KeyParameterController extends Controller
 
     public function save(Request $request, AuditService $auditService)
     {
-        $this->ensureAdmin();
-
         $eligibleItems = InvoiceItemDetail::query()
             ->join('invoice_item_masters as category', 'category.item_code', '=', 'invoice_item_details.item_code')
             ->where('category.test_parameter_required', 'YES')
@@ -337,8 +329,6 @@ class KeyParameterController extends Controller
 
     public function reorder(Request $request, AuditService $auditService)
     {
-        $this->ensureAdmin();
-
         $validated = $request->validate([
             'group_item_code_sub' => ['required', 'string', Rule::exists('invoice_item_details', 'item_code_sub')],
             'item_code_subs' => ['required', 'array', 'min:1'],
@@ -392,10 +382,5 @@ class KeyParameterController extends Controller
             'status' => true,
             'message' => 'Group item order saved.',
         ]);
-    }
-
-    private function ensureAdmin(): void
-    {
-        abort_unless(optional(Auth::user())->role === 'Admin', 403, 'Only an Admin can manage pathology key parameters.');
     }
 }

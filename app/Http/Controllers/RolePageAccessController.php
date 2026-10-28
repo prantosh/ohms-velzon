@@ -17,7 +17,9 @@ class RolePageAccessController extends Controller
     public function index()
     {
         return view('apps-role-page-access', [
-            'pages' => config('access_pages'),
+            'pages' => collect(config('access_pages'))
+                ->sortBy(fn ($label) => strtolower($label), SORT_NATURAL)
+                ->all(),
             'roles' => RolePageAccess::orderBy('role')->pluck('role')
         ]);
     }
