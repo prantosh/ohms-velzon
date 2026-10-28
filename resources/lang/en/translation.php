@@ -68,6 +68,7 @@ return [
     "membershipfeestatus" => "Membership Fee Payment Status",
     "cloudbackup" => "Backups",
     "systemlog" => "System Log Viewer",
+    "reportprintduelog" => "Report Print With Due Log",
     "maintenancemode" => "Maintenance Mode",
     "whatsappautosendsettings" => "WhatsApp Auto-Send Settings",
     "userinvoicereport" => "Reconciliation for any User",

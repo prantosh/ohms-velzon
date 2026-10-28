@@ -262,7 +262,7 @@ async function loadPathologyReports(invoiceNo) {
     wrap.style.display = 'block';
 
     if (result.legacy_confirmed) {
-        renderPathologyLegacyCard(wrap, result.invoice.id);
+        renderPathologyLegacyCard(wrap, result.invoice.id, parseFloat(result.invoice.due_amount) || 0);
         return;
     }
 
@@ -394,6 +394,8 @@ function refreshPathologyGroupButtons() {
             printAllBtn.href = `/pathology-report/print-invoice?${params.toString()}`;
             printAllBtn.style.display = 'inline-block';
             sendWhatsappBtn.style.display = 'inline-block';
+            sendWhatsappBtn.disabled = pathologyDue() > 0;
+            sendWhatsappBtn.title = pathologyDue() > 0 ? 'Payment is due - collect it before sending on WhatsApp' : '';
 
         } else {
 
@@ -542,8 +544,12 @@ function renderPathologyWhatsappBanner() {
     } else if (complete) {
 
         banner.classList.add('alert-warning');
-        textEl.innerText = `All ${total} Pathology test(s) on this invoice are confirmed -- WhatsApp not sent yet.`;
-        sendBtn.style.display = 'inline-block';
+        let reason = wa.reason
+            ? ` Reason: ${wa.reason}`
+            : ' The automatic send has not run yet -- use Send Now.';
+        textEl.innerText = `All ${total} Pathology test(s) on this invoice are confirmed -- WhatsApp not sent yet.${reason}`;
+        // Nothing can be sent while a payment is due -- it goes out automatically once cleared.
+        sendBtn.style.display = wa.held_due ? 'none' : 'inline-block';
 
     } else {
 
@@ -569,13 +575,22 @@ function renderPathologyOutsourcedMarquee(items) {
     marquee.classList.remove('d-none');
 }
 
-function renderPathologyLegacyCard(wrap, invoiceId) {
+// Outstanding amount on the open invoice -- WhatsApp stays disabled while > 0.
+function pathologyDue() {
+    return parseFloat(pathologyState && pathologyState.invoice ? pathologyState.invoice.due_amount : 0) || 0;
+}
+
+function renderPathologyLegacyCard(wrap, invoiceId, due = 0) {
 
     let template = document.getElementById('pathologyLegacyCardTemplate');
     let frag = template.content.cloneNode(true);
 
     let printBtn = frag.querySelector('.pathology-legacy-print-btn');
     let whatsappBtn = frag.querySelector('.pathology-legacy-whatsapp-btn');
+    if (due > 0) {
+        whatsappBtn.disabled = true;
+        whatsappBtn.title = 'Payment is due - collect it before sending on WhatsApp';
+    }
 
     printBtn.addEventListener('click', function () {
         window.open(`/test-result-entry/print/${invoiceId}`, '_blank');

@@ -105,7 +105,19 @@
 
             </div>
 
-            <div class="col-md-8">
+            <div class="col-md-2">
+
+                <label class="form-label fw-semibold">Confirmation</label>
+
+                <select id="dashConfirmedFilter" class="form-select">
+                    <option value="">All</option>
+                    <option value="yes">Confirmed</option>
+                    <option value="no">Not Confirmed</option>
+                </select>
+
+            </div>
+
+            <div class="col-md-6">
 
                 <label class="form-label fw-semibold d-block">Period</label>
 

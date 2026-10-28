@@ -115,6 +115,7 @@ function toEditorHtml(text) {
 }
 
 let nonPathEditors = new Map();
+let invoiceDue = 0;
 
 function destroyAllNonPathEditors() {
     nonPathEditors.forEach(fields => {
@@ -270,6 +271,7 @@ async function searchInvoice(invoiceNo) {
     }
 
     let inv = result.invoice;
+    invoiceDue = parseFloat(inv.due_amount) || 0;
 
     canDeleteReports = !!result.can_delete_reports;
 
@@ -357,7 +359,11 @@ function lockNonPathCard(root, findingId) {
     printBtn.href = `/non-pathology-report/print/${findingId}`;
     printBtn.style.display = 'inline-block';
 
-    root.querySelector('.nonpath-whatsapp-btn').style.display = 'inline-block';
+    let whatsappBtn = root.querySelector('.nonpath-whatsapp-btn');
+    whatsappBtn.style.display = 'inline-block';
+    // Nothing is WhatsApp'd while a payment is due (sent automatically once cleared).
+    whatsappBtn.disabled = invoiceDue > 0;
+    whatsappBtn.title = invoiceDue > 0 ? 'Payment is due - collect it before sending on WhatsApp' : '';
 }
 
 /*

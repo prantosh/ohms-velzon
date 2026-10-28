@@ -278,6 +278,7 @@ document.getElementById('dashNextPage').addEventListener('click', function () {
 */
 
 let canDeleteReports = false;
+let invoiceDue = 0;
 
 async function searchInvoice(invoiceNo) {
 
@@ -306,6 +307,7 @@ async function searchInvoice(invoiceNo) {
     }
 
     let inv = result.invoice;
+    invoiceDue = parseFloat(inv.due_amount) || 0;
 
     canDeleteReports = !!result.can_delete_reports;
 
@@ -470,7 +472,11 @@ function lockStudyCard(root, findingId) {
     printBtn.href = `/usg-report/print/${findingId}`;
     printBtn.style.display = 'inline-block';
 
-    root.querySelector('.study-whatsapp-btn').style.display = 'inline-block';
+    let whatsappBtn = root.querySelector('.study-whatsapp-btn');
+    whatsappBtn.style.display = 'inline-block';
+    // Nothing is WhatsApp'd while a payment is due (sent automatically once cleared).
+    whatsappBtn.disabled = invoiceDue > 0;
+    whatsappBtn.title = invoiceDue > 0 ? 'Payment is due - collect it before sending on WhatsApp' : '';
 }
 
 document.getElementById('usgReportModal').addEventListener('shown.bs.modal', function () {

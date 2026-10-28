@@ -38,14 +38,14 @@ class ReportWhatsappDueGate
 
     /**
      * Message shown when staff try a manual "Send WhatsApp" on an invoice
-     * with a payment due; null when sending is allowed. Admin may still
-     * send manually as a deliberate override.
+     * with a payment due; null when sending is allowed. No role (Admin
+     * included) can send manually while a payment is due.
      */
     public static function manualBlockMessage(string $invoiceNo): ?string
     {
         $due = self::dueAmount($invoiceNo);
 
-        if ($due <= 0 || optional(Auth::user())->role === 'Admin') {
+        if ($due <= 0) {
             return null;
         }
 

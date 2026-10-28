@@ -121,13 +121,42 @@ class TestResultEntryController extends Controller
             });
         }
 
-        $invoices = $query->orderByDesc('invoice_date')
-            ->orderByDesc('id')
-            ->paginate($perPage);
+        $query->orderByDesc('invoice_date')->orderByDesc('id');
 
         $qualifyingItemCodes = InvoiceItemMaster::where('test_parameter_required', 'YES')
             ->pluck('item_code')
             ->toArray();
+
+        $confirmedFilter = $request->get('confirmed');
+
+        // "Confirmed" is derived per invoice in toRow() (legacy
+        // confirmation row OR every qualifying report confirmed), not a
+        // column, so the filter has to run on the computed rows and then
+        // be paginated by hand.
+        if (in_array($confirmedFilter, ['yes', 'no'], true)) {
+
+            $wantConfirmed = $confirmedFilter === 'yes';
+
+            $filtered = $query->get()
+                ->map(fn ($invoice) => $this->toRow($invoice, $qualifyingItemCodes))
+                ->filter(fn ($row) => $row['confirmed'] === $wantConfirmed)
+                ->values();
+
+            $page = max(1, (int) $request->get('page', 1));
+            $total = $filtered->count();
+
+            return response()->json([
+                'status' => true,
+                'data' => $filtered->slice(($page - 1) * $perPage, $perPage)->values(),
+                'pagination' => [
+                    'current_page' => $page,
+                    'last_page' => max(1, (int) ceil($total / $perPage)),
+                    'total' => $total,
+                ]
+            ]);
+        }
+
+        $invoices = $query->paginate($perPage);
 
         $rows = $invoices->getCollection()->map(function ($invoice) use ($qualifyingItemCodes) {
             return $this->toRow($invoice, $qualifyingItemCodes);
@@ -780,6 +809,17 @@ class TestResultEntryController extends Controller
             $invoice,
             'PRINT',
             'Test report printed'
+        );
+
+        \App\Services\ReportPrintDueLogger::record(
+            $invoice,
+            DB::table('invoice_details')
+                ->where('invoice_no', $invoice->invoice_no)
+                ->whereNotNull('item_code')
+                ->where('item_code', '!=', '')
+                ->whereNull('package_parent_item_code_sub')
+                ->pluck('item_description'),
+            'LEGACY'
         );
 
         $safeFileName = str_replace(

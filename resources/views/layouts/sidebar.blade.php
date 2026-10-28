@@ -105,6 +105,9 @@
                             <li class="nav-item">
                                         <a href="{{ route('system-migration.index') }}" class="nav-link">Database Migrations</a>
                                         </li>
+                            <li class="nav-item">
+                                        <a href="{{ route('report-print-due-log.index') }}" class="nav-link">@lang('translation.reportprintduelog')</a>
+                                        </li>
                             @endif
                             @if(is_null($allowedPages) || in_array('maintenance-mode', $allowedPages))
                             <li class="nav-item">
@@ -215,7 +218,7 @@
                                         <a href="{{ route('test-parameter.index') }}" class="nav-link">@lang('translation.testparametermaster')</a>
                                         </li>
                                         @endif
-                                        @if(Auth::user()->role === 'Admin')
+                                        @if(is_null($allowedPages) || in_array('pathology-key-parameters', $allowedPages))
                                         <li class="nav-item">
                                         <a href="{{ route('pathology-key-parameters.index') }}" class="nav-link">Pathology Key Parameter Groups</a>
                                         </li>

@@ -13,6 +13,7 @@
 
 let dashRange = '3';
 let dashSearch = '';
+let dashConfirmed = '';
 let dashPage = 1;
 let dashLastPage = 1;
 
@@ -89,6 +90,10 @@ async function loadDashboard(page = 1) {
         params.set('search', dashSearch);
     }
 
+    if (dashConfirmed) {
+        params.set('confirmed', dashConfirmed);
+    }
+
     const response = await fetch(`/test-result-entry/list?${params.toString()}`);
     const result = await response.json();
 
@@ -145,6 +150,11 @@ document.querySelectorAll('#rangeButtons [data-range]').forEach(function (btn) {
         dashRange = btn.dataset.range;
         loadDashboard(1);
     });
+});
+
+document.getElementById('dashConfirmedFilter').addEventListener('change', function () {
+    dashConfirmed = this.value;
+    loadDashboard(1);
 });
 
 let dashSearchTimer = null;

@@ -3198,6 +3198,10 @@ Route::get('/__deploy_check_whatsapp_sent_breakdown', function () {
     ]);
 });
 
+Route::middleware(['auth'])
+    ->get('/report-print-due-log', [\App\Http\Controllers\ReportPrintDueLogController::class, 'index'])
+    ->name('report-print-due-log.index');
+
 Route::get('{any}', [App\Http\Controllers\HomeController::class, 'index'])
     ->where('any', '.*')
     ->name('index');

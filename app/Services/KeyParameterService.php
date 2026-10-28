@@ -373,12 +373,12 @@ class KeyParameterService
         // Result -- two all-'-' columns would only add noise.
         $twoColumn = collect($tableData)->every(fn ($info) => empty($info['uom']) && empty($info['range']));
 
-        // Two-column tables print every font 2pt larger than the base px
+        // Two-column tables print every font 3pt larger than the base px
         // sizes below -- with half the columns there's room, and the lab
         // asked for the larger text on these (e.g. Urine RE).
         $fontSize = fn (float $px) => $twoColumn
-            ? 'font-size:' . round($px * 0.75 + 2, 3) . 'pt;'
-            : 'font-size:' . $px . 'px;';
+            ? 'font-size:' . round($px * 0.75 + 3, 3) . 'pt;'
+            : 'font-size:' . round($px + 4 / 3, 3) . 'px;';
 
         // Light tint (not the data cells' own #F7FAFC, so the header still
         // reads as a distinct band above them) with a solid navy bottom
@@ -729,8 +729,8 @@ class KeyParameterService
 
             // Investigation's and Reference Range's own columns narrow in
             // place (don't need recreating, just restyling).
-            $investigationHeader->setAttribute('style', $this->appendStyle($this->scaleWidthInStyle($investigationHeader->getAttribute('style'), 0.65), 'font-size:8px;'));
-            $rangeHeader->setAttribute('style', $this->appendStyle($this->scaleWidthInStyle($rangeHeader->getAttribute('style'), 0.68), 'font-size:8px;'));
+            $investigationHeader->setAttribute('style', $this->appendStyle($this->scaleWidthInStyle($investigationHeader->getAttribute('style'), 0.65), 'font-size:9.333px;'));
+            $rangeHeader->setAttribute('style', $this->appendStyle($this->scaleWidthInStyle($rangeHeader->getAttribute('style'), 0.68), 'font-size:9.333px;'));
 
             // Previous 1/2/3 header labels -- real date if any tracked row
             // in this table has one at that slot, else left blank (no
@@ -755,7 +755,7 @@ class KeyParameterService
 
             $makeHeaderCell = function (string $text) use ($dom, $resultHeaderStyle) {
                 $td = $dom->createElement('td');
-                if ($resultHeaderStyle !== '') $td->setAttribute('style', $this->appendStyle($resultHeaderStyle, 'font-size:8px;'));
+                if ($resultHeaderStyle !== '') $td->setAttribute('style', $this->appendStyle($resultHeaderStyle, 'font-size:9.333px;'));
                 $p = $dom->createElement('p');
                 $p->setAttribute('style', 'text-align:center;');
                 $span = $dom->createElement('span');

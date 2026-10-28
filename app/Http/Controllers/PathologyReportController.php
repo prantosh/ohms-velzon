@@ -496,10 +496,51 @@ class PathologyReportController extends Controller
             ->orderByDesc('id')
             ->first();
 
+        $reason = null;
+
+        if (!$log) {
+            $reason = $this->whatsappNotSentReason($invoiceNo);
+        }
+
         return [
             'sent' => (bool) $log,
             'sent_at' => $log ? \Carbon\Carbon::parse($log->created_at)->format('d-m-Y H:i') : null,
+            'reason' => $reason,
+            'held_due' => !$log && ReportWhatsappDueGate::dueAmount($invoiceNo) > 0,
         ];
+    }
+
+    /**
+     * Why the automatic combined-report WhatsApp has not gone out yet, for
+     * the banner on the result screen. A payment due is checked live (it
+     * wins even if the logged attempt was something else, since nothing
+     * will be sent while it stands); otherwise the latest logged attempt
+     * explains it. Null when there's nothing notable (e.g. not every test
+     * confirmed yet, so no send was ever attempted).
+     */
+    private function whatsappNotSentReason(string $invoiceNo): ?string
+    {
+        $due = ReportWhatsappDueGate::dueAmount($invoiceNo);
+
+        if ($due > 0) {
+            return 'Payment of ' . number_format($due, 2) . ' is still due on this invoice. The report is held and will be sent on WhatsApp automatically once the payment is cleared.';
+        }
+
+        $last = DB::table('whatsapp_message_logs')
+            ->where('invoice_no', $invoiceNo)
+            ->where('message_type', 'PATHOLOGY_REPORT')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$last) {
+            return null;
+        }
+
+        return match ($last->status) {
+            'SKIPPED' => 'Automatic WhatsApp for Pathology Report is switched off in WhatsApp Auto-Send settings.',
+            'FAILED' => 'The last automatic WhatsApp attempt failed (e.g. WhatsApp service unavailable or invalid mobile number). Use Send Now to retry.',
+            default => null,
+        };
     }
 
     private function invoicePayload(Invoice $invoice): array
@@ -507,6 +548,7 @@ class PathologyReportController extends Controller
         return [
             'id' => $invoice->id,
             'invoice_no' => $invoice->invoice_no,
+            'due_amount' => (float) $invoice->due_amount,
             'invoice_date' => $invoice->invoice_date
                 ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y')
                 : null,

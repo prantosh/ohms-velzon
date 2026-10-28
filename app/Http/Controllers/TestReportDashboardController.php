@@ -261,6 +261,8 @@ class TestReportDashboardController extends Controller
             'Selected reports printed: ' . $items->pluck('item_description')->implode(', ')
         );
 
+        \App\Services\ReportPrintDueLogger::record($invoice, $items->pluck('item_description'), 'SELECTED');
+
         $fileName = str_replace(['/', '\\'], '-', $invoice->invoice_no) . '-selected-reports.pdf';
 
         return response($pdf, 200, [
@@ -302,6 +304,8 @@ class TestReportDashboardController extends Controller
             'PRINT',
             'All reports printed as one combined PDF'
         );
+
+        \App\Services\ReportPrintDueLogger::record($invoice, $items->pluck('item_description'), 'ALL');
 
         $fileName = str_replace(['/', '\\'], '-', $invoice->invoice_no) . '-all-reports.pdf';
 

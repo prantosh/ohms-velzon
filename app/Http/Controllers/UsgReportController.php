@@ -218,6 +218,7 @@ class UsgReportController extends Controller
             'invoice' => [
                 'id' => $invoice->id,
                 'invoice_no' => $invoice->invoice_no,
+                'due_amount' => (float) $invoice->due_amount,
                 'invoice_date' => $invoice->invoice_date
                     ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y')
                     : null,
