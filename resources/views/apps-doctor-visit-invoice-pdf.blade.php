@@ -328,7 +328,7 @@ $amountInWords = ucwords(
                 <br>
 
                 Received By :
-                <b>{{ optional(Auth::user())->name }}</b>
+                <b>{{ optional(\App\Models\User::find($invoice->created_by))->name ?? optional(Auth::user())->name }}</b>
                 Received Time :
                 <b> {{ fmtDateTime($invoice->created_at)  }}</b>
         </td>
