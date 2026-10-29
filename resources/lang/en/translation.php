@@ -90,6 +90,7 @@ return [
     "whatsappmessagereport" => "Whatsapp Message Detail",
     "doctorvisitcollectionreport" => "Doctor Visit Collection Report",
     "itemwisereport" => "Category-wise Summary & Detail",
+    "reconciliationreports" => "Reconciliation Reports",
     "monthlyreconciliationreport" => "Monthly Reconciliation Statement",
     "userreconciliationdashboard" => "User Reconciliation Dashboard",
     "expenditurereport" => "Expenditure Report (Category-wise)",

@@ -570,20 +570,32 @@
                                         <a href="{{ route('item-wise-report.index') }}" class="nav-link">@lang('translation.itemwisereport')</a>
                                         </li>
                             @endif
-                            @if(is_null($allowedPages) || in_array('monthly-reconciliation-report', $allowedPages))
+                            @if(is_null($allowedPages) || in_array('monthly-reconciliation-report', $allowedPages) || in_array('user-reconciliation', $allowedPages) || in_array('user-invoice-report', $allowedPages))
                             <li class="nav-item">
-                                        <a href="{{ route('monthly-reconciliation-report.index') }}" class="nav-link">@lang('translation.monthlyreconciliationreport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('expenditure-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('expenditure-report.index') }}" class="nav-link">@lang('translation.expenditurereport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('user-reconciliation', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('user-reconciliation.index') }}" class="nav-link">@lang('translation.userreconciliationdashboard')</a>
-                                        </li>
+                                <a class="nav-link menu-link" href="#sidebarReportReconciliation" data-bs-toggle="collapse" role="button"
+                                    aria-expanded="false" aria-controls="sidebarReportReconciliation">
+                                    <span>@lang('translation.reconciliationreports')</span>
+                                </a>
+                                <div class="collapse menu-dropdown" id="sidebarReportReconciliation">
+                                    <ul class="nav nav-sm flex-column">
+                                        @if(is_null($allowedPages) || in_array('monthly-reconciliation-report', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('monthly-reconciliation-report.index') }}" class="nav-link">@lang('translation.monthlyreconciliationreport')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('user-reconciliation', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('user-reconciliation.index') }}" class="nav-link">@lang('translation.userreconciliationdashboard')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('user-invoice-report', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('user-invoice-report.index') }}" class="nav-link">@lang('translation.userinvoicereport')</a>
+                                                    </li>
+                                        @endif
+                                    </ul>
+                                </div>
+                            </li>
                             @endif
                             @if(is_null($allowedPages) || in_array('reporting-group-summary-report', $allowedPages))
                             <li class="nav-item">
@@ -593,11 +605,6 @@
                             @if(is_null($allowedPages) || in_array('day-wise-group-summary-report', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('day-wise-group-summary-report.index') }}" class="nav-link">@lang('translation.daywisegroupsummaryreport')</a>
-                                        </li>
-                            @endif
-                            @if(is_null($allowedPages) || in_array('user-invoice-report', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('user-invoice-report.index') }}" class="nav-link">@lang('translation.userinvoicereport')</a>
                                         </li>
                             @endif
                             @if(is_null($allowedPages) || in_array('test-report-delivery-report', $allowedPages))
@@ -672,6 +679,11 @@
                             @if(is_null($allowedPages) || in_array('stock-as-on-date', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('stock-as-on-date.index') }}" class="nav-link">@lang('translation.stockasondate')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('expenditure-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('expenditure-report.index') }}" class="nav-link">@lang('translation.expenditurereport')</a>
                                         </li>
                             @endif
                         </ul>
