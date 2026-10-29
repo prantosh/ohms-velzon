@@ -947,6 +947,26 @@ function addTestRow(applyAutoCategory = true) {
 
     </div>
 
+    <div class="col-md-3 applyDiscountToAllWrap" style="display:none;">
+
+        <label>&nbsp;</label>
+
+        <div class="form-check mt-2">
+
+            <input
+                type="checkbox"
+                class="form-check-input applyDiscountToAll"
+                id="applyAll_${rowIndex}"
+                disabled>
+
+            <label class="form-check-label small" for="applyAll_${rowIndex}">
+                Same Disc % for all items
+            </label>
+
+        </div>
+
+    </div>
+
 </div>
 
 </td>
@@ -969,6 +989,8 @@ function addTestRow(applyAutoCategory = true) {
         .append(html);
 
     setRowTestDate($('#testTable tbody tr.mainRow:last .rowTestDate')[0], invoiceTestDateValue());
+
+    refreshApplyDiscountToAll();
 
     $('#addRow').prop('disabled', true);
     $('#testTable tbody tr.mainRow .category')
@@ -1095,6 +1117,15 @@ $(document).on(
         let mainRow =
             $(this).closest('tr');
 
+        // The first row owns the "same discount for all" source values.
+        if (mainRow.is($('#testTable tbody tr.mainRow').first())) {
+
+            mainRow.next('.detailRow')
+                .find('.applyDiscountToAll').prop('checked', false);
+
+            releaseApplyDiscountToAll();
+        }
+
         // If this row is itself a package (its component rows are hidden,
         // not gone -- see the package-expansion loop), removing it must
         // take its components with it, or they'd linger in the DOM and
@@ -1128,6 +1159,8 @@ $(document).on(
             .removeClass('locked-category');
 
         calculateTotal();
+
+        refreshApplyDiscountToAll();
 
         checkLastRowCompletion();
     }
@@ -1210,6 +1243,8 @@ $(document).on(
             mainRow.find('.amount')
                 .prop('readonly', true);
         }
+
+        refreshApplyDiscountToAll();
 
         let category = $(this).val();
 
@@ -1529,7 +1564,174 @@ function populateTestRow(mainRow, testData, forceZeroAmount = false) {
     applyStandardDiscount(mainRow, d1, d2, d3, d4, d5);
 
     mainRow.find('.standardDiscount').trigger('change');
+
+    refreshApplyDiscountToAll();
 }
+
+/*
+|--------------------------------------------------------------------------
+| SAME ADDITIONAL DISCOUNT % FOR ALL ITEMS
+|--------------------------------------------------------------------------
+| The checkbox lives only in the first item's detail row. It is enabled
+| once that row has an Addl Disc % and an Approved By; checking it copies
+| both onto every other item (and locks them there). Manual-category rows
+| and hidden package-component rows are left out.
+*/
+
+function isManualRow(mainRow) {
+    return (
+        mainRow.find('.category option:selected').data('category-name') || ''
+    ).toUpperCase().includes('MANUAL');
+}
+
+function releaseApplyDiscountToAll() {
+
+    $('#testTable tbody tr.mainRow').each(function () {
+
+        let detailRow = $(this).next('.detailRow');
+
+        let percent = detailRow.find('.additionalDiscountPercent');
+
+        if (!percent.hasClass('appliedFromFirst')) {
+            return;
+        }
+
+        percent
+            .removeClass('appliedFromFirst')
+            .prop('readonly', false)
+            .val(0)
+            .trigger('change');
+
+        detailRow.find('.discountApprovedBy')
+            .removeClass('appliedFromFirst')
+            .css('pointer-events', '')
+            .removeAttr('tabindex')
+            .val('')
+            .trigger('change');
+    });
+}
+
+// Addl Disc % and Addl Amt are mutually exclusive per item: whichever one
+// has a value locks the other.
+function syncAddlDiscountExclusivity() {
+
+    $('#testTable tbody tr.mainRow').each(function () {
+
+        let detailRow = $(this).next('.detailRow');
+
+        if (isManualRow($(this)) || detailRow.find('.locked-discount').length) {
+            return;
+        }
+
+        let percent = detailRow.find('.additionalDiscountPercent');
+        let amount = detailRow.find('.additionalDiscountAmount');
+
+        let hasPercent = (parseFloat(percent.val()) || 0) > 0;
+        let hasAmount = (parseFloat(amount.val()) || 0) > 0;
+
+        percent.prop('readonly', hasAmount || percent.hasClass('appliedFromFirst'));
+        amount.prop('readonly', hasPercent);
+    });
+}
+
+$(document).on(
+    'input change',
+    '.additionalDiscountPercent, .additionalDiscountAmount',
+    syncAddlDiscountExclusivity
+);
+
+function refreshApplyDiscountToAll() {
+
+    applyDiscountToAllCore();
+
+    syncAddlDiscountExclusivity();
+}
+
+function applyDiscountToAllCore() {
+
+    let rows = $('#testTable tbody tr.mainRow');
+
+    if (rows.length === 0) {
+        return;
+    }
+
+    let first = rows.first();
+    let firstDetail = first.next('.detailRow');
+
+    $('#testTable .applyDiscountToAllWrap').hide();
+    firstDetail.find('.applyDiscountToAllWrap').show();
+
+    let checkbox = firstDetail.find('.applyDiscountToAll');
+
+    let percent =
+        parseFloat(firstDetail.find('.additionalDiscountPercent').val()) || 0;
+
+    let approver = firstDetail.find('.discountApprovedBy').val();
+
+    let eligible = percent > 0 && !!approver && !isManualRow(first);
+
+    checkbox.prop('disabled', !eligible);
+
+    if (!eligible && checkbox.is(':checked')) {
+
+        checkbox.prop('checked', false);
+        releaseApplyDiscountToAll();
+
+        return;
+    }
+
+    if (!checkbox.is(':checked')) {
+        return;
+    }
+
+    rows.not(first).each(function () {
+
+        let row = $(this);
+
+        let detailRow = row.next('.detailRow');
+
+        if (isManualRow(row) || detailRow.find('.locked-discount').length) {
+            return;
+        }
+
+        detailRow.find('.additionalDiscountAmount').val(0);
+
+        detailRow.find('.additionalDiscountPercent')
+            .addClass('appliedFromFirst')
+            .prop('readonly', true)
+            .val(percent)
+            .trigger('change');
+
+        detailRow.find('.discountApprovedBy')
+            .addClass('appliedFromFirst')
+            .css('pointer-events', 'none')
+            .attr('tabindex', -1)
+            .val(approver)
+            .trigger('change');
+    });
+}
+
+$(document).on('change', '.applyDiscountToAll', function () {
+
+    if (!$(this).is(':checked')) {
+        releaseApplyDiscountToAll();
+    }
+
+    refreshApplyDiscountToAll();
+});
+
+$(document).on(
+    'input change',
+    '.additionalDiscountPercent, .discountApprovedBy',
+    function () {
+
+        let mainRow = $(this).closest('tr').prev('.mainRow');
+
+        if (mainRow.is($('#testTable tbody tr.mainRow').first())) {
+            refreshApplyDiscountToAll();
+        }
+    }
+);
 
 /*
 |--------------------------------------------------------------------------
