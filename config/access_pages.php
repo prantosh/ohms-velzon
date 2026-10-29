@@ -74,6 +74,7 @@ return [
     'remarks-master' => 'Remarks Master',
     'reporting-group' => 'Reporting Group Master',
     'reporting-group-summary-report' => 'Reporting Group Summary Report',
+    'day-wise-group-summary-report' => 'Day-wise Group Summary Report',
     'user-reconciliation' => 'User Reconciliation Dashboard',
     'role-page-access' => 'Role Page Access',
     'patient-detail-correction' => 'Patient Detail Correction',

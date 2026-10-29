@@ -1896,6 +1896,16 @@ Route::middleware(['auth'])->prefix('reporting-group-summary-report')->group(fun
 
 });
 
+Route::middleware(['auth'])->prefix('day-wise-group-summary-report')->group(function () {
+
+    Route::get('/', [\App\Http\Controllers\DayWiseGroupSummaryReportController::class, 'index'])
+        ->name('day-wise-group-summary-report.index');
+
+    Route::get('/report', [\App\Http\Controllers\DayWiseGroupSummaryReportController::class, 'report']);
+    Route::get('/print', [\App\Http\Controllers\DayWiseGroupSummaryReportController::class, 'print']);
+
+});
+
 Route::prefix('user-invoice-report')->group(function () {
 
     Route::get('/', [UserInvoiceReportController::class, 'index'])

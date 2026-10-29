@@ -810,6 +810,13 @@ function buildKeyParametersHtml(finding) {
         byGroup[key].push(p);
     });
 
+    // Total Bilirubin package report: staff enter Direct and Indirect only,
+    // Total is always their sum (mirrors KeyParameterService::
+    // withDerivedTotalBilirubin(), which is what actually prints). Not for
+    // LFT, nor a Bilirubin (Total) billed on its own -- those type it.
+    let totalIsDerived = !itemCodeSubs.includes('PAT176')
+        && ['PAT142', 'PAT387', 'PAT388'].every(code => applicable.some(p => p.item_code_sub === code));
+
     let groupsHtml = Object.keys(byGroup).map(groupLabel => {
 
         // Consecutive parameters sharing a section_label (e.g. Urine RE's
@@ -841,10 +848,16 @@ function buildKeyParametersHtml(finding) {
             let val = draft[p.item_code_sub] || (finding.id ? '' : (p.default_value || ''));
             let uomText = p.uom ? ` (${escapeHtml(p.uom)})` : '';
 
+            let derived = totalIsDerived && p.item_code_sub === 'PAT142';
+            if (derived) {
+                val = sumBilirubin(draft['PAT387'], draft['PAT388']);
+            }
+
             return `
             <div style="min-width:170px;" class="mb-1">
-                <label class="small mb-0">${escapeHtml(p.parameter_name)}${uomText}</label>
+                <label class="small mb-0">${escapeHtml(p.parameter_name)}${uomText}${derived ? ' <span class="text-muted">(auto: Direct + Indirect)</span>' : ''}</label>
                 <input type="text" class="form-control form-control-sm pathology-key-param-input"
+                       ${derived ? 'readonly data-derived-total="1"' : ''}
                        data-item-code-sub="${escapeHtml(p.item_code_sub)}"
                        data-param-label="${escapeHtml(p.parameter_name)}"
                        data-param-uom="${escapeHtml(p.uom || '')}"
@@ -943,11 +956,43 @@ async function fetchTablePreview(cardEl) {
     }
 }
 
+// Direct + Indirect Bilirubin as printed text ('' unless both are numbers),
+// same formatting as the server (1.5, 2.0, 0.85).
+function sumBilirubin(direct, indirect) {
+
+    let d = String(direct ?? '').trim();
+    let i = String(indirect ?? '').trim();
+
+    if (d === '' || i === '' || isNaN(d) || isNaN(i)) return '';
+
+    let sum = String(parseFloat((parseFloat(d) + parseFloat(i)).toFixed(2)));
+
+    return sum.includes('.') ? sum : sum + '.0';
+}
+
+// Keeps the read-only Total Bilirubin box (data-derived-total, set only on
+// a Total Bilirubin package report) equal to Direct + Indirect as either is typed.
+function autoSumTotalBilirubin(target, cardEl) {
+
+    let code = target.dataset.itemCodeSub;
+    if (!cardEl || !['PAT387', 'PAT388'].includes(code)) return;
+
+    let field = c => cardEl.querySelector(`.pathology-key-param-input[data-item-code-sub="${c}"]`);
+    let total = cardEl.querySelector('.pathology-key-param-input[data-derived-total]');
+
+    if (!total) return;
+
+    total.value = sumBilirubin(field('PAT387').value, field('PAT388').value);
+}
+
 document.addEventListener('input', function (e) {
 
     if (!e.target.classList || !e.target.classList.contains('pathology-key-param-input')) return;
 
     let cardEl = e.target.closest('.pathology-finding-card');
+
+    autoSumTotalBilirubin(e.target, cardEl);
+
     if (cardEl) debouncedFetchTablePreview(cardEl);
 });
 
@@ -1047,6 +1092,18 @@ function hasAdminAuthoredTable(contentHtml) {
     let root = doc.getElementById('root');
 
     return Array.from(root.querySelectorAll('table')).some(table => !table.closest('[data-key-param-block]'));
+}
+
+// Whether a locked editor would have anything staff can actually use: a
+// blank result cell that becomes a typing exception, or a Key Parameter
+// marker / auto-table that the separate Key Parameters inputs feed.
+function hasFillableRegion(contentHtml) {
+
+    let parser = new DOMParser();
+    let doc = parser.parseFromString(`<div id="root">${applyTemplateContentLock(contentHtml)}</div>`, 'text/html');
+    let root = doc.getElementById('root');
+
+    return !!root.querySelector('.restricted-editing-exception, [data-key-param-result], [data-auto-key-param-table]');
 }
 
 function mergeKeyParametersIntoContent(card, contentHtml) {
@@ -1274,7 +1331,13 @@ function renderPathologyFindingCard(container, finding, invoiceNo) {
     // nothing to except, so forcing it on would leave staff unable to
     // type anywhere at all. See hasAdminAuthoredTable()'s doc comment for
     // why the self-managed Key Parameters summary table doesn't count.
-    let editorConfig = hasAdminAuthoredTable(finding.content || '') ? LOCKED_EDITOR_CONFIG : RICH_EDITOR_CONFIG;
+    // A table with NO fillable cell (no #F7FAFC blank result cell) and no
+    // Key Parameter field feeding it (e.g. URINE FOR PREGNANCY, whose
+    // result cells are plain) would lock the whole report with nowhere to
+    // type, so it stays unrestricted too.
+    let editorConfig = hasAdminAuthoredTable(finding.content || '') && hasFillableRegion(finding.content || '')
+        ? LOCKED_EDITOR_CONFIG
+        : RICH_EDITOR_CONFIG;
 
     // Returned so loadPathologyReports() can wait for every card's editor
     // (and, with it, lockPathologyCard()'s confirmed-badge display) before

@@ -94,6 +94,7 @@ return [
     "userreconciliationdashboard" => "User Reconciliation Dashboard",
     "expenditurereport" => "Expenditure Report (Category-wise)",
     "reportinggroupsummaryreport" => "Group-wise Summary for All Users",
+    "daywisegroupsummaryreport" => "Day-wise Group Summary (Date Range)",
     "usermanagement" => "User Management",
     "usermaster" => "User Master",
     "rolepageaccess" => "Role Page Access",

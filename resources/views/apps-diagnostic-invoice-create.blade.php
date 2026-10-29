@@ -39,6 +39,10 @@ Create Diagnostic Invoice
         vertical-align: middle;
     }
 
+    #testTable thead th {
+        font-size: 11px;
+    }
+
 
 
 
@@ -336,19 +340,6 @@ Create Diagnostic Invoice
                         </div>
 
                     </div>
-                    <div class="d-flex justify-content-end mb-2">
-
-                        <button
-                            type="button"
-                            id="addRow"
-                            class="btn btn-primary btn-sm">
-
-                            <i class="ri-add-line"></i>
-                            Add Test
-
-                        </button>
-
-                    </div>
                     <!-- Test Grid -->
 
                     <div class="table-responsive">
@@ -399,6 +390,26 @@ Create Diagnostic Invoice
 
                             <tbody>
                             </tbody>
+
+                            {{-- tfoot always renders after the item rows, so the button
+                                 sits just under the last Category drop down and moves
+                                 down as items are added. --}}
+                            <tfoot>
+                                <tr>
+                                    <td colspan="8">
+                                        <button
+                                            type="button"
+                                            id="addRow"
+                                            class="btn btn-danger"
+                                            style="font-size: 1.1rem; font-weight: 600;">
+
+                                            <i class="ri-add-line"></i>
+                                            Add Test
+
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tfoot>
 
                         </table>
 

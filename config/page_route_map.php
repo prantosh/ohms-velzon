@@ -128,6 +128,7 @@ return [
     'item-wise-report.index' => 'item-wise-report',
     'monthly-reconciliation-report.index' => 'monthly-reconciliation-report',
     'reporting-group-summary-report.index' => 'reporting-group-summary-report',
+    'day-wise-group-summary-report.index' => 'day-wise-group-summary-report',
     'user-reconciliation.index' => 'user-reconciliation',
 
     'users.index' => 'users',

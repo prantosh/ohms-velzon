@@ -137,6 +137,8 @@ class KeyParameterService
             return;
         }
 
+        $values = $this->withDerivedTotalBilirubin($values, $this->findingItemCodeSubs($finding));
+
         $itemCodeSubs = array_keys($values);
 
         $paramMeta = $this->paramMetaFor($itemCodeSubs, $this->findingItemCodeSubs($finding), $finding->invoice_no);
@@ -265,6 +267,38 @@ class KeyParameterService
         return [];
     }
 
+    /**
+     * On a Total Bilirubin package report (PAT401: Direct PAT387 + Indirect
+     * PAT388 + Total PAT142) staff only enter Direct and Indirect -- Total
+     * is always their sum, never typed. Replaces/sets PAT142 accordingly
+     * (dropped when Direct or Indirect is missing, so a stale total never
+     * prints). A report that also covers LFT (PAT176) keeps its own typed
+     * Total, as does a Bilirubin (Total) billed on its own.
+     */
+    private function withDerivedTotalBilirubin(array $values, array $findingItemCodeSubs): array
+    {
+        $isTotalBilirubinReport = in_array('PAT401', $findingItemCodeSubs, true)
+            || count(array_intersect(['PAT142', 'PAT387', 'PAT388'], $findingItemCodeSubs)) === 3;
+
+        if (!$isTotalBilirubinReport || in_array('PAT176', $findingItemCodeSubs, true)) {
+            return $values;
+        }
+
+        $raw = fn ($code) => trim((string) (is_array($values[$code] ?? null) ? ($values[$code]['value'] ?? '') : ($values[$code] ?? '')));
+
+        $direct = $raw('PAT387');
+        $indirect = $raw('PAT388');
+
+        if (is_numeric($direct) && is_numeric($indirect)) {
+            $sum = rtrim(rtrim(number_format((float) $direct + (float) $indirect, 2, '.', ''), '0'), '.');
+            $values['PAT142'] = str_contains($sum, '.') ? $sum : $sum . '.0';
+        } else {
+            unset($values['PAT142']);
+        }
+
+        return $values;
+    }
+
     public function tableDataFor(object $finding, Invoice $invoice): array
     {
         $current = $finding->key_parameter_values;
@@ -272,6 +306,8 @@ class KeyParameterService
         if (empty($current)) {
             return [];
         }
+
+        $current = $this->withDerivedTotalBilirubin($current, $this->findingItemCodeSubs($finding));
 
         $itemCodeSubs = array_keys($current);
 
