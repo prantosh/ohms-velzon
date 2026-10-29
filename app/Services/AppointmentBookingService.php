@@ -34,6 +34,27 @@ class AppointmentBookingService
     }
 
     /**
+     * Active patients on this mobile whose name is within a couple of
+     * typos of the typed one (case and spacing ignored).
+     */
+    private function similarPatients(string $mobileNo, string $name)
+    {
+        $normalise = fn (string $s) => strtoupper(preg_replace('/\s+/', ' ', trim($s)));
+
+        $typed = $normalise($name);
+
+        return Patient::where('mobile_no', $mobileNo)
+            ->where('status', 'A')
+            ->get(['id', 'patient_id', 'patient_name', 'age', 'gender'])
+            ->filter(function ($p) use ($normalise, $typed) {
+                $existing = $normalise($p->patient_name);
+                $allowed = max(1, (int) floor(min(strlen($typed), strlen($existing)) / 6));
+
+                return $existing !== $typed && levenshtein($existing, $typed) <= min($allowed, 3);
+            });
+    }
+
+    /**
      * @param array $data doctor_id, doctor_schedule_session_id, patient_name,
      *   patient_mobile_no, appointment_date, appointment_time, patient_age,
      *   patient_gender (optional), patient_id (optional -- real patients.id
@@ -120,8 +141,8 @@ class AppointmentBookingService
 
             $patient->update([
                 'patient_name' => $data['patient_name'],
-                'age' => $data['patient_age'] ?? $patient->age,
-                'gender' => $data['patient_gender'] ?? $patient->gender,
+                'age' => ($data['patient_age'] ?? '') !== '' ? $data['patient_age'] : $patient->age,
+                'gender' => ($data['patient_gender'] ?? '') !== '' ? $data['patient_gender'] : $patient->gender,
             ]);
 
             $newPatientData = $patient->only(['patient_name', 'age', 'gender']);
@@ -139,9 +160,42 @@ class AppointmentBookingService
 
         } else {
 
-            $patient = Patient::where('mobile_no', $data['patient_mobile_no'])
-                ->where('patient_name', $data['patient_name'])
-                ->first();
+            $patient = Patient::findActiveByMobileAndName($data['patient_mobile_no'], $data['patient_name']);
+
+            // Same mobile + name is the same patient: reuse the ID, and the
+            // latest age/gender entered wins (blank never wipes what's on file).
+            if ($patient) {
+
+                $fill = array_filter([
+                    'age' => $data['patient_age'] ?? null,
+                    'gender' => $data['patient_gender'] ?? null,
+                ], fn ($v) => $v !== null && $v !== '');
+
+                if ($fill) {
+                    $patient->update($fill);
+                }
+            }
+        }
+
+        // Opt-in (the staff booking screen only): a name that matches no one
+        // exactly but is a near miss of someone already on this mobile is
+        // usually the same person typed differently -- creating a new
+        // patient code for them is how duplicates like USASI/USESHI GHATAK
+        // happened. Ask the operator instead of guessing; the screen
+        // re-submits with confirm_new_patient once they say it's someone new.
+        if (!$patient && !empty($data['check_similar_patient']) && empty($data['confirm_new_patient'])) {
+
+            $similar = $this->similarPatients($data['patient_mobile_no'], $data['patient_name']);
+
+            if ($similar->isNotEmpty()) {
+
+                return [
+                    'status' => 'similar_patient',
+                    'message' => 'A patient with a very similar name already exists on this mobile number.',
+                    'patients' => $similar->values()->all(),
+                    'appointment' => null,
+                ];
+            }
         }
 
         if (!$patient) {

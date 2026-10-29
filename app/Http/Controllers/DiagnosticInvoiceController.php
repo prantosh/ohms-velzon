@@ -1278,6 +1278,24 @@ class DiagnosticInvoiceController extends Controller
 
     public function generatePatientId(Request $request)
     {
+        // Same mobile + same name is the same patient -- hand back their
+        // existing ID instead of minting a new one. The screen then saves
+        // the typed name/age/gender onto it (savePatient), so the latest
+        // input wins.
+        $existing = \App\Models\Patient::findActiveByMobileAndName(
+            $request->mobile_no,
+            $request->patient_name
+        );
+
+        if ($existing) {
+
+            return response()->json([
+                'status' => true,
+                'patient_id' => $existing->patient_id,
+                'existing' => true,
+            ]);
+        }
+
         $count = DB::table('patients')
             ->where(
                 'mobile_no',
@@ -1298,7 +1316,8 @@ class DiagnosticInvoiceController extends Controller
 
         return response()->json([
             'status' => true,
-            'patient_id' => $patientId
+            'patient_id' => $patientId,
+            'existing' => false,
         ]);
     }
     public function getPatientDiscountEligibility($patientId)
@@ -2825,11 +2844,26 @@ class DiagnosticInvoiceController extends Controller
             'age.digits_between' => 'Age must be a number of up to 2 digits.',
         ]);
 
-        DB::table('patients')->updateOrInsert(
-            [
-                'patient_id' => $request->patient_id
-            ],
-            [
+        $patientRow = DB::table('patients')->where('patient_id', $request->patient_id);
+
+        if ($patientRow->exists()) {
+
+            // An existing patient (e.g. matched by mobile + name): the
+            // latest input wins, but a blank age/gender never wipes what's
+            // on file, and created_at is left as it was.
+            $patientRow->update(array_filter([
+                'patient_name' => $request->patient_name,
+                'mobile_no' => $request->mobile_no,
+                'age' => $request->age,
+                'gender' => $request->gender,
+                'status' => 'A',
+                'updated_at' => now(),
+            ], fn ($v) => $v !== null && $v !== ''));
+
+        } else {
+
+            DB::table('patients')->insert([
+                'patient_id' => $request->patient_id,
                 'patient_name' => $request->patient_name,
                 'mobile_no' => $request->mobile_no,
                 'age' => $request->age,
@@ -2837,8 +2871,8 @@ class DiagnosticInvoiceController extends Controller
                 'status' => 'A',
                 'updated_at' => now(),
                 'created_at' => now()
-            ]
-        );
+            ]);
+        }
 
         DB::table('patient_mobile_numbers')
             ->updateOrInsert(

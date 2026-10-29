@@ -95,11 +95,14 @@ class DoctorAppointmentController extends Controller
             'appointment_time' => $request->appointment_time,
             'remarks' => $request->remarks,
             'created_by' => Auth::id(),
+            'check_similar_patient' => true,
+            'confirm_new_patient' => $request->confirm_new_patient,
         ]);
 
         return response()->json([
             'status' => $result['status'],
             'message' => $result['message'],
+            'patients' => $result['patients'] ?? null,
             'token_no' => optional($result['appointment'])->token_no,
         ]);
     }

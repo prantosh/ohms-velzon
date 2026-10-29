@@ -193,7 +193,22 @@ class AmbulanceRentalController extends Controller
 
             $dueAmount = max(0, round($netPayable - $receivedAmount, 2));
 
-            if (!DB::table('patients')->where('patient_id', $request->patient_id)->exists()) {
+            if (DB::table('patients')->where('patient_id', $request->patient_id)->exists()) {
+
+                // Existing patient: the latest age/gender entered wins (a
+                // blank never wipes what's on file).
+                $latest = array_filter([
+                    'age' => $request->patient_age,
+                    'gender' => $request->patient_gender,
+                ], fn ($v) => $v !== null && $v !== '');
+
+                if ($latest) {
+                    DB::table('patients')
+                        ->where('patient_id', $request->patient_id)
+                        ->update($latest + ['updated_at' => now()]);
+                }
+
+            } else {
 
                 DB::table('patients')->insert([
                     'patient_id' => $request->patient_id,

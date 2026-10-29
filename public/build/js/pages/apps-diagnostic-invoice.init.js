@@ -4325,12 +4325,26 @@ $(document).on(
             '/patient/generate-id',
             {
                 mobile_no:
-                    $('#patient_mobile_no').val()
+                    $('#patient_mobile_no').val(),
+
+                patient_name:
+                    $('#patient_name').val()
             },
             function (response) {
 
                 $('#patient_id')
                     .val(response.patient_id);
+
+                // Same mobile + name already has an ID -- it is reused, and
+                // the age/gender typed here are saved onto it below.
+                if (response.existing) {
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Existing patient',
+                        text: $('#patient_name').val() + ' is already registered on this mobile number as ' +
+                            response.patient_id + '. That ID will be used and the age/gender updated.'
+                    });
+                }
 
                 enableInvoiceSection();
 
