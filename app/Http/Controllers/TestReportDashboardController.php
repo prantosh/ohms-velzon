@@ -101,7 +101,14 @@ class TestReportDashboardController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_no', 'like', "%{$search}%")
                     ->orWhere('patient_name', 'like', "%{$search}%")
-                    ->orWhere('patient_mobile_no', 'like', "%{$search}%");
+                    ->orWhere('patient_mobile_no', 'like', "%{$search}%")
+                    // Full or part of any billed test's description.
+                    ->orWhereExists(function ($sub) use ($search) {
+                        $sub->selectRaw('1')
+                            ->from('invoice_details as sd')
+                            ->whereColumn('sd.invoice_no', 'invoices.invoice_no')
+                            ->where('sd.item_description', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -580,6 +587,15 @@ class TestReportDashboardController extends Controller
             'total_tests' => $totalTests,
             'results_entered' => $resultsEntered,
             'result_status' => $resultStatus,
+            // statusFor() has just stored/refreshed report_outsourced_tests,
+            // so this needs no query of its own. The status itself is only
+            // a function of the invoice's own received/delivered stamps.
+            'outsourced_total' => (int) $invoice->report_outsourced_tests,
+            'outsourced_status' => (int) $invoice->report_outsourced_tests === 0
+                ? 'N/A'
+                : ($invoice->outsourced_report_delivered_at
+                    ? 'Delivered'
+                    : ($invoice->outsourced_report_received_at ? 'Received' : 'Pending')),
             'confirmed' => $confirmed,
             'confirmed_count' => $confirmedCount,
             'payment_status' => $paymentStatus,

@@ -63,7 +63,7 @@
                 <input type="text"
                        id="dashSearchInput"
                        class="form-control"
-                       placeholder="Invoice No / Patient Name / Mobile">
+                       placeholder="Invoice No / Patient Name / Mobile / Test Description">
 
             </div>
 

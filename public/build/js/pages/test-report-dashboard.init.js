@@ -69,6 +69,11 @@ const RESULT_STATUS_LABELS = {
 
 function resultStatusBadge(row) {
 
+    // No in-house tests on the invoice (e.g. outsourced only): nothing to show.
+    if (row.result_status === 'N/A') {
+        return '';
+    }
+
     let cls = {
         'Pending': 'bg-warning text-dark',
         'Partial': 'bg-info text-dark',
@@ -82,6 +87,25 @@ function resultStatusBadge(row) {
         : '';
 
     return `<span class="badge ${cls}">${RESULT_STATUS_LABELS[row.result_status] ?? row.result_status} (${row.results_entered}/${row.total_tests})</span>${confirmedBadge}`;
+}
+
+// Outsourced lines have no result-entry step -- just the outside lab's
+// report coming back (Received) and being handed over (Delivered).
+function outsourcedStatusBadge(row) {
+
+    if (row.outsourced_status === 'N/A') {
+        return '';
+    }
+
+    let cls = {
+        'Pending': 'bg-warning text-dark',
+        'Received': 'bg-info text-dark',
+        'Delivered': 'bg-success'
+    }[row.outsourced_status] ?? 'bg-secondary';
+
+    let label = row.outsourced_status === 'Pending' ? 'Not Received' : row.outsourced_status;
+
+    return `<span class="badge ${cls}">${label} (${row.outsourced_total})</span>`;
 }
 
 function paymentStatusBadge(status) {
@@ -132,7 +156,7 @@ async function loadReports(page = 1) {
 
     tbody.innerHTML = `
         <tr>
-            <td colspan="10" class="text-center py-5">
+            <td colspan="11" class="text-center py-5">
                 <div class="spinner-border text-primary" role="status" style="width: 2rem; height: 2rem;"></div>
                 <div class="mt-2 fw-semibold">Loading reports, please wait...</div>
                 <small class="text-muted">This can take a few seconds.</small>
@@ -162,7 +186,7 @@ async function loadReports(page = 1) {
 
         tbody.innerHTML = `
             <tr>
-                <td colspan="10" class="text-center text-danger py-4">
+                <td colspan="11" class="text-center text-danger py-4">
                     Could not load the reports. Please check your connection and
                     <a href="#" id="retryLoadReports">try again</a>.
                 </td>
@@ -193,7 +217,7 @@ async function loadReports(page = 1) {
     document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
 
     if (!result.data.length) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No diagnostic test report invoices found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">No diagnostic test report invoices found.</td></tr>';
         return;
     }
 
@@ -273,6 +297,7 @@ async function loadReports(page = 1) {
                 <td>${row.invoice_date ?? '-'}</td>
                 <td>${row.total_tests}</td>
                 <td>${resultStatusBadge(row)}</td>
+                <td>${outsourcedStatusBadge(row)}</td>
                 <td>${paymentStatusBadge(row.payment_status)}</td>
                 <td class="text-end">${row.paid_amount.toFixed(2)}</td>
                 <td class="text-end">${row.due_amount.toFixed(2)}</td>

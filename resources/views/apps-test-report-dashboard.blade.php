@@ -41,7 +41,7 @@
                     <div class="col-md-3">
                         <label class="form-label mb-1">Search</label>
                         <input type="text" id="searchInput" class="form-control form-control-sm"
-                               placeholder="Invoice no / patient / mobile">
+                               placeholder="Invoice no / patient / mobile / test description">
                     </div>
 
                     <div class="col-md-2">
@@ -127,7 +127,8 @@
                                 <th>Category</th>
                                 <th>Invoice Date</th>
                                 <th>Tests</th>
-                                <th>Result Status</th>
+                                <th>In-House Result Status</th>
+                                <th>Outsourced Status</th>
                                 <th>Payment Status</th>
                                 <th class="text-end">Paid</th>
                                 <th class="text-end">Due</th>

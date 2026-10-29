@@ -70,7 +70,14 @@ class XrayReportUploadController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_no', 'like', "%{$search}%")
                     ->orWhere('patient_name', 'like', "%{$search}%")
-                    ->orWhere('patient_mobile_no', 'like', "%{$search}%");
+                    ->orWhere('patient_mobile_no', 'like', "%{$search}%")
+                    // Full or part of any billed test's description.
+                    ->orWhereExists(function ($sub) use ($search) {
+                        $sub->selectRaw('1')
+                            ->from('invoice_details as sd')
+                            ->whereColumn('sd.invoice_no', 'invoices.invoice_no')
+                            ->where('sd.item_description', 'like', "%{$search}%");
+                    });
             });
         }
 
