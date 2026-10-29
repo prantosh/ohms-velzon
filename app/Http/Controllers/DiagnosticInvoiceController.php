@@ -455,8 +455,11 @@ class DiagnosticInvoiceController extends Controller
     public function store(Request $request, AuditService $auditService)
     {
 
-       
-
+        $request->validate([
+            'patient_age' => 'nullable|digits_between:1,2',
+        ], [
+            'patient_age.digits_between' => 'Age must be a number of up to 2 digits.',
+        ]);
 
         DB::beginTransaction();
 
@@ -2816,6 +2819,12 @@ class DiagnosticInvoiceController extends Controller
     }
     public function savePatient(Request $request)
     {
+        $request->validate([
+            'age' => 'nullable|digits_between:1,2',
+        ], [
+            'age.digits_between' => 'Age must be a number of up to 2 digits.',
+        ]);
+
         DB::table('patients')->updateOrInsert(
             [
                 'patient_id' => $request->patient_id

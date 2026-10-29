@@ -218,6 +218,10 @@ Create Diagnostic Invoice
                             <input type="text"
                                    id="patient_age"
                                    name="patient_age"
+                                   maxlength="2"
+                                   inputmode="numeric"
+                                   pattern="[0-9]{1,2}"
+                                   oninput="this.value = this.value.replace(/\D/g, '').slice(0, 2)"
                                    class="form-control">
                         </div>
 

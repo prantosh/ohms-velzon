@@ -4456,6 +4456,57 @@ $(document).on(
 
 /*
 |--------------------------------------------------------------------------
+| AGE EDITED ON AN EXISTING PATIENT -- an existing patient's Age box stays
+| editable (the typed value is saved back to the patient with the invoice),
+| so a patient with no age on file can have one entered here. Re-derive
+| Senior Citizen eligibility from the typed age and recalculate every test
+| row, instead of keeping the flag fixed from the stored age. New patients
+| are handled by the Generate Patient ID flow, which reads the age itself.
+|--------------------------------------------------------------------------
+*/
+
+let ageEligibilityTimer = null;
+let ageEligibilityRequest = 0;
+
+$(document).on('input change', '#patient_age', function () {
+
+    if (!$('#patient_id').val() || $('#generatePatientIdBtn').is(':visible')) {
+        return;
+    }
+
+    clearTimeout(ageEligibilityTimer);
+
+    ageEligibilityTimer = setTimeout(function () {
+
+        let requestId = ++ageEligibilityRequest;
+
+        $.post('/diagnostic-invoice/new-patient-discount', {
+            _token: $('meta[name="csrf-token"]').attr('content'),
+            age: $('#patient_age').val(),
+            mobile_no: $('#patient_mobile_no').val(),
+            patient_name: $('#patient_name').val()
+        }, function (d) {
+
+            // A later keystroke's response supersedes this one.
+            if (requestId !== ageEligibilityRequest) return;
+
+            $('#discountMessage').text(
+                d.messages && d.messages.length > 0
+                    ? d.messages.join(' | ')
+                    : 'Patient is not eligible for any standard discount.'
+            );
+
+            window.isEmployeeMember = d.is_member;
+            window.isSeniorCitizen = parseInt($('#patient_age').val()) >= 60;
+
+            recalculateStandardDiscountsForAllRows();
+        });
+
+    }, 400);
+});
+
+/*
+|--------------------------------------------------------------------------
 | PRINT
 |--------------------------------------------------------------------------
 */
