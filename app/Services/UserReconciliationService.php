@@ -297,6 +297,12 @@ class UserReconciliationService
 
     private function transactionTotals(string $type, string $amountColumn, string $from, string $to)
     {
+        // $amountColumn is interpolated into raw SQL below, so only the two
+        // known amount columns are ever allowed through.
+        if (!in_array($amountColumn, ['received_amount', 'refund_amount'], true)) {
+            throw new \InvalidArgumentException("Invalid amount column: {$amountColumn}");
+        }
+
         return DB::table('daily_transactions')
             ->where('transaction_type', $type)
             ->where('status', 'ACTIVE')

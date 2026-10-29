@@ -347,18 +347,24 @@ function slotKeyForTime(timeStr) {
     return h * 60 + (m < 30 ? 0 : 30);
 }
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    })[char]);
+}
+
 function showEventDetail(p) {
 
     Swal.fire({
 
-        title: p.doctor,
+        title: escapeHtml(p.doctor),
 
         html: `
             <div style="text-align:left; font-size:14px;">
 
                 <div class="mb-2">
                     <i class="ri-stethoscope-line text-primary align-middle me-1"></i>
-                    <b>Specialisation:</b> ${p.specialisation || '-'}
+                    <b>Specialisation:</b> ${escapeHtml(p.specialisation || '-')}
                 </div>
 
                 <div class="mb-2">
@@ -488,7 +494,7 @@ function renderGrid(events, days) {
 
                 let meta = document.createElement('div');
                 meta.className = 'doc-meta';
-                meta.innerHTML = '<i class="ri-group-line align-middle"></i> ' + p.booking_status;
+                meta.innerHTML = '<i class="ri-group-line align-middle"></i> ' + escapeHtml(p.booking_status);
                 bar.appendChild(meta);
 
                 if (p.is_by_appointment) {
@@ -713,8 +719,8 @@ document.addEventListener('DOMContentLoaded', function () {
             return {
                 html: `
                     <div style="font-size:11.5px; line-height:1.25; overflow:hidden;"
-                         title="${p.doctor} • ${timing} • ${p.booking_status} booked">
-                        <b>${p.doctor}</b> - ${p.specialisation || ''} <span style="opacity:.85;">(${timing})</span>
+                         title="${escapeHtml(p.doctor)} • ${escapeHtml(timing)} • ${escapeHtml(p.booking_status)} booked">
+                        <b>${escapeHtml(p.doctor)}</b> - ${escapeHtml(p.specialisation || '')} <span style="opacity:.85;">(${timing})</span>
                     </div>
                 `
             };
