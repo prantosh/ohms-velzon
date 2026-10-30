@@ -59,6 +59,8 @@ $(document).ready(function () {
 
     if ($("#invoiceTable").length) {
 
+        applyInvoicePaymentMode();
+
         loadInvoices();
     }
 
@@ -72,6 +74,23 @@ $(document).ready(function () {
             $(this).addClass("active");
 
             currentInvoiceCategory = $(this).data("category");
+
+            loadInvoices();
+        }
+    );
+
+    $(document).on(
+        "click",
+        "#invoicePaymentTabs .nav-link",
+        function () {
+
+            $("#invoicePaymentTabs .nav-link").removeClass("active");
+
+            $(this).addClass("active");
+
+            currentInvoicePayment = $(this).data("payment");
+
+            applyInvoicePaymentMode();
 
             loadInvoices();
         }
@@ -125,7 +144,19 @@ $(document).ready(function () {
 */
 
 let currentInvoiceCategory = 'PATHOLOGY';
+// Matches the sub-tab that is active on load (Payment Due).
+let currentInvoicePayment = 'due';
 let currentInvoiceDays = 3;
+
+// Payment Due ignores the day range (it lists every due record), so the day
+// buttons are disabled and the day-range caption is hidden while it is selected.
+function applyInvoicePaymentMode() {
+
+    const allRecords = currentInvoicePayment === 'due';
+
+    $("#invoiceDaysFilter button").prop("disabled", allRecords);
+    $("#invoiceDaysText").toggleClass("d-none", allRecords);
+}
 
 function loadInvoices() {
 
@@ -157,6 +188,7 @@ function loadInvoices() {
 
         data: {
             category: currentInvoiceCategory,
+            payment: currentInvoicePayment,
             days: currentInvoiceDays
         },
 

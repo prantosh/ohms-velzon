@@ -69,6 +69,19 @@ Diagnostic Invoice
     /* Pathology/Non-Pathology tabs -- solid filled like the "Create
        Diagnostic Invoice" button above them, instead of Bootstrap's
        default muted-background active-tab look. */
+    #invoicePaymentTabs .nav-link {
+        padding: 0.25rem 0.9rem;
+        font-size: 12px;
+        border: 1px solid var(--vz-primary);
+        margin-right: 6px;
+        color: var(--vz-primary);
+    }
+
+    #invoicePaymentTabs .nav-link.active {
+        background-color: var(--vz-primary);
+        color: #fff;
+    }
+
     #invoiceCategoryTabs .nav-link.active {
         background-color: var(--vz-primary);
         border-color: var(--vz-primary);
@@ -137,8 +150,25 @@ Diagnostic Invoice
 
             </div>
 
+            {{-- Payment sub-tabs for whichever main tab is selected. --}}
+            <ul class="nav nav-pills mb-3" id="invoicePaymentTabs">
+
+                <li class="nav-item">
+                    <a class="nav-link" href="javascript:void(0)" data-payment="all">All</a>
+                </li>
+
+                <li class="nav-item">
+                    <a class="nav-link" href="javascript:void(0)" data-payment="complete">Payment Complete</a>
+                </li>
+
+                <li class="nav-item">
+                    <a class="nav-link active" href="javascript:void(0)" data-payment="due">Payment Due (All)</a>
+                </li>
+
+            </ul>
+
             <div class="text-muted mb-2" style="font-size:11px;">
-                Showing invoices from the last <span id="invoiceDaysLabel">3</span> day(s), including today.
+                <span id="invoiceDaysText">Showing invoices from the last <span id="invoiceDaysLabel">3</span> day(s), including today.</span>
             </div>
 
             <div class="table-responsive">

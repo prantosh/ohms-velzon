@@ -132,48 +132,35 @@ class TestResultEntryController extends Controller
 
         $query->orderByDesc('invoice_date')->orderByDesc('id');
 
-        $qualifyingItemCodes = InvoiceItemMaster::where('test_parameter_required', 'YES')
-            ->pluck('item_code')
-            ->toArray();
-
+        // "Confirmed" is the stored invoices.report_status = 'Complete'
+        // (every qualifying report confirmed, or the legacy whole-invoice
+        // confirmation), kept current by InvoiceReportStatusRecorder -- so
+        // the filter and pagination run in SQL, not over every row.
         $confirmedFilter = $request->get('confirmed');
 
-        // "Confirmed" is derived per invoice in toRow() (legacy
-        // confirmation row OR every qualifying report confirmed), not a
-        // column, so the filter has to run on the computed rows and then
-        // be paginated by hand.
         if (in_array($confirmedFilter, ['yes', 'no'], true)) {
 
-            $wantConfirmed = $confirmedFilter === 'yes';
+            // Invoices never recorded yet have no stored status; fill those
+            // in first so they land on the right side of the filter.
+            $recorder = app(InvoiceReportStatusRecorder::class);
 
-            $filtered = $query->get()
-                ->map(fn ($invoice) => $this->toRow($invoice, $qualifyingItemCodes))
-                ->filter(fn ($row) => $row['confirmed'] === $wantConfirmed)
-                ->values();
+            (clone $query)
+                ->where(function ($q) {
+                    $q->whereNull('report_status')->orWhereNull('report_outsourced_tests');
+                })
+                ->get()
+                ->each(fn ($invoice) => $recorder->refreshInvoice($invoice));
 
-            $page = max(1, (int) $request->get('page', 1));
-            $total = $filtered->count();
-
-            return response()->json([
-                'status' => true,
-                'data' => $filtered->slice(($page - 1) * $perPage, $perPage)->values(),
-                'pagination' => [
-                    'current_page' => $page,
-                    'last_page' => max(1, (int) ceil($total / $perPage)),
-                    'total' => $total,
-                ]
-            ]);
+            $confirmedFilter === 'yes'
+                ? $query->where('report_status', 'Complete')
+                : $query->where('report_status', '!=', 'Complete');
         }
 
         $invoices = $query->paginate($perPage);
 
-        $rows = $invoices->getCollection()->map(function ($invoice) use ($qualifyingItemCodes) {
-            return $this->toRow($invoice, $qualifyingItemCodes);
-        });
-
         return response()->json([
             'status' => true,
-            'data' => $rows,
+            'data' => $this->toRows($invoices->getCollection()),
             'pagination' => [
                 'current_page' => $invoices->currentPage(),
                 'last_page' => $invoices->lastPage(),
@@ -183,160 +170,78 @@ class TestResultEntryController extends Controller
     }
 
     /**
-     * The result-status algorithm (N/A/Pending/Partial/Complete) mirrors
-     * TestReportDashboardController's definition exactly, so a given
-     * invoice shows the same status on both dashboards. It stays scoped to
-     * $qualifyingItemCodes (today: only Pathology's PAT001, the only
-     * item_code with test_parameter_required=YES) since that's the only
-     * category with tracked report completion -- Non-Pathology invoices
-     * (X-Ray, USG, Dental, etc.) have no such tracking here and correctly
-     * stay 'N/A' (see NonPathologyReportController for their own per-line
-     * completion, shown inside the modal instead).
-     *
-     * Pathology moved from a structured analyte grid (test_result_entries,
-     * one legacy per-invoice TestReportConfirmation) to per-line-bundle
-     * narrative reports (pathology_report_findings / pathology_report_finding_items,
-     * one confirmation per report -- see PathologyReportController). An
-     * invoice confirmed under the OLD system before this rollout still
-     * reads as fully Complete here (no data migration) since its
-     * TestReportConfirmation row still exists; everything else is computed
-     * from the new tables.
-     *
-     * The displayed test count/description, however, is NOT scoped to
-     * $qualifyingItemCodes -- it lists every billed line on the invoice
-     * regardless of category, since Non-Pathology invoices still have real
-     * billed tests worth showing even though none of them feed the
-     * qualifying-based completion status above.
-     *
-     * @return array{0: string, 1: int, 2: int, 3: string, 4: string} [result_status, total_tests, results_entered, test_description, test_category]
+     * Dashboard rows for one page of invoices. Result status/counts come
+     * from the stored invoices.report_* columns (same source as the Test
+     * Report Dashboard, so both always agree); the description and category
+     * text -- every billed line regardless of category -- plus the legacy
+     * Created Offline flag are fetched for the whole page in 3 queries
+     * instead of several per invoice.
      */
-
-    /**
-     * A package's own billed line (e.g. "LIPID PROFILE", is_package=1) is a
-     * pricing label, not a measurable test -- it's never claimable on the
-     * report screen (PathologyReportController excludes it the same way),
-     * so counting it toward the qualifying/completion total left every
-     * package invoice permanently one short and stuck on "Partial" even
-     * once fully confirmed (mirrors TestReportDashboardController's
-     * identical helper). is_outsourced=1 lines are likewise excluded.
-     * $lineDetails/total_tests above stays unfiltered on purpose -- that's
-     * the human-readable "every billed line" description/count, not the
-     * completion denominator.
-     */
-    private function qualifyingLinesQuery(Invoice $invoice, array $qualifyingItemCodes)
+    private function toRows($invoices)
     {
-        return DB::table('invoice_details as d')
-            ->join('invoice_item_details as iid', function ($join) {
-                $join->on('iid.item_code', '=', 'd.item_code')
-                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
-            })
-            ->where('d.invoice_no', $invoice->invoice_no)
-            ->whereIn('d.item_code', $qualifyingItemCodes)
-            // Same rule as every other screen (packages are reported at
-            // package level; old component-level reports keep counting).
-            ->whereRaw(\App\Support\ReportableLines::sql())
-            ->where('iid.is_outsourced', 0)
-            ->where('iid.is_report_not_required', 0);
-    }
+        if ($invoices->isEmpty()) {
+            return collect();
+        }
 
-    private function resultStatusFor(Invoice $invoice, array $qualifyingItemCodes): array
-    {
-        $lineDetails = DB::table('invoice_details')
-            ->where('invoice_no', $invoice->invoice_no)
-            // Excludes stray blank placeholder lines (no item_code at all)
-            // that aren't real billed tests -- see e.g. invoice_details id
-            // 1031 on LAB/0826/082/0004.
+        $recorder = app(InvoiceReportStatusRecorder::class);
+        $invoiceNos = $invoices->pluck('invoice_no');
+
+        // A package is billed as ONE line; its hidden component lines
+        // (package_parent_item_code_sub set) and blank placeholder lines
+        // are not real billed tests.
+        $linesByInvoice = DB::table('invoice_details')
+            ->whereIn('invoice_no', $invoiceNos)
             ->whereNotNull('item_code')
             ->where('item_code', '!=', '')
-            // A package is billed as ONE line (e.g. LIPID PROFILE); its hidden
-            // zero-rate component lines exist only to hold results for old-style
-            // reporting and must not inflate the description or the count.
             ->whereNull('package_parent_item_code_sub')
-            ->get(['item_code', 'item_description']);
+            ->orderBy('id')
+            ->get(['invoice_no', 'item_code', 'item_description'])
+            ->groupBy('invoice_no');
 
-        // Non-Pathology mixes several categories (X-Ray, Cardiology, USG,
-        // etc.) on the same invoice/table, unlike Pathology's single
-        // category -- resolved from invoice_item_masters.item_name, same
-        // lookup used for the diagnostic invoice PDF's Test Category column.
-        $testCategoryNames = InvoiceItemMaster::whereIn('item_code', $lineDetails->pluck('item_code')->unique())
-            ->pluck('item_name', 'item_code');
+        $categoryNames = InvoiceItemMaster::whereIn(
+            'item_code',
+            $linesByInvoice->flatten(1)->pluck('item_code')->unique()
+        )->pluck('item_name', 'item_code');
 
-        $testCategory = $lineDetails->pluck('item_code')->unique()
-            ->map(fn ($code) => $testCategoryNames->get($code, $code))
-            ->implode(', ');
+        $offlineByInvoice = TestReportConfirmation::whereIn('invoice_no', $invoiceNos)
+            ->pluck('created_offline', 'invoice_no');
 
-        $qualifyingTotal = $this->qualifyingLinesQuery($invoice, $qualifyingItemCodes)->count();
+        return $invoices->map(function ($invoice) use ($recorder, $linesByInvoice, $categoryNames, $offlineByInvoice) {
 
-        if ($qualifyingTotal === 0) {
+            [$resultStatus, , $resultsEntered] = $recorder->statusFor($invoice);
 
-            return ['N/A', $lineDetails->count(), 0, $lineDetails->pluck('item_description')->implode(', '), $testCategory];
-        }
+            $lines = $linesByInvoice->get($invoice->invoice_no, collect());
 
-        if (TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+            $confirmed = $resultStatus === 'Complete';
 
-            return ['Complete', $lineDetails->count(), $qualifyingTotal, $lineDetails->pluck('item_description')->implode(', '), $testCategory];
-        }
+            // Fully entered but not yet signed off reads as Complete in
+            // this list, with the Confirmed flag still false.
+            if ($resultStatus === 'Confirmation Pending') {
+                $resultStatus = 'Complete';
+            }
 
-        $qualifyingLineIds = $this->qualifyingLinesQuery($invoice, $qualifyingItemCodes)->pluck('d.id');
-
-        $resultsEntered = DB::table('pathology_report_finding_items')
-            ->whereIn('invoice_detail_id', $qualifyingLineIds)
-            ->count();
-
-        $resultStatus = $resultsEntered <= 0
-            ? 'Pending'
-            : ($resultsEntered >= $qualifyingTotal ? 'Complete' : 'Partial');
-
-        return [
-            $resultStatus,
-            $lineDetails->count(),
-            $resultsEntered,
-            $lineDetails->pluck('item_description')->implode(', '),
-            $testCategory,
-        ];
-    }
-
-    private function toRow(Invoice $invoice, array $qualifyingItemCodes): array
-    {
-        [$resultStatus, $totalTests, $resultsEntered, $testDescription, $testCategory] =
-            $this->resultStatusFor($invoice, $qualifyingItemCodes);
-
-        $legacyConfirmation = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->first();
-
-        $confirmed = $legacyConfirmation !== null;
-
-        if (!$confirmed && $resultStatus === 'Complete') {
-
-            $qualifyingLineIds = $this->qualifyingLinesQuery($invoice, $qualifyingItemCodes)->pluck('d.id');
-
-            $confirmedCount = DB::table('pathology_report_finding_items as pfi')
-                ->join('pathology_report_findings as pf', 'pf.id', '=', 'pfi.pathology_report_finding_id')
-                ->whereIn('pfi.invoice_detail_id', $qualifyingLineIds)
-                ->whereNotNull('pf.confirmed_at')
-                ->count();
-
-            $confirmed = $qualifyingLineIds->count() > 0 && $confirmedCount >= $qualifyingLineIds->count();
-        }
-
-        return [
-            'id' => $invoice->id,
-            'invoice_no' => $invoice->invoice_no,
-            'invoice_date' => $invoice->invoice_date
-                ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y')
-                : null,
-            'patient_name' => $invoice->patient_name,
-            'patient_age' => $invoice->patient_age,
-            'patient_gender' => $invoice->patient_gender,
-            'patient_mobile_no' => $invoice->patient_mobile_no,
-            'referred_doctor' => $invoice->referred_doctor,
-            'test_category' => $testCategory,
-            'test_description' => $testDescription,
-            'total_tests' => $totalTests,
-            'results_entered' => $resultsEntered,
-            'result_status' => $resultStatus,
-            'confirmed' => $confirmed,
-            'created_offline' => (bool) optional($legacyConfirmation)->created_offline,
-        ];
+            return [
+                'id' => $invoice->id,
+                'invoice_no' => $invoice->invoice_no,
+                'invoice_date' => $invoice->invoice_date
+                    ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y')
+                    : null,
+                'patient_name' => $invoice->patient_name,
+                'patient_age' => $invoice->patient_age,
+                'patient_gender' => $invoice->patient_gender,
+                'patient_mobile_no' => $invoice->patient_mobile_no,
+                'referred_doctor' => $invoice->referred_doctor,
+                'test_category' => $lines->pluck('item_code')->unique()
+                    ->map(fn ($code) => $categoryNames->get($code, $code))
+                    ->implode(', '),
+                'test_description' => $lines->pluck('item_description')->implode(', '),
+                'total_tests' => $lines->count(),
+                'results_entered' => $resultsEntered,
+                'result_status' => $resultStatus,
+                'confirmed' => $confirmed,
+                'created_offline' => (bool) $offlineByInvoice->get($invoice->invoice_no),
+            ];
+        })->values();
     }
 
     /*

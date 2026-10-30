@@ -196,22 +196,35 @@ class DiagnosticInvoiceController extends Controller
                 $days = 3;
             }
 
+            // Sub-tabs: all / payment complete (Paid) / payment due (Partial,
+            // Due, ...). Cancelled invoices appear under "all" only.
+            $payment = $request->get('payment', 'all');
+
             $invoices =
                 Invoice::where(
                     'invoice_type',
                     'DIAGNOSTIC'
                 )
 
+                    ->when($payment === 'complete', fn ($q) => $q
+                        ->where('status', 'Paid')
+                        ->where(fn ($c) => $c->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y')))
+
+                    ->when($payment === 'due', fn ($q) => $q
+                        ->where(fn ($s) => $s->whereNull('status')->orWhere('status', '!=', 'Paid'))
+                        ->where(fn ($c) => $c->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y')))
+
                     ->where(
                         'invoice_category',
                         $category
                     )
 
-                    ->where(
+                    // Payment Due lists every due record regardless of age.
+                    ->when($payment !== 'due', fn ($q) => $q->where(
                         'created_at',
                         '>=',
                         now()->subDays($days - 1)->startOfDay()
-                    )
+                    ))
 
                     ->orderBy('id', 'desc')
 
