@@ -128,7 +128,9 @@
                                 <th>Invoice Date</th>
                                 <th>Tests</th>
                                 <th>In-House Result Status</th>
+                                <th>In-House Completed On</th>
                                 <th>Outsourced Status</th>
+                                <th>Outsourced Received On</th>
                                 <th>Payment Status</th>
                                 <th class="text-end">Paid</th>
                                 <th class="text-end">Due</th>

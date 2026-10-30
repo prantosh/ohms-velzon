@@ -108,6 +108,24 @@ class UsgReportController extends Controller
             });
         }
 
+        // Pending = not every study confirmed yet (Partial stays here);
+        // Complete = every study confirmed -- the same rule toRow() shows.
+        $status = $request->get('status');
+
+        if (in_array($status, ['pending', 'complete'], true)) {
+
+            // Complete = every USG line has a confirmed report or was marked
+            // "Created Offline" (report_created_offline).
+            $isComplete = "not exists (select 1 from invoice_details d where d.invoice_no = invoices.invoice_no and d.item_code = ?"
+                . " and not exists (select 1 from usg_report_findings f where f.invoice_detail_id = d.id and f.confirmed_at is not null)"
+                . " and not exists (select 1 from report_created_offline o where o.invoice_detail_id = d.id))";
+
+            $query->whereRaw(
+                $status === 'complete' ? $isComplete : "not ({$isComplete})",
+                [self::ITEM_CODE]
+            );
+        }
+
         $invoices = $query->orderByDesc('invoice_date')
             ->orderByDesc('id')
             ->paginate($perPage);
@@ -127,16 +145,30 @@ class UsgReportController extends Controller
 
     private function toRow(Invoice $invoice): array
     {
-        $studyDescriptions = DB::table('invoice_details')
+        $lines = DB::table('invoice_details')
             ->where('invoice_no', $invoice->invoice_no)
             ->where('item_code', self::ITEM_CODE)
-            ->pluck('item_description');
+            ->get(['id', 'item_description']);
+
+        $studyDescriptions = $lines->pluck('item_description');
 
         $totalStudies = $studyDescriptions->count();
+
+        // Studies whose report was written offline count as confirmed
+        // (see TestResultEntryController::markCreatedOffline).
+        $offlineIds = DB::table('report_created_offline')
+            ->where('invoice_no', $invoice->invoice_no)
+            ->whereIn('invoice_detail_id', $lines->pluck('id'))
+            ->pluck('invoice_detail_id');
+
+        $createdOffline = $offlineIds->isNotEmpty();
 
         $confirmedStudies = DB::table('usg_report_findings')
             ->where('invoice_no', $invoice->invoice_no)
             ->whereNotNull('confirmed_at')
+            ->pluck('invoice_detail_id')
+            ->merge($offlineIds)
+            ->unique()
             ->count();
 
         $resultStatus = $confirmedStudies <= 0
@@ -144,6 +176,7 @@ class UsgReportController extends Controller
             : ($confirmedStudies >= $totalStudies ? 'Complete' : 'Partial');
 
         return [
+            'created_offline' => $createdOffline,
             'id' => $invoice->id,
             'invoice_no' => $invoice->invoice_no,
             'invoice_date' => $invoice->invoice_date
@@ -206,6 +239,8 @@ class UsgReportController extends Controller
             ->where('d.item_code', self::ITEM_CODE)
             ->where('iid.is_outsourced', 0)
             ->where('iid.is_report_not_required', 0)
+            // Tests whose report was written offline have nothing to report here.
+            ->whereNotIn('d.id', DB::table('report_created_offline')->select('invoice_detail_id'))
             ->orderBy('d.line_no')
             ->get([
                 'd.id as invoice_detail_id',

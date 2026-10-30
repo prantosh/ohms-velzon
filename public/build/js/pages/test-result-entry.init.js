@@ -262,6 +262,16 @@ async function loadPathologyReports(invoiceNo) {
     wrap.style.display = 'block';
 
     if (result.legacy_confirmed) {
+        if (result.created_offline) {
+            wrap.insertAdjacentHTML('beforeend', `
+            <div class="alert alert-info mb-0">
+                <i class="ri-file-paper-2-line me-1"></i>
+                This report was <strong>created offline</strong> and is recorded as completed and confirmed.
+                There is nothing to print or send from the system.
+            </div>`);
+            return;
+        }
+
         renderPathologyLegacyCard(wrap, result.invoice.id, parseFloat(result.invoice.due_amount) || 0);
         return;
     }

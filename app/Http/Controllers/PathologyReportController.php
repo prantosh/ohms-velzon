@@ -108,12 +108,15 @@ class PathologyReportController extends Controller
         // stop here and let the frontend show the legacy read-only card
         // (Print/WhatsApp still hit TestResultEntryController's untouched
         // routes) instead of a misleading "nothing reported yet" screen.
-        if (TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+        $legacyConfirmation = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->first();
+
+        if ($legacyConfirmation) {
 
             return response()->json([
                 'status' => true,
                 'invoice' => $this->invoicePayload($invoice),
                 'legacy_confirmed' => true,
+                'created_offline' => (bool) $legacyConfirmation->created_offline,
                 'groups' => [],
                 'outsourced_items' => $outsourcedItems,
                 'pathology_whatsapp' => ['sent' => false, 'sent_at' => null],

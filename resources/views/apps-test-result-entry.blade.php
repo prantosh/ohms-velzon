@@ -112,7 +112,7 @@
                 <select id="dashConfirmedFilter" class="form-select">
                     <option value="">All</option>
                     <option value="yes">Confirmed</option>
-                    <option value="no">Not Confirmed</option>
+                    <option value="no" selected>Not Confirmed</option>
                 </select>
 
             </div>

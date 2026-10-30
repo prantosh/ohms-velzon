@@ -112,7 +112,13 @@ class InvoiceReportItemsService
 
         $upload = XrayReportUpload::where('invoice_no', $invoice->invoice_no)->first();
 
-        $userIds = collect()
+        // Tests whose report was written offline (USG / Cardiology).
+        $offline = DB::table('report_created_offline')
+            ->where('invoice_no', $invoice->invoice_no)
+            ->get()
+            ->keyBy('invoice_detail_id');
+
+        $userIds = collect()->merge($offline->pluck('confirmed_by'))
             ->merge($pathology->pluck('created_by'))->merge($pathology->pluck('confirmed_by'))
             ->merge($legacyPrepared->pluck('created_by'));
 
@@ -132,10 +138,31 @@ class InvoiceReportItemsService
 
         $when = fn ($value) => $value ? Carbon::parse($value)->format('d-m-Y H:i') : null;
 
-        return $lines->map(function ($line) use ($legacy, $legacyPrepared, $pathology, $perLine, $upload, $names, $when) {
+        return $lines->map(function ($line) use ($legacy, $legacyPrepared, $pathology, $perLine, $upload, $names, $when, $offline) {
 
             $kind = null;
             $row = null;
+
+            // Report written offline: prepared and confirmed, nothing to print.
+            if ($offlineRow = $offline->get($line->invoice_detail_id)) {
+
+                return [
+                    'invoice_detail_id' => $line->invoice_detail_id,
+                    'item_description' => $line->item_description,
+                    'kind' => $line->item_code === 'CRD001' ? self::KIND_CARDIOLOGY : self::KIND_USG,
+                    'finding_id' => null,
+                    'prepared' => true,
+                    'prepared_by' => $names->get($offlineRow->confirmed_by) ?? '-',
+                    'prepared_at' => $when($offlineRow->confirmed_at),
+                    'confirmed' => true,
+                    'confirmed_by' => $names->get($offlineRow->confirmed_by) ?? '-',
+                    'confirmed_at' => $when($offlineRow->confirmed_at),
+                    'can_print' => false,
+                    'file_missing' => false,
+                    'created_offline' => true,
+                    'reason' => 'Report created offline - there is nothing to print from the system.',
+                ];
+            }
 
             if ($legacy) {
 

@@ -2756,6 +2756,11 @@ Route::middleware(['auth'])->prefix('test-result-entry')->group(function () {
     )->name('test-result-entry.confirm');
 
     Route::post(
+        '/created-offline',
+        [TestResultEntryController::class, 'markCreatedOffline']
+    )->name('test-result-entry.created-offline');
+
+    Route::post(
         '/save-extra',
         [TestResultEntryController::class, 'saveExtraValue']
     )->name('test-result-entry.save-extra');

@@ -166,8 +166,9 @@ class TestReportDashboardController extends Controller
 
         $printRoutes = $this->statusService->printRoutesFor($pageInvoices);
         $xrayUrls = XrayReportUpload::viewUrlsFor($pageInvoices);
+        // invoice_no => created_offline (0/1); isset() still means "has the legacy confirmation".
         $legacyConfirmed = TestReportConfirmation::whereIn('invoice_no', $pageInvoices->pluck('invoice_no'))
-            ->pluck('invoice_no')->flip()->all();
+            ->pluck('created_offline', 'invoice_no')->all();
 
         $rows = $pageInvoices->map(function ($invoice) use ($printRoutes, $xrayUrls, $legacyConfirmed) {
             return $this->toRow($invoice, $printRoutes, $xrayUrls, $legacyConfirmed);
@@ -570,6 +571,10 @@ class TestReportDashboardController extends Controller
         $confirmed = ($totalTests > 0 && $confirmedCount >= $totalTests)
             || ($totalTests === 0 && isset($legacyConfirmed[$invoice->invoice_no]));
 
+        [$completedAt] = $resultStatus === 'Complete'
+            ? $this->statusService->completedAtFor($invoice)
+            : [null];
+
         $paymentStatus = $invoice->due_amount <= 0
             ? 'Paid'
             : ($invoice->paid_amount <= 0 ? 'Due' : 'Partial');
@@ -596,7 +601,16 @@ class TestReportDashboardController extends Controller
                 : ($invoice->outsourced_report_delivered_at
                     ? 'Delivered'
                     : ($invoice->outsourced_report_received_at ? 'Received' : 'Pending')),
+            // In-house: when the last report was confirmed (for an offline
+            // report, when it was marked Created Offline). Outsourced: when
+            // it was marked received in the Report Delivery Log.
+            'inhouse_completed_on' => $completedAt ? $completedAt->format('d-m-Y H:i') : null,
+            'outsourced_received_on' => $invoice->outsourced_report_received_at
+                ? Carbon::parse($invoice->outsourced_report_received_at)->format('d-m-Y H:i')
+                : null,
             'confirmed' => $confirmed,
+            'created_offline' => !empty($legacyConfirmed[$invoice->invoice_no]),
+            'offline_lines' => DB::table('report_created_offline')->where('invoice_no', $invoice->invoice_no)->count(),
             'confirmed_count' => $confirmedCount,
             'payment_status' => $paymentStatus,
             'total_amount' => (float) $invoice->total_amount,

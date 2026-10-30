@@ -83,7 +83,7 @@ function resultStatusBadge(row) {
     }[row.result_status] ?? 'bg-secondary';
 
     let confirmedBadge = row.confirmed
-        ? ' <span class="badge bg-success-subtle text-success">Confirmed</span>'
+        ? ` <span class="badge bg-success-subtle text-success">Confirmed${row.created_offline ? ' (Offline)' : ''}</span>`
         : '';
 
     return `<span class="badge ${cls}">${RESULT_STATUS_LABELS[row.result_status] ?? row.result_status} (${row.results_entered}/${row.total_tests})</span>${confirmedBadge}`;
@@ -156,7 +156,7 @@ async function loadReports(page = 1) {
 
     tbody.innerHTML = `
         <tr>
-            <td colspan="11" class="text-center py-5">
+            <td colspan="13" class="text-center py-5">
                 <div class="spinner-border text-primary" role="status" style="width: 2rem; height: 2rem;"></div>
                 <div class="mt-2 fw-semibold">Loading reports, please wait...</div>
                 <small class="text-muted">This can take a few seconds.</small>
@@ -186,7 +186,7 @@ async function loadReports(page = 1) {
 
         tbody.innerHTML = `
             <tr>
-                <td colspan="11" class="text-center text-danger py-4">
+                <td colspan="13" class="text-center text-danger py-4">
                     Could not load the reports. Please check your connection and
                     <a href="#" id="retryLoadReports">try again</a>.
                 </td>
@@ -217,7 +217,7 @@ async function loadReports(page = 1) {
     document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
 
     if (!result.data.length) {
-        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">No diagnostic test report invoices found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-4">No diagnostic test report invoices found.</td></tr>';
         return;
     }
 
@@ -231,18 +231,22 @@ async function loadReports(page = 1) {
         // WhatsApp needs the whole report confirmed AND the invoice fully paid
         // (the server enforces the same rule; once the due is collected the
         // held report is also sent automatically).
-        let canSendWhatsapp = canPrintOrSend && row.due_amount <= 0;
-        let whatsappTitle = !canPrintOrSend
-            ? 'Confirm the report before sending'
-            : (row.due_amount > 0 ? 'Payment is due - collect it before sending on WhatsApp' : 'Send Report via WhatsApp');
+        // A report created offline has nothing in the system to print or send.
+        let canSendWhatsapp = canPrintOrSend && !row.created_offline && row.due_amount <= 0;
+        let whatsappTitle = row.created_offline
+            ? 'Report created offline - nothing to send'
+            : (!canPrintOrSend
+                ? 'Confirm the report before sending'
+                : (row.due_amount > 0 ? 'Payment is due - collect it before sending on WhatsApp' : 'Send Report via WhatsApp'));
 
         let actions = `
             <button class="btn btn-sm btn-soft-info print-report-btn me-1"
                     data-id="${row.id}"
                     data-invoice-no="${escapeHtml(row.invoice_no)}"
                     data-print-route="${row.print_route ?? ''}"
-                    title="Report status / Print reports"
+                    title="${row.created_offline ? 'Report created offline - nothing to print' : 'Report status / Print reports'}"
                     data-due="${row.due_amount ?? 0}"
+                    ${row.created_offline ? 'disabled' : ''}
                     data-confirmed="${row.confirmed ? 1 : 0}">
                 <i class="ri-printer-line"></i>
             </button>
@@ -295,9 +299,11 @@ async function loadReports(page = 1) {
                 <td>${row.patient_name ?? '-'}<br><small class="text-muted">${row.patient_mobile_no ?? ''}</small></td>
                 <td>${categoryLabel(row.invoice_category)}</td>
                 <td>${row.invoice_date ?? '-'}</td>
-                <td>${row.total_tests}</td>
+                <td>${(Number(row.total_tests) || 0) + (Number(row.outsourced_total) || 0)}</td>
                 <td>${resultStatusBadge(row)}</td>
+                <td class="text-nowrap">${row.inhouse_completed_on ? escapeHtml(row.inhouse_completed_on) + ((row.created_offline || row.offline_lines > 0) ? " <span class=\"badge bg-warning-subtle text-warning\">Offline</span>" : "") : "-"}</td>
                 <td>${outsourcedStatusBadge(row)}</td>
+                <td class="text-nowrap">${row.outsourced_received_on ? escapeHtml(row.outsourced_received_on) : "-"}</td>
                 <td>${paymentStatusBadge(row.payment_status)}</td>
                 <td class="text-end">${row.paid_amount.toFixed(2)}</td>
                 <td class="text-end">${row.due_amount.toFixed(2)}</td>

@@ -174,6 +174,7 @@ async function destroyAllCardEditors() {
 
 let dashRange = '3';
 let dashSearch = '';
+let dashStatus = 'pending';
 let dashPage = 1;
 let dashLastPage = 1;
 
@@ -185,7 +186,7 @@ function resultStatusBadgeHtml(row) {
         'Complete': 'result-status-Complete'
     }[row.result_status] ?? 'result-status-Pending';
 
-    return `<span class="badge ${cls}">${escapeHtml(row.result_status)} (${row.confirmed_studies}/${row.total_studies})</span>`;
+    return `<span class="badge ${cls}">${escapeHtml(row.result_status)} (${row.confirmed_studies}/${row.total_studies})${row.created_offline ? ' - Offline' : ''}</span>`;
 }
 
 async function loadDashboard(page = 1) {
@@ -194,7 +195,8 @@ async function loadDashboard(page = 1) {
 
     let params = new URLSearchParams({
         range: dashRange,
-        page: dashPage
+        page: dashPage,
+        status: dashStatus
     });
 
     if (dashSearch) {
@@ -228,10 +230,12 @@ async function loadDashboard(page = 1) {
             <td class="text-center">${row.total_studies}</td>
             <td class="text-center">${resultStatusBadgeHtml(row)}</td>
             <td class="text-center text-nowrap">
-                <button type="button" class="btn btn-sm btn-primary enter-report-btn" data-invoice-no="${escapeHtml(row.invoice_no)}">
+                ${(row.created_offline && row.result_status === 'Complete')
+                    ? '<span class="text-muted small"><i class="ri-file-paper-2-line"></i> Created offline</span>'
+                    : `<button type="button" class="btn btn-sm btn-primary enter-report-btn" data-invoice-no="${escapeHtml(row.invoice_no)}">
                     <i class="ri-edit-2-line"></i>
                     Open
-                </button>
+                </button>${row.result_status === 'Complete' ? '' : ` <button type="button" class="btn btn-sm btn-outline-warning created-offline-btn ms-1" data-invoice-no="${escapeHtml(row.invoice_no)}" title="The report was created offline (system/internet trouble)"><i class="ri-file-paper-2-line"></i> Created Offline</button>`}`}
             </td>
         </tr>
         `;
@@ -253,6 +257,11 @@ document.querySelectorAll('#rangeButtons [data-range]').forEach(function (btn) {
         dashRange = btn.dataset.range;
         loadDashboard(1);
     });
+});
+
+document.getElementById('dashStatusFilter').addEventListener('change', function () {
+    dashStatus = this.value;
+    loadDashboard(1);
 });
 
 let dashSearchTimer = null;
@@ -303,7 +312,7 @@ async function searchInvoice(invoiceNo) {
             'Content-Type': 'application/json',
             'X-CSRF-TOKEN': csrfToken()
         },
-        body: JSON.stringify({ invoice_no: invoiceNo })
+        body: JSON.stringify({ invoice_no: invoiceNo, scope: 'cardiology' })
     });
 
     if (!result.status) {
@@ -520,7 +529,51 @@ document.getElementById('cardioPreviewModal').addEventListener('hidden.bs.modal'
     }
 });
 
-document.addEventListener('click', function (e) {
+document.addEventListener('click', async function (e) {
+
+    let offlineBtn = e.target.closest('.created-offline-btn');
+    if (offlineBtn) {
+
+        let invoiceNo = offlineBtn.dataset.invoiceNo;
+
+        let confirmation = await Swal.fire({
+            icon: 'warning',
+            title: 'Mark report as Created Offline?',
+            html: `Only the <strong>Cardiology</strong> tests of invoice <strong>${escapeHtml(invoiceNo)}</strong> will be set as <strong>Completed and Confirmed</strong>.<br><br>`
+                + 'Any other test on the invoice (for example an X-Ray) stays pending. '
+                + 'The system will hold no report for these tests, so nothing can be printed or sent on WhatsApp for them, '
+                + 'and reports already written here for them will no longer be used. This cannot be undone from the screen.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, report was created offline',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#f7b84b'
+        });
+
+        if (!confirmation.isConfirmed) return;
+
+        offlineBtn.disabled = true;
+
+        const { result } = await fetchJson('/test-result-entry/created-offline', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken()
+            },
+            body: JSON.stringify({ invoice_no: invoiceNo })
+        });
+
+        offlineBtn.disabled = false;
+
+        await Swal.fire({
+            icon: result.status ? 'success' : 'error',
+            title: result.status ? 'Done' : 'Error',
+            text: result.message
+        });
+
+        loadDashboard(dashPage);
+
+        return;
+    }
 
     let enterBtn = e.target.closest('.enter-report-btn');
     if (enterBtn) {

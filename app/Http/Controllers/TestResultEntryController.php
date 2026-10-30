@@ -19,6 +19,8 @@ use App\Models\TestResultExtraValue;
 use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
 use App\Services\ReportWhatsappDueGate;
+use App\Services\DiagnosticResultStatusService;
+use App\Services\InvoiceReportStatusRecorder;
 use App\Support\PdfPageNumbers;
 use App\Services\PdfPasswordProtectionService;
 use App\Services\TestReportRowBuilder;
@@ -299,7 +301,9 @@ class TestResultEntryController extends Controller
         [$resultStatus, $totalTests, $resultsEntered, $testDescription, $testCategory] =
             $this->resultStatusFor($invoice, $qualifyingItemCodes);
 
-        $confirmed = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists();
+        $legacyConfirmation = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->first();
+
+        $confirmed = $legacyConfirmation !== null;
 
         if (!$confirmed && $resultStatus === 'Complete') {
 
@@ -331,6 +335,7 @@ class TestResultEntryController extends Controller
             'results_entered' => $resultsEntered,
             'result_status' => $resultStatus,
             'confirmed' => $confirmed,
+            'created_offline' => (bool) optional($legacyConfirmation)->created_offline,
         ];
     }
 
@@ -394,6 +399,178 @@ class TestResultEntryController extends Controller
                 'confirmed_at' => optional($confirmation?->confirmed_at)->format('d-m-Y H:i'),
             ],
             'data' => $rows
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | CREATED OFFLINE
+    |--------------------------------------------------------------------------
+    | The report was written outside the system (system/internet trouble).
+    | Stores the same invoice-level confirmation the old grid used, flagged
+    | created_offline, so every screen reads the invoice as Complete and
+    | Confirmed. There is nothing to print or WhatsApp from here.
+    */
+
+    public function markCreatedOffline(Request $request, AuditService $auditService, DiagnosticResultStatusService $statusService, InvoiceReportStatusRecorder $statusRecorder)
+    {
+        // Shared by the Pathology, USG and Cardiology dashboards.
+        $invoice = Invoice::where('invoice_no', trim((string) $request->invoice_no))
+            ->where('invoice_type', 'DIAGNOSTIC')
+            ->first();
+
+        if (!$invoice || $invoice->cancelled === 'Y') {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Invoice not found.'
+            ]);
+        }
+
+        // USG / Cardiology are marked per test, so the other tests on the
+        // invoice (e.g. an X-Ray) keep their own status.
+        $scope = $request->input('scope');
+
+        if (in_array($scope, ['usg', 'cardiology'], true)) {
+
+            return $this->markLinesCreatedOffline($invoice, $scope, $auditService, $statusService, $statusRecorder);
+        }
+
+        // Pathology: whole invoice (Pathology and Non-Pathology can't share an invoice).
+        if ($invoice->invoice_category !== 'PATHOLOGY') {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Invoice not found.'
+            ]);
+        }
+
+        if ($statusService->qualifyingLinesQuery($invoice)->count() === 0) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This invoice has no in-house tests to report.'
+            ]);
+        }
+
+        if (TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This report is already confirmed.'
+            ]);
+        }
+
+        TestReportConfirmation::create([
+            'invoice_no' => $invoice->invoice_no,
+            'confirmed_by' => Auth::id(),
+            'confirmed_at' => now(),
+            'created_offline' => true,
+        ]);
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $invoice,
+            'CONFIRM',
+            'Test report marked as Created Offline (completed and confirmed without in-system entry)'
+        );
+
+        // Dashboards read the stored status; refresh it now.
+        $statusRecorder->refreshInvoice($invoice);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Report marked as Created Offline.'
+        ]);
+    }
+
+    /**
+     * Created Offline for the USG or Cardiology tests of one invoice: each
+     * such test not yet confirmed in the system gets a report_created_offline
+     * row. Everything else on the invoice is left as it is, and the reply
+     * names the tests still pending.
+     */
+    private function markLinesCreatedOffline(
+        Invoice $invoice,
+        string $scope,
+        AuditService $auditService,
+        DiagnosticResultStatusService $statusService,
+        InvoiceReportStatusRecorder $statusRecorder
+    ) {
+        $lines = $statusService->qualifyingLinesQuery($invoice);
+
+        $scope === 'usg'
+            ? $lines->where('d.item_code', 'USG001')
+            : $lines->whereIn('d.item_code_sub', \App\Support\CardiologyReportFields::ITEM_CODE_SUBS);
+
+        $findingsTable = $scope === 'usg' ? 'usg_report_findings' : 'cardiology_report_findings';
+
+        $lines = $lines->get(['d.id as invoice_detail_id', 'd.item_description']);
+
+        if ($lines->isEmpty()) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This invoice has no ' . ($scope === 'usg' ? 'USG' : 'Cardiology') . ' tests to report.'
+            ]);
+        }
+
+        $ids = $lines->pluck('invoice_detail_id');
+
+        $done = DB::table($findingsTable)
+            ->whereIn('invoice_detail_id', $ids)
+            ->whereNotNull('confirmed_at')
+            ->pluck('invoice_detail_id')
+            ->merge(DB::table('report_created_offline')->whereIn('invoice_detail_id', $ids)->pluck('invoice_detail_id'));
+
+        $open = $lines->whereNotIn('invoice_detail_id', $done->all());
+
+        if ($open->isEmpty()) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'These tests are already confirmed.'
+            ]);
+        }
+
+        foreach ($open as $line) {
+
+            DB::table('report_created_offline')->insert([
+                'invoice_no' => $invoice->invoice_no,
+                'invoice_detail_id' => $line->invoice_detail_id,
+                'report_type' => strtoupper($scope),
+                'confirmed_by' => Auth::id(),
+                'confirmed_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $invoice,
+            'CONFIRM',
+            strtoupper($scope) . ' report marked as Created Offline: ' . $open->pluck('item_description')->implode(', ')
+        );
+
+        $statusRecorder->refreshInvoice($invoice);
+
+        // Other in-house tests on this invoice that are still not confirmed.
+        $stillPending = collect(app(\App\Services\InvoiceReportItemsService::class)->forInvoice($invoice))
+            ->where('confirmed', false)
+            ->pluck('item_description')
+            ->values();
+
+        $message = strtoupper($scope) . ' report marked as Created Offline.';
+
+        if ($stillPending->isNotEmpty()) {
+            $message .= ' Still pending on this invoice: ' . $stillPending->implode(', ') . '.';
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => $message,
+            'still_pending' => $stillPending,
         ]);
     }
 
@@ -804,9 +981,16 @@ class TestResultEntryController extends Controller
     {
         $invoice = Invoice::findOrFail($id);
 
-        if (!TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+        $confirmation = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->first();
+
+        if (!$confirmation) {
 
             abort(403, 'Test report must be confirmed before printing.');
+        }
+
+        if ($confirmation->created_offline) {
+
+            abort(403, 'This report was created offline -- there is nothing to print from the system.');
         }
 
         $pdf = $this->buildInvoicePdf($invoice, $rowBuilder);
@@ -867,11 +1051,21 @@ class TestResultEntryController extends Controller
     {
         $invoice = Invoice::findOrFail($id);
 
-        if (!TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+        $confirmation = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->first();
+
+        if (!$confirmation) {
 
             return response()->json([
                 'status' => false,
                 'message' => 'Test report must be confirmed before sending.'
+            ]);
+        }
+
+        if ($confirmation->created_offline) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This report was created offline -- there is nothing to send from the system.'
             ]);
         }
 

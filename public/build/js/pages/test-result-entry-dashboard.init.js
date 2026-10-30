@@ -13,7 +13,7 @@
 
 let dashRange = '3';
 let dashSearch = '';
-let dashConfirmed = '';
+let dashConfirmed = 'no';
 let dashPage = 1;
 let dashLastPage = 1;
 
@@ -30,9 +30,25 @@ function resultStatusBadgeHtml(row) {
 }
 
 function confirmedCellHtml(row) {
+
+    if (row.confirmed && row.created_offline) {
+        return '<span class="badge bg-success-subtle text-success"><i class="ri-check-double-line"></i> Confirmed (Offline)</span>';
+    }
+
     return row.confirmed
         ? '<span class="badge bg-success-subtle text-success"><i class="ri-check-double-line"></i> Confirmed</span>'
         : '<span class="badge bg-secondary-subtle text-secondary">Not Confirmed</span>';
+}
+
+function createdOfflineButtonHtml(row) {
+    return `
+    <button type="button" class="btn btn-sm btn-outline-warning created-offline-btn ms-1"
+            data-invoice-no="${escapeHtml(row.invoice_no)}"
+            title="The report was created offline (system/internet trouble)">
+        <i class="ri-file-paper-2-line"></i>
+        Created Offline
+    </button>
+    `;
 }
 
 function actionCellHtml(row) {
@@ -123,7 +139,7 @@ async function loadDashboard(page = 1) {
             <td class="text-center">${row.total_tests}</td>
             <td class="text-center">${resultStatusBadgeHtml(row)}</td>
             <td class="text-center">${confirmedCellHtml(row)}</td>
-            <td class="text-center text-nowrap">${actionCellHtml(row)}</td>
+            <td class="text-center text-nowrap">${actionCellHtml(row)}${row.confirmed ? '' : createdOfflineButtonHtml(row)}</td>
         </tr>
         `;
     });
@@ -186,6 +202,49 @@ document.getElementById('dashNextPage').addEventListener('click', function () {
 */
 
 document.addEventListener('click', async function (e) {
+
+    let offlineBtn = e.target.closest('.created-offline-btn');
+    if (offlineBtn) {
+
+        let invoiceNo = offlineBtn.dataset.invoiceNo;
+
+        let confirmation = await Swal.fire({
+            icon: 'warning',
+            title: 'Mark report as Created Offline?',
+            html: `Invoice <strong>${escapeHtml(invoiceNo)}</strong> will be set as <strong>Completed and Confirmed</strong>.<br><br>`
+                + 'The system will hold no report for it, so nothing can be printed or sent on WhatsApp from here, '
+                + 'and any results already entered here will no longer be used. This cannot be undone from the screen.',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, report was created offline',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#f7b84b'
+        });
+
+        if (!confirmation.isConfirmed) return;
+
+        offlineBtn.disabled = true;
+
+        const { result } = await fetchJson('/test-result-entry/created-offline', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken()
+            },
+            body: JSON.stringify({ invoice_no: invoiceNo })
+        });
+
+        offlineBtn.disabled = false;
+
+        await Swal.fire({
+            icon: result.status ? 'success' : 'error',
+            title: result.status ? 'Done' : 'Error',
+            text: result.message
+        });
+
+        loadDashboard(dashPage);
+
+        return;
+    }
 
     let enterBtn = e.target.closest('.enter-result-btn');
     if (enterBtn) {

@@ -67,7 +67,19 @@
 
             </div>
 
-            <div class="col-md-8">
+            <div class="col-md-2">
+
+                <label class="form-label fw-semibold">Status</label>
+
+                <select id="dashStatusFilter" class="form-select">
+                    <option value="pending" selected>Pending</option>
+                    <option value="complete">Complete</option>
+                    <option value="">All</option>
+                </select>
+
+            </div>
+
+            <div class="col-md-6">
 
                 <label class="form-label fw-semibold d-block">Period</label>
 

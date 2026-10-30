@@ -16,11 +16,15 @@ class TestReportConfirmation extends Model
 
         'confirmed_at',
 
+        'created_offline',
+
     ];
 
     protected $casts = [
 
         'confirmed_at' => 'datetime',
+
+        'created_offline' => 'boolean',
 
     ];
 
