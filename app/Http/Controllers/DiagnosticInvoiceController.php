@@ -344,7 +344,7 @@ class DiagnosticInvoiceController extends Controller
             ->value('payable_no');
 
         if ($last) {
-            $serial = (int) substr($last, -4) + 1;
+            $serial = (int) substr($last, strrpos($last, '/') + 1) + 1;
         } else {
             $serial = 1;
         }
@@ -919,7 +919,11 @@ class DiagnosticInvoiceController extends Controller
                         Auth::id()
                 ]);
 
-            DB::commit();
+            // No commit here: the lines, doctor payables and payment below
+            // must commit or roll back together with the invoice header, or a
+            // failure part-way (e.g. a duplicate payable_no) leaves a saved
+            // invoice with missing tests/components. The single commit is
+            // after the payment is recorded.
 
             $auditService->logCreate(
                 self::MODULE_CODE,

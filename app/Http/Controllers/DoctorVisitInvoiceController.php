@@ -1209,7 +1209,7 @@ class DoctorVisitInvoiceController extends Controller
             ->value('payable_no');
 
         if ($last) {
-            $serial = (int) substr($last, -4) + 1;
+            $serial = (int) substr($last, strrpos($last, '/') + 1) + 1;
         } else {
             $serial = 1;
         }
