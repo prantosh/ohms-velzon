@@ -190,7 +190,7 @@ async function loadDashboard(page = 1) {
     let params = new URLSearchParams({
         range: dashRange,
         page: dashPage,
-        per_page: document.getElementById('dashPerPage').value
+        per_page: document.getElementById('dashPerPage').value,
         status: dashStatus
     });
 
