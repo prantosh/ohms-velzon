@@ -693,11 +693,18 @@ class CashLedgerService
         | Collected -- see the loop above), but this breakdown's Total row
         | is printed directly against net_cash_to_deposit, so it must stay
         | cash-only or it would silently inflate past that figure.
+        |
+        | Refund rows are always kept: a refund is handed back in cash
+        | whatever the ORIGINAL payment_mode was (that mode is only shown as
+        | context), and $cashRefunded already deducts it from
+        | net_cash_to_deposit. Filtering a refund of a UPI/Card collection
+        | out here made the groups sum to more than the printed total.
         */
 
         $cashOnlyLedger = array_values(array_filter(
             $ledger,
-            fn($row) => strtoupper((string) $row['payment_mode']) === 'CASH'
+            fn($row) => $row['type'] === 'Refund'
+                || strtoupper((string) $row['payment_mode']) === 'CASH'
         ));
 
         $groupBreakdown = $this->allocateLedgerToReportingGroups($cashOnlyLedger);
