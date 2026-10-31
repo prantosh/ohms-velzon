@@ -133,7 +133,7 @@ function loadSchedules() {
 
                     lengthChange: false,
 
-                    info: false,
+                    info: true,
                     dom: 'rtip'
                 });
 

@@ -99,7 +99,8 @@ async function loadDashboard(page = 1) {
     let params = new URLSearchParams({
         invoice_category: 'PATHOLOGY',
         range: dashRange,
-        page: dashPage
+        page: dashPage,
+        per_page: document.getElementById('dashPerPage').value
     });
 
     if (dashSearch) {
@@ -120,6 +121,9 @@ async function loadDashboard(page = 1) {
 
         document.getElementById('dashNoDataWrap').style.display = 'block';
         document.getElementById('dashPaginationInfo').innerText = '';
+        document.getElementById('dashPageNumber').innerHTML = '';
+        document.getElementById('dashPrevPage').disabled = true;
+        document.getElementById('dashNextPage').disabled = true;
         dashLastPage = 1;
         return;
     }
@@ -146,9 +150,16 @@ async function loadDashboard(page = 1) {
 
     dashLastPage = result.pagination.last_page;
 
-    document.getElementById('dashPaginationInfo').innerText =
-        `Page ${result.pagination.current_page} of ${result.pagination.last_page} (${result.pagination.total} total)`;
+    renderPager(result.pagination, loadDashboard, {
+        number: 'dashPageNumber', info: 'dashPaginationInfo',
+        prev: 'dashPrevPage', next: 'dashNextPage',
+        perPage: document.getElementById('dashPerPage').value
+    });
 }
+
+document.getElementById('dashPerPage').addEventListener('change', function () {
+    loadDashboard(1);
+});
 
 /*
 |--------------------------------------------------------------------------

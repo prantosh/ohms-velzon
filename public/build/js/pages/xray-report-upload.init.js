@@ -65,8 +65,7 @@ async function loadRows(page = 1) {
 
     lastPage = result.pagination.last_page;
 
-    document.querySelector('#pageNumber').innerText = `Page ${result.pagination.current_page}`;
-    document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
+    renderPager(result.pagination, loadRows);
 
     if (!result.data.length) {
         tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No invoices with an X-Ray item found.</td></tr>';

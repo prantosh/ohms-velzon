@@ -109,13 +109,7 @@ async function loadParameters(page = 1) {
 
     lastPage = result.pagination.last_page;
 
-    document.querySelector('#pageNumber').innerText =
-        `Page ${result.pagination.current_page}`;
-
-    document.querySelector('#pagination-info').innerText =
-        result.pagination.total > 0
-            ? `Showing ${result.pagination.from} to ${result.pagination.to} of ${result.pagination.total} records`
-            : 'No records found';
+    renderPager(result.pagination, loadParameters);
 
     result.data.forEach(raw => {
 

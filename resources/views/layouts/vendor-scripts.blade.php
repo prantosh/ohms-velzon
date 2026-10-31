@@ -11,6 +11,7 @@
 
 <script src="{{ URL::asset('build/js/plugins.js') }}"></script>
 <script src="{{ asset('build/js/common-loader.js') }}"></script>
+<script src="{{ asset('build/js/server-pager.js') }}"></script>
 <script src="{{ asset('build/js/global-patient-name-restriction.js') }}"></script>
 
 @yield('script-bottom')

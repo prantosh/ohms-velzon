@@ -97,6 +97,23 @@
 
         </div>
 
+        <div class="d-flex align-items-center mb-3">
+
+            <label class="me-2 mb-0 fw-semibold">Show</label>
+
+            <select id="dashPerPage" class="form-select form-select-sm w-auto">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="15" selected>15</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+
+            <span class="ms-2">entries</span>
+
+        </div>
+
         <div class="table-responsive">
 
             <table class="table table-bordered align-middle">
@@ -126,15 +143,12 @@
 
         <div class="d-flex justify-content-between align-items-center mt-2">
 
-            <span id="dashPaginationInfo" class="text-muted small"></span>
+            <div id="dashPaginationInfo"></div>
 
-            <div class="btn-group">
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dashPrevPage">
-                    <i class="ri-arrow-left-s-line"></i> Prev
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dashNextPage">
-                    Next <i class="ri-arrow-right-s-line"></i>
-                </button>
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dashPrevPage">Previous</button>
+                <span id="dashPageNumber"></span>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dashNextPage">Next</button>
             </div>
 
         </div>

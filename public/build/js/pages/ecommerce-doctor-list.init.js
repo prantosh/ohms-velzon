@@ -216,15 +216,8 @@ async function loadDoctors(page = 1) {
         lastPage =
             result.pagination.last_page;
 
-        document.querySelector(
-            "#pageNumber"
-        ).innerText =
-            `Page ${result.pagination.current_page}`;
+        renderPager(result.pagination, loadDoctors);
 
-        document.querySelector(
-            "#pagination-info"
-        ).innerText =
-            `Total Doctors: ${result.pagination.total}`;
 
         /*
         |--------------------------------------------------------------------------

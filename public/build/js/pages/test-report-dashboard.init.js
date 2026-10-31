@@ -213,8 +213,7 @@ async function loadReports(page = 1) {
 
     lastPage = result.pagination.last_page;
 
-    document.querySelector('#pageNumber').innerText = `Page ${result.pagination.current_page}`;
-    document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
+    renderPager(result.pagination, loadReports);
 
     if (!result.data.length) {
         tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-4">No diagnostic test report invoices found.</td></tr>';

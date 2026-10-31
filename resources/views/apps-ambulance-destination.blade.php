@@ -49,7 +49,7 @@
 
                         </select>
 
-                        <span class="ms-2">records</span>
+                        <span class="ms-2">entries</span>
 
                     </div>
 

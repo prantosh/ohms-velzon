@@ -45,8 +45,7 @@ async function loadStatus(page = 1) {
 
     lastPage = result.pagination.last_page;
 
-    document.getElementById('pageNumber').innerText = `Page ${result.pagination.current_page}`;
-    document.getElementById('pagination-info').innerText = `Total Records : ${result.pagination.total}`;
+    renderPager(result.pagination, loadStatus);
 
     let startSl = (result.pagination.current_page - 1) * perPage;
 

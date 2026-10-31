@@ -44,7 +44,7 @@
                             <option value="50">50</option>
                             <option value="100">100</option>
                         </select>
-                        <span class="ms-2">records</span>
+                        <span class="ms-2">entries</span>
                     </div>
 
                     <input type="text" id="searchInput" class="form-control form-control-sm w-auto" placeholder="Search card no / mobile / name...">
