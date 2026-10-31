@@ -56,6 +56,17 @@ class CashLedgerService
         'OTHER_INCOME' => 'DON001',
     ];
 
+    // The Dental/Eye grouping below applies only to transactions dated on or
+    // after this day, so slips for earlier dates still print as they did.
+    private const DOCTOR_VISIT_SPECIALISATION_GROUPING_FROM = '2026-11-01';
+
+    // doctors.specialisation_code (specialisations.id) -> the item_code whose
+    // reporting group should receive that doctor's visit invoices.
+    private const DOCTOR_VISIT_ITEM_CODE_BY_SPECIALISATION = [
+        4 => 'DEN001',  // DENTAL
+        15 => 'EYE001', // EYE
+    ];
+
     /**
      * Aggregate-only totals for one user over a date range -- no per-line
      * ledger, no group breakdown. Used where many users are summarized at
@@ -822,6 +833,15 @@ class CashLedgerService
 
         $groupNames = DB::table('reporting_groups')->pluck('group_name', 'id');
 
+        // Doctor-visit invoices of a Dental/Eye doctor are reported under
+        // that Dental/Eye group (with its diagnostic tests), not under the
+        // generic Doctor Visit group.
+        $doctorSpecialisationByInvoice = DB::table('invoices as i')
+            ->join('doctors as d', 'd.id', '=', 'i.doctor_id')
+            ->where('i.invoice_type', 'DOCTOR_VISIT')
+            ->whereIn('i.invoice_no', $invoiceNos)
+            ->pluck('d.specialisation_code', 'i.invoice_no');
+
         $totals = [];
 
         // Tracks which specific items/invoices actually fell into the
@@ -841,6 +861,16 @@ class CashLedgerService
             if ($items->isEmpty() || $totalLineAmount <= 0) {
 
                 $fallbackCode = self::FALLBACK_ITEM_CODE_BY_INVOICE_TYPE[$row['invoice_type'] ?? null] ?? null;
+
+                $rowTime = $row['receive_time'] ?? $row['refund_time'] ?? $row['doctor_settlement_time'] ?? null;
+
+                if (($row['invoice_type'] ?? null) === 'DOCTOR_VISIT'
+                    && $rowTime
+                    && Carbon::parse($rowTime)->toDateString() >= self::DOCTOR_VISIT_SPECIALISATION_GROUPING_FROM) {
+                    $fallbackCode = self::DOCTOR_VISIT_ITEM_CODE_BY_SPECIALISATION[
+                        (int) ($doctorSpecialisationByInvoice[$row['invoice_no']] ?? 0)
+                    ] ?? $fallbackCode;
+                }
 
                 $groupId = $fallbackCode ? ($itemToGroupId[$fallbackCode] ?? null) : null;
 
