@@ -190,7 +190,7 @@ class CashLedgerService
             ->where('status', 'ACTIVE')
             ->where('created_by', $userId)
             ->whereBetween('transaction_date', [$fromDate, $toDate])
-            ->get(['invoice_reference', 'received_amount', 'payment_mode']);
+            ->get(['invoice_reference', 'received_amount', 'payment_mode', 'transaction_date']);
 
         // Every refund, regardless of payment_mode -- see buildSummary()'s
         // own comment on $cashRefunded for why.
@@ -198,7 +198,7 @@ class CashLedgerService
             ->where('transaction_type', 'REFUND')
             ->where('created_by', $userId)
             ->whereBetween('transaction_date', [$fromDate, $toDate])
-            ->get(['invoice_reference', 'refund_amount']);
+            ->get(['invoice_reference', 'refund_amount', 'transaction_date']);
 
         // Both sets of transactions can reference invoices created by, or
         // dated, outside this user/range -- fetch every invoice actually
@@ -219,10 +219,29 @@ class CashLedgerService
             $invoices->where('invoice_type', '!=', 'DOCTOR_VISIT')->pluck('invoice_no')->values()
         );
 
-        $weightsForInvoice = function ($invoice) use ($weightMaps) {
+        // Dental/Eye doctors' visit invoices are reported under Dental/Eye
+        // (same rule as the Detail Transaction group breakdown).
+        $doctorSpecialisationByInvoice = DB::table('invoices as i')
+            ->join('doctors as d', 'd.id', '=', 'i.doctor_id')
+            ->where('i.invoice_type', 'DOCTOR_VISIT')
+            ->whereIn('i.invoice_no', $referencedInvoiceNos)
+            ->pluck('d.specialisation_code', 'i.invoice_no');
+
+        $doctorVisitItemCode = function ($invoiceNo, $date) use (&$doctorSpecialisationByInvoice) {
+
+            if ($date && Carbon::parse($date)->toDateString() >= self::DOCTOR_VISIT_SPECIALISATION_GROUPING_FROM) {
+                return self::DOCTOR_VISIT_ITEM_CODE_BY_SPECIALISATION[
+                    (int) ($doctorSpecialisationByInvoice[$invoiceNo] ?? 0)
+                ] ?? self::DOCTOR_VISIT_ITEM_CODE;
+            }
+
+            return self::DOCTOR_VISIT_ITEM_CODE;
+        };
+
+        $weightsForInvoice = function ($invoice, $date) use ($weightMaps, $doctorVisitItemCode) {
 
             if ($invoice->invoice_type === 'DOCTOR_VISIT') {
-                return [self::DOCTOR_VISIT_ITEM_CODE => 1.0];
+                return [$doctorVisitItemCode($invoice->invoice_no, $date) => 1.0];
             }
 
             return $weightMaps[$invoice->invoice_no] ?? [self::UNCATEGORIZED_ITEM => 1.0];
@@ -238,7 +257,7 @@ class CashLedgerService
 
             $column = $txn->payment_mode === 'Cash' ? 'cash_collected' : 'non_cash_collected';
 
-            foreach ($weightsForInvoice($invoice) as $itemCode => $share) {
+            foreach ($weightsForInvoice($invoice, $txn->transaction_date) as $itemCode => $share) {
                 $this->addCategoryAmount($totals, $itemCode, $column, (float) $txn->received_amount * $share);
             }
         }
@@ -258,7 +277,7 @@ class CashLedgerService
                 continue;
             }
 
-            foreach ($weightsForInvoice($invoice) as $itemCode => $share) {
+            foreach ($weightsForInvoice($invoice, $refund->transaction_date) as $itemCode => $share) {
                 $this->addCategoryAmount($totals, $itemCode, 'refund', (float) $refund->refund_amount * $share);
             }
         }
@@ -290,15 +309,26 @@ class CashLedgerService
             ->select(
                 'dsi.item_code',
                 'dsi.invoice_type',
+                'dsi.invoice_no',
                 'dsi.settlement_amount',
+                'ds.settlement_date',
                 DB::raw("COALESCE(inv.payment_mode, 'Cash') as source_payment_mode")
             )
             ->get();
 
+        // Settlements may reference invoices outside the collection set above.
+        $doctorSpecialisationByInvoice = $doctorSpecialisationByInvoice->union(
+            DB::table('invoices as i')
+                ->join('doctors as d', 'd.id', '=', 'i.doctor_id')
+                ->where('i.invoice_type', 'DOCTOR_VISIT')
+                ->whereIn('i.invoice_no', $doctorPayments->pluck('invoice_no')->filter()->unique())
+                ->pluck('d.specialisation_code', 'i.invoice_no')
+        );
+
         foreach ($doctorPayments as $payment) {
 
             $itemCode = $payment->invoice_type === 'DOCTOR_VISIT'
-                ? self::DOCTOR_VISIT_ITEM_CODE
+                ? $doctorVisitItemCode($payment->invoice_no, $payment->settlement_date)
                 : ($payment->item_code ?: self::UNCATEGORIZED_ITEM);
 
             $column = $payment->source_payment_mode === 'Cash' ? 'doctor_payment_cash_source' : 'doctor_payment_non_cash_source';
