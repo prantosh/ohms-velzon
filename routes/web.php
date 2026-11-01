@@ -1661,6 +1661,12 @@ Route::middleware(['auth'])->prefix('patient-detail-correction')->group(function
     Route::post('/update', [PatientDetailCorrectionController::class, 'update'])
         ->name('patient-detail-correction.update');
 
+    Route::get('/invoice-lookup', [PatientDetailCorrectionController::class, 'invoiceLookup'])
+        ->name('patient-detail-correction.invoice-lookup');
+
+    Route::post('/referred-doctor', [PatientDetailCorrectionController::class, 'updateReferredDoctor'])
+        ->name('patient-detail-correction.referred-doctor');
+
 });
 
 Route::prefix('system-log')->group(function () {

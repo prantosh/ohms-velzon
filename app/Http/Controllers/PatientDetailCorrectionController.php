@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Invoice;
 use App\Models\Patient;
 use App\Services\AuditService;
 use App\Services\PatientIdentityGuard;
@@ -210,6 +211,70 @@ class PatientDetailCorrectionController extends Controller
             'message' => 'Patient details updated and propagated across all linked records.',
             'patient' => $newData,
             'propagated' => $propagated,
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | REFERRED DOCTOR -- PER-INVOICE FREE-TEXT CORRECTION
+    |--------------------------------------------------------------------------
+    | invoices.referred_doctor is a free-text name stored on the invoice only
+    | (no other table snapshots it), so unlike the patient fix above this is
+    | a single-row update.
+    */
+
+    public function invoiceLookup(Request $request)
+    {
+        $this->ensureAdmin();
+
+        $request->validate(['invoice_no' => 'required|string']);
+
+        $invoice = Invoice::where('invoice_no', trim($request->invoice_no))->first();
+
+        if (!$invoice) {
+            return response()->json(['status' => false, 'message' => 'No invoice found with this Invoice No.'], 404);
+        }
+
+        return response()->json([
+            'status' => true,
+            'invoice' => [
+                'invoice_no' => $invoice->invoice_no,
+                'invoice_type' => $invoice->invoice_type,
+                'patient_name' => $invoice->patient_name,
+                'referred_doctor' => $invoice->referred_doctor,
+            ],
+        ]);
+    }
+
+    public function updateReferredDoctor(Request $request, AuditService $auditService)
+    {
+        $this->ensureAdmin();
+
+        $request->validate([
+            'invoice_no' => 'required|string|exists:invoices,invoice_no',
+            'referred_doctor' => 'nullable|string|max:200',
+        ]);
+
+        $invoice = Invoice::where('invoice_no', $request->invoice_no)->first();
+
+        $newValue = trim((string) $request->referred_doctor) ?: null;
+
+        $oldData = ['referred_doctor' => $invoice->referred_doctor];
+
+        $invoice->update(['referred_doctor' => $newValue]);
+
+        $auditService->logUpdate(
+            self::MODULE_CODE,
+            $invoice,
+            $oldData,
+            ['referred_doctor' => $newValue],
+            "Referred doctor corrected on invoice {$invoice->invoice_no}"
+        );
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Referred doctor updated.',
+            'referred_doctor' => $newValue,
         ]);
     }
 }

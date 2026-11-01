@@ -137,4 +137,6 @@ return [
     'patient-detail-correction.index' => 'patient-detail-correction',
     'patient-detail-correction.lookup' => 'patient-detail-correction',
     'patient-detail-correction.update' => 'patient-detail-correction',
+    'patient-detail-correction.invoice-lookup' => 'patient-detail-correction',
+    'patient-detail-correction.referred-doctor' => 'patient-detail-correction',
 ];

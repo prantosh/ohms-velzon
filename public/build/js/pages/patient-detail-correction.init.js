@@ -114,3 +114,82 @@ document.getElementById('patientIdInput').addEventListener('keydown', function (
 });
 
 document.getElementById('saveCorrectionBtn').addEventListener('click', saveCorrection);
+
+/* ---------- Referred doctor (per invoice) ---------- */
+
+let currentInvoiceNo = null;
+
+async function searchInvoice() {
+
+    let invoiceNo = document.getElementById('invoiceNoInput').value.trim();
+
+    if (!invoiceNo) {
+        Swal.fire({ icon: 'warning', title: 'Invoice No required', text: 'Enter an Invoice No to search.' });
+        return;
+    }
+
+    document.getElementById('invoiceNotFoundWrap').style.display = 'none';
+    document.getElementById('invoiceEditWrap').style.display = 'none';
+
+    const params = new URLSearchParams({ invoice_no: invoiceNo });
+
+    const response = await fetch(`/patient-detail-correction/invoice-lookup?${params.toString()}`, {
+        headers: { 'Accept': 'application/json' }
+    });
+
+    const result = await response.json();
+
+    if (!result.status) {
+        document.getElementById('invoiceNotFoundWrap').style.display = 'block';
+        currentInvoiceNo = null;
+        return;
+    }
+
+    currentInvoiceNo = result.invoice.invoice_no;
+
+    document.getElementById('inv-invoice_type').value = result.invoice.invoice_type ?? '';
+    document.getElementById('inv-patient_name').value = result.invoice.patient_name ?? '';
+    document.getElementById('inv-referred_doctor').value = result.invoice.referred_doctor ?? '';
+
+    document.getElementById('invoiceEditWrap').style.display = 'block';
+}
+
+async function saveReferredDoctor() {
+
+    if (!currentInvoiceNo) return;
+
+    const response = await fetch('/patient-detail-correction/referred-doctor', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken(),
+            'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+            invoice_no: currentInvoiceNo,
+            referred_doctor: document.getElementById('inv-referred_doctor').value.trim() || null,
+        }),
+    });
+
+    const result = await response.json();
+
+    if (!result.status) {
+        Swal.fire({ icon: 'error', title: 'Update Failed', text: result.message ?? 'Unable to update referred doctor.' });
+        return;
+    }
+
+    document.getElementById('inv-referred_doctor').value = result.referred_doctor ?? '';
+
+    Swal.fire({ icon: 'success', title: 'Updated', text: result.message, timer: 2000, showConfirmButton: false });
+}
+
+document.getElementById('searchInvoiceBtn').addEventListener('click', searchInvoice);
+
+document.getElementById('invoiceNoInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        searchInvoice();
+    }
+});
+
+document.getElementById('saveReferredDoctorBtn').addEventListener('click', saveReferredDoctor);

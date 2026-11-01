@@ -131,6 +131,72 @@
 
         </div>
 
+        <div class="card">
+
+            <div class="card-header">
+                <h5 class="card-title mb-0">Correct Referred Doctor (by Invoice)</h5>
+            </div>
+
+            <div class="card-body">
+
+                <div class="row align-items-end">
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Invoice No <span class="text-danger">*</span></label>
+                        <input type="text" id="invoiceNoInput" class="form-control"
+                               placeholder="e.g. LAB/1126/103/0001">
+                    </div>
+
+                    <div class="col-md-3 mb-3">
+                        <button type="button" class="btn btn-primary w-100" id="searchInvoiceBtn">
+                            <i class="ri-search-line"></i>
+                            Search
+                        </button>
+                    </div>
+
+                </div>
+
+                <div id="invoiceNotFoundWrap" class="alert alert-danger" style="display:none;">
+                    No invoice found with this Invoice No.
+                </div>
+
+                <div id="invoiceEditWrap" style="display:none;">
+
+                    <div class="row">
+
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Invoice Type</label>
+                            <input type="text" id="inv-invoice_type" class="form-control" readonly>
+                        </div>
+
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">Patient Name</label>
+                            <input type="text" id="inv-patient_name" class="form-control" readonly>
+                        </div>
+
+                    </div>
+
+                    <div class="row">
+
+                        <div class="col-md-8 mb-3">
+                            <label class="form-label">Referred Doctor</label>
+                            <input type="text" id="inv-referred_doctor" class="form-control" maxlength="200"
+                                   placeholder="Leave blank to clear">
+                        </div>
+
+                    </div>
+
+                    <button type="button" class="btn btn-success" id="saveReferredDoctorBtn">
+                        <i class="ri-save-line"></i>
+                        Save Referred Doctor
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
     </div>
 
 </div>
