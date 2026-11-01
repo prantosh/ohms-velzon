@@ -65,6 +65,7 @@ class CashLedgerService
     private const DOCTOR_VISIT_ITEM_CODE_BY_SPECIALISATION = [
         4 => 'DEN001',  // DENTAL
         15 => 'EYE001', // EYE
+        16 => 'EYE001', // OPTOMETRY -- reported with Eye
     ];
 
     /**
