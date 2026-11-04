@@ -13,6 +13,11 @@ class DoctorPaymentReportController extends Controller
 {
     private const STAFF_ROLES = ['Admin', 'Supervisor', 'Employee'];
 
+    // Which date the selected day is matched against: the day the invoice
+    // was raised, or the day the doctor was paid (settled).
+    private const BASIS_INVOICE = 'invoice';
+    private const BASIS_SETTLEMENT = 'settlement';
+
     /*
     |--------------------------------------------------------------------------
     | VIEW
@@ -53,7 +58,7 @@ class DoctorPaymentReportController extends Controller
             $request->validate(['doctor_id' => 'exists:doctors,id']);
         }
 
-        $result = $this->buildReport($request->user_id, $request->doctor_id, $request->date);
+        $result = $this->buildReport($request->user_id, $request->doctor_id, $request->date, $this->dateBasis($request));
 
         return response()->json(array_merge(['status' => true], $result));
     }
@@ -86,7 +91,9 @@ class DoctorPaymentReportController extends Controller
         $userLabel = $isAllUsers ? 'All Users' : optional(User::find($request->user_id))->name;
         $doctorLabel = $isAllDoctors ? 'All Doctors' : optional(Doctor::find($request->doctor_id))->doctor_name;
 
-        $result = $this->buildReport($request->user_id, $request->doctor_id, $request->date);
+        $dateBasis = $this->dateBasis($request);
+
+        $result = $this->buildReport($request->user_id, $request->doctor_id, $request->date, $dateBasis);
 
         // All Users + All Doctors on a busy day runs to hundreds of rows --
         // DomPDF needs ~230MB for ~440 rows, past the default 128M.
@@ -105,6 +112,7 @@ class DoctorPaymentReportController extends Controller
                 'doctorGroups' => $result['doctor_groups'],
                 'summary' => $result['summary'],
                 'date' => $date,
+                'dateBasisLabel' => $dateBasis === self::BASIS_SETTLEMENT ? 'Settlement Date' : 'Invoice Date',
             ]
         );
 
@@ -122,7 +130,16 @@ class DoctorPaymentReportController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    private function buildReport($userId, $doctorId, $date): array
+    private function dateBasis(Request $request): string
+    {
+        $request->validate([
+            'date_basis' => 'nullable|in:' . self::BASIS_INVOICE . ',' . self::BASIS_SETTLEMENT,
+        ]);
+
+        return $request->input('date_basis', self::BASIS_INVOICE);
+    }
+
+    private function buildReport($userId, $doctorId, $date, string $dateBasis = self::BASIS_INVOICE): array
     {
         $isAllUsers = $userId === 'ALL';
         $isAllDoctors = $doctorId === 'ALL';
@@ -133,9 +150,19 @@ class DoctorPaymentReportController extends Controller
         $userMap = User::pluck('name', 'id');
 
         $query = DB::table('doctor_payables')
-            ->join('invoices', 'invoices.id', '=', 'doctor_payables.invoice_id')
-            ->whereDate('invoices.invoice_date', $date)
-            ->where('doctor_payables.payment_status', '!=', 'CANCELLED');
+            ->join('invoices', 'invoices.id', '=', 'doctor_payables.invoice_id');
+
+        if ($dateBasis === self::BASIS_SETTLEMENT) {
+            // Everything paid out to the doctor on that day, whatever day the
+            // invoice itself was raised -- same rule as Daily Cash Settlement
+            // (DailyCashSettlementController), so the two reports reconcile.
+            $query->where('doctor_payables.payment_status', 'PAID')
+                ->whereDate('doctor_payables.last_settlement_date', $date)
+                ->where('invoices.cancelled', '!=', 'Y');
+        } else {
+            $query->whereDate('invoices.invoice_date', $date)
+                ->where('doctor_payables.payment_status', '!=', 'CANCELLED');
+        }
 
         if (!$isAllDoctors) {
             $query->where('doctor_payables.doctor_id', $doctorId);

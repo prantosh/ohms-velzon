@@ -106,7 +106,7 @@ function fmtMoney6($v)
 </tr>
 
 <tr>
-    <td class="label-blue">Date</td>
+    <td class="label-blue">{{ $dateBasisLabel ?? 'Invoice Date' }}</td>
     <td>{{ $date->format('d-m-Y (l)') }}</td>
 
     <td class="label-blue">Items</td>
@@ -148,7 +148,7 @@ $sections = $isAllDoctors
 <thead>
 <tr>
     <th colspan="{{ $totalColspan }}" style="text-align:left; background-color:#e6e6e6;">
-        {{ $doctorLabel }} &mdash; {{ $userLabel }} &mdash; Doctor Payment Report for {{ $date->format('d-m-Y (l)') }}
+        {{ $doctorLabel }} &mdash; {{ $userLabel }} &mdash; Doctor Payment Report for {{ $date->format('d-m-Y (l)') }} ({{ $dateBasisLabel ?? 'Invoice Date' }})
     </th>
 </tr>
 <tr>

@@ -26,7 +26,9 @@ async function loadReport() {
 
     const mySeq = ++requestSeq;
 
-    const params = new URLSearchParams({ user_id: userId, doctor_id: doctorId, date: date });
+    let dateBasis = document.getElementById('date_basis-field').value || 'invoice';
+
+    const params = new URLSearchParams({ user_id: userId, doctor_id: doctorId, date: date, date_basis: dateBasis });
 
     const response = await fetch(`/doctor-payment-report/list?${params.toString()}`);
     const result = await response.json();
