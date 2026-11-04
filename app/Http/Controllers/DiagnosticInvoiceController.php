@@ -601,6 +601,32 @@ class DiagnosticInvoiceController extends Controller
 
             }
             unset($test);
+
+            // An item may be billed only once per invoice. Package component
+            // rows (package_parent_item_code_sub set) are zero-rated result
+            // rows, not billed lines, so they're excluded.
+            $seenItemCodes = [];
+
+            foreach ($tests as $test) {
+                $itemCodeSub = (string) ($test['item_code_sub'] ?? '');
+
+                if ($itemCodeSub === '' || !empty($test['package_parent_item_code_sub'])) {
+                    continue;
+                }
+
+                if (isset($seenItemCodes[$itemCodeSub])) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'status' => false,
+                        'message' => '"' . ($test['test_name'] ?? $itemCodeSub) .
+                            '" is added more than once. An item can be invoiced only once per invoice.'
+                    ], 422);
+                }
+
+                $seenItemCodes[$itemCodeSub] = true;
+            }
+
             $request->merge(['tests' => $tests]);
 
             $firstIsPathology = null;

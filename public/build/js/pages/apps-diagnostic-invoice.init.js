@@ -1986,6 +1986,16 @@ function removePackageComponentRows(mainRow) {
     checkLastRowCompletion();
 }
 
+function isItemAlreadyOnInvoice(itemCodeSub, exceptRow) {
+
+    return $('#testTable tbody tr.mainRow')
+        .not(exceptRow)
+        .not('[data-package-owner]')
+        .filter(function () {
+            return $(this).find('.test').val() === itemCodeSub;
+        }).length > 0;
+}
+
 $(document).on(
     "change",
     ".test",
@@ -1997,6 +2007,40 @@ $(document).on(
         let mainRow =
             $(this)
                 .closest('tr');
+
+        /*
+        |--------------------------------------------------------------------------
+        | ONE LINE PER ITEM -- an item already billed on another row of this
+        | invoice can't be selected again. Package component rows (hidden,
+        | zero-rated, tagged data-package-owner) aren't billed lines and are
+        | ignored. On a duplicate the row reverts to its previous selection
+        | without re-running this handler, so its state stays as it was.
+        |--------------------------------------------------------------------------
+        */
+
+        let pickedCode = $(this).val();
+
+        if (pickedCode && isItemAlreadyOnInvoice(pickedCode, mainRow)) {
+
+            let previousCode = $(this).data('prevTest') || '';
+
+            $(this).val(previousCode);
+
+            if ($(this).val() !== previousCode) {
+                $(this).val('');
+            }
+
+            Swal.fire({
+                icon: 'warning',
+                title: 'Item Already Added',
+                text: '"' + (selected.data('name') || selected.text().trim()) +
+                    '" is already on this invoice. An item can be invoiced only once per invoice.'
+            });
+
+            return;
+        }
+
+        $(this).data('prevTest', pickedCode);
 
         // Whatever this row was previously (a package with auto-added
         // components), it no longer applies now that the selection is
