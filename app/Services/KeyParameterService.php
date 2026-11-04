@@ -416,12 +416,20 @@ class KeyParameterService
             ? 'font-size:' . round($px * 0.75 + 3, 3) . 'pt;'
             : 'font-size:' . round($px + 4 / 3, 3) . 'px;';
 
+        // ...but with tighter rows, so the larger text still fits a long
+        // two-column report (Urine RE's 20 rows + 3 section headings) on
+        // one page of the letterhead's content zone.
+        // (Line-height, not padding: the report PDFs force their own td
+        // padding with !important, so a padding change here never prints.)
+        $cellSpacing = 'padding:4.5pt 6pt;' . ($twoColumn ? 'line-height:1.05;' : '');
+        $sectionGap = $twoColumn ? '4pt 0 0' : '8pt 0 0';
+
         // Light tint (not the data cells' own #F7FAFC, so the header still
         // reads as a distinct band above them) with a solid navy bottom
         // rule, bold black text sized bigger than the body content below
         // it (8px) so it reads as a clear heading rather than just another
         // row.
-        $headerCellStyle = 'background-color:#E3EBF3;border-color:#B8C8D4;border-width:1pt;border-bottom:1.4pt solid #1F4E78;padding:4.5pt 6pt;' . $fontSize(9.5) . $wordWrap;
+        $headerCellStyle = 'background-color:#E3EBF3;border-color:#B8C8D4;border-width:1pt;border-bottom:1.4pt solid #1F4E78;' . $cellSpacing . $fontSize(9.5) . $wordWrap;
         $contentFontSize = $fontSize(8);
         // Percentages, not absolute inches -- paired with the table's own
         // width:100% below, this is what makes the table span exactly the
@@ -467,8 +475,8 @@ class KeyParameterService
 
         $dataCellBorder = 'border-color:#B8C8D4;border-width:1pt;';
 
-        $makeDataCell = function (string $text, string $widthStyle, bool $bold = false, bool $shaded = true) use ($wordWrap, $contentFontSize, $dataCellBorder) {
-            $style = $dataCellBorder . ($shaded ? 'background-color:#F7FAFC;' : '') . 'padding:4.5pt 6pt;' . $widthStyle . ($bold ? 'font-weight:bold;' : '') . $wordWrap . $contentFontSize;
+        $makeDataCell = function (string $text, string $widthStyle, bool $bold = false, bool $shaded = true) use ($wordWrap, $contentFontSize, $dataCellBorder, $cellSpacing) {
+            $style = $dataCellBorder . ($shaded ? 'background-color:#F7FAFC;' : '') . $cellSpacing . $widthStyle . ($bold ? 'font-weight:bold;' : '') . $wordWrap . $contentFontSize;
             return '<td style="' . $style . '"><p style="text-align:center;">' . e($text) . '</p></td>';
         };
 
@@ -483,12 +491,12 @@ class KeyParameterService
             $section = trim((string) ($info['section_label'] ?? ''));
             if ($section !== '' && $section !== $currentSection) {
                 $html .= '<tr style="page-break-inside:avoid;page-break-after:avoid;">'
-                    . '<td colspan="' . $columnCount . '" style="' . $dataCellBorder . 'padding:4.5pt 6pt;' . $fontSize(8.5) . '">'
+                    . '<td colspan="' . $columnCount . '" style="' . $dataCellBorder . $cellSpacing . $fontSize(8.5) . '">'
                     // Extra space above every heading but the first, so each
                     // section reads as its own block -- as a margin on the
                     // <p>, since the PDF views force td padding with
                     // !important.
-                    . '<p style="margin:' . ($currentSection === null ? '0' : '8pt 0 0') . ';color:#000000;"><strong><u>' . e($section) . '</u></strong></p></td></tr>';
+                    . '<p style="margin:' . ($currentSection === null ? '0' : $sectionGap) . ';color:#000000;"><strong><u>' . e($section) . '</u></strong></p></td></tr>';
             }
             $currentSection = $section !== '' ? $section : $currentSection;
 
@@ -502,7 +510,7 @@ class KeyParameterService
                 : '';
 
             $html .= '<tr>';
-            $html .= '<td style="border-color:#B8C8D4;border-width:1pt;padding:4.5pt 6pt;' . $investigationWidth . $wordWrap . $contentFontSize . '">'
+            $html .= '<td style="border-color:#B8C8D4;border-width:1pt;' . $cellSpacing . $investigationWidth . $wordWrap . $contentFontSize . '">'
                 . '<p style="margin:0;font-weight:bold;color:#222222;">' . e($info['parameter_name']) . '</p>'
                 . $methodLine . '</td>';
 
@@ -517,7 +525,7 @@ class KeyParameterService
                 ? '<p style="margin:2px 0 0;' . $fontSize(6.5) . 'color:#5B6570;font-weight:normal;">(Test Done : ' . e(\Carbon\Carbon::parse($info['test_date'])->format('d/m/Y')) . ')</p>'
                 : '';
 
-            $html .= '<td style="' . $dataCellBorder . 'background-color:#F7FAFC;padding:4.5pt 6pt;' . $resultValueWidth . $wordWrap . $contentFontSize . '">'
+            $html .= '<td style="' . $dataCellBorder . 'background-color:#F7FAFC;' . $cellSpacing . $resultValueWidth . $wordWrap . $contentFontSize . '">'
                 . '<p style="text-align:center;font-weight:bold;">' . $resultText . '</p>'
                 . $testDoneNote . '</td>';
 
@@ -531,7 +539,7 @@ class KeyParameterService
             // (may contain a real <br> between Male/Female/Common lines) --
             // must NOT be escaped again here, or the <br> prints as literal
             // text instead of a line break.
-            $html .= '<td style="' . $dataCellBorder . 'padding:4.5pt 6pt;text-align:center;' . $rangeWidth . $wordWrap . $contentFontSize . '"><span style="color:#222222;">' . ($info['range'] ?: '-') . '</span></td>';
+            $html .= '<td style="' . $dataCellBorder . $cellSpacing . 'text-align:center;' . $rangeWidth . $wordWrap . $contentFontSize . '"><span style="color:#222222;">' . ($info['range'] ?: '-') . '</span></td>';
             $html .= '</tr>';
         }
 
