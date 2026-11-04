@@ -759,6 +759,24 @@ class InvoiceItemDetailController extends Controller
     {
         $item = InvoiceItemDetail::findOrFail($id);
 
+        // Billed lines (invoice_details) reference the test only by
+        // item_code + item_code_sub. Deleting a test that has been billed
+        // orphans those lines: Test Result Entry, reports and the report
+        // status all stop recognising them. Such a test must be made
+        // inactive instead.
+        $billedCount = DB::table('invoice_details')
+            ->where('item_code', $item->item_code)
+            ->where('item_code_sub', $item->item_code_sub)
+            ->count();
+
+        if ($billedCount > 0) {
+
+            return response()->json([
+                'status' => false,
+                'message' => "This test is already billed on {$billedCount} invoice line(s) and cannot be deleted. Set its status to Inactive instead.",
+            ]);
+        }
+
         $oldData = $item->only($item->getFillable());
 
         TestPackageComponent::where('package_invoice_item_detail_id', $id)
