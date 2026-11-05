@@ -19,6 +19,7 @@ return [
     'doctor-schedules.index' => 'doctor-schedules',
     'doctor-schedule.calendar' => 'doctor-appointment-calendar',
     'doctor-appointments.index' => 'doctor-appointments',
+    'doctor-unavailable-dates.index' => 'doctor-unavailable-dates',
     'doctor-history.index' => 'doctor-history',
     'doctor-test-payment-master.index' => 'doctor-test-payment-master',
     'doctor-payable.index' => 'doctor-payable',

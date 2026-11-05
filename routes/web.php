@@ -270,6 +270,10 @@ Route::middleware(['auth'])->group(function () {
         [DoctorAppointmentController::class, 'getAvailableSlots']
     )->name('doctor-appointments.get-slots');
     Route::post(
+        '/doctor-appointments/check-date-availability',
+        [DoctorAppointmentController::class, 'checkDateAvailability']
+    );
+    Route::post(
         '/doctor-appointments/bulk-reassign',
         [DoctorAppointmentController::class, 'bulkReassign']
     )->name('doctor-appointments.bulk-reassign');
@@ -294,6 +298,11 @@ Route::middleware(['auth'])->group(function () {
             'getPatientAppointments'
         ]
     );
+
+    Route::get(
+        '/doctor-unavailable-dates',
+        [DoctorScheduleExceptionController::class, 'report']
+    )->name('doctor-unavailable-dates.index');
 
     Route::get(
         '/doctor-schedule-exceptions',
@@ -321,6 +330,7 @@ Route::prefix('book-appointment')->controller(PublicAppointmentController::class
     Route::post('/doctors-by-specialisation', 'getDoctorsBySpecialisation')->middleware('throttle:60,1');
     Route::post('/available-days', 'getAvailableDays')->middleware('throttle:60,1');
     Route::post('/available-slots', 'getAvailableSlots')->middleware('throttle:60,1');
+    Route::post('/check-date-availability', 'checkDateAvailability')->middleware('throttle:60,1');
 
     Route::post('/send-otp', 'sendOtp')->middleware('throttle:5,1')->name('public-appointment.send-otp');
     Route::post('/verify-otp', 'verifyOtp')->middleware('throttle:10,1')->name('public-appointment.verify-otp');

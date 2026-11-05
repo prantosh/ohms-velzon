@@ -21,4 +21,10 @@ class DoctorScheduleException extends Model
     {
         return $this->belongsTo(Doctor::class, 'doctor_id');
     }
+
+    /** The staff user who marked this date unavailable. */
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 }

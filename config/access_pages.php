@@ -19,6 +19,7 @@ return [
     'test-report-dashboard' => 'Diagnostic Test Report Dashboard',
     'doctor-appointment-calendar' => 'Doctor Appointment Calendar',
     'doctor-appointments' => 'Doctor Appointments',
+    'doctor-unavailable-dates' => 'Doctor Unavailable Dates',
     'doctor-consultation-list' => 'Doctor Consultation List',
     'doctor-master' => 'Doctor Master',
     'doctor-payable' => 'Doctor Payable',

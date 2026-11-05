@@ -308,6 +308,11 @@
                                         <a href="{{ route('doctor-schedule.calendar') }}" class="nav-link">@lang('translation.doctorcalender')</a>
                                         </li>
                             @endif
+                            @if(is_null($allowedPages) || in_array('doctor-unavailable-dates', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('doctor-unavailable-dates.index') }}" class="nav-link">@lang('translation.doctorunavailabledates')</a>
+                                        </li>
+                            @endif
                             @if(is_null($allowedPages) || in_array('doctor-consultation-list', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('doctor-consultation-list.index') }}" class="nav-link">@lang('translation.doctorconsultationlist')</a>

@@ -631,6 +631,14 @@ function loadAvailableSlots() {
                     '<option value="">Select Slot</option>'
                 );
 
+                // No slots could just mean "fully booked" -- ask whether
+                // the doctor was actually marked unavailable on this date
+                // so the user gets told why, instead of an empty list.
+                if (!response.length) {
+                    alertIfDoctorUnavailable(doctor_id, appointment_date);
+                    return;
+                }
+
                 response.forEach(function (slot) {
 
                     $('#appointment_time').append(
@@ -646,6 +654,89 @@ function loadAvailableSlots() {
             }
         });
     }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Doctor Unavailable (blackout date) Alert
+|--------------------------------------------------------------------------
+*/
+
+function alertIfDoctorUnavailable(doctor_id, appointment_date) {
+
+    $.ajax({
+
+        url: '/doctor-appointments/check-date-availability',
+
+        type: 'POST',
+
+        data: {
+
+            doctor_id: doctor_id,
+
+            appointment_date: appointment_date,
+
+            _token: $('meta[name="csrf-token"]').attr('content')
+        },
+
+        success: function (response) {
+
+            if (!response || !response.unavailable) {
+
+                $('#appointment_time').append(
+                    '<option value="" disabled>No slots available on this date</option>'
+                );
+
+                return;
+            }
+
+            // The user may have picked another doctor/date while this
+            // request was in flight -- only alert for the current pick.
+            if (
+                $('#doctor_id').val() != doctor_id ||
+                convertToMysqlDate($('#appointment_date').val()) !== appointment_date
+            ) {
+                return;
+            }
+
+            let dateLabel = $('#appointment_date').val();
+
+            let reasonHtml = response.reason
+                ? '<div class="mt-2 text-muted"><b>Reason:</b> ' +
+                  $('<div>').text(response.reason).html() +
+                  '</div>'
+                : '';
+
+            Swal.fire({
+
+                icon: 'error',
+
+                title: 'Doctor Not Available',
+
+                html:
+                    '<div class="fs-15">' +
+                    'The doctor\'s schedule has been disabled for <b>' +
+                    $('<div>').text(dateLabel).html() +
+                    '</b> due to non-availability of the doctor. ' +
+                    'Please choose a different date.' +
+                    '</div>' +
+                    reasonHtml,
+
+                confirmButtonColor: '#f06548',
+
+                customClass: {
+
+                    popup: 'shadow-lg rounded-4',
+
+                    title: 'fw-bold text-danger',
+
+                    confirmButton: 'px-4'
+                }
+            });
+
+            $('#appointment_date').val('');
+        }
+    });
 }
 
 /*

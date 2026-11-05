@@ -73,6 +73,26 @@ class PublicAppointmentController extends Controller
         );
     }
 
+    /**
+     * Public counterpart of DoctorAppointmentController::checkDateAvailability().
+     * Deliberately does NOT return the blackout reason -- it's free text
+     * typed by staff and may be internal (e.g. personal leave).
+     */
+    public function checkDateAvailability(Request $request)
+    {
+        $request->validate([
+            'doctor_id' => 'required|integer',
+            'appointment_date' => 'required|date',
+        ]);
+
+        return response()->json([
+            'unavailable' => (bool) $this->scheduleQuery->getBlackout(
+                (int) $request->doctor_id,
+                $request->appointment_date
+            ),
+        ]);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | OTP

@@ -184,6 +184,27 @@ class DoctorAppointmentController extends Controller
     }
 
     /**
+     * Tells the booking screen whether the doctor has been marked
+     * unavailable on the picked date (a blackout row in
+     * doctor_schedule_exceptions), so it can alert the user instead of
+     * silently showing an empty slot list. Staff also see the reason.
+     */
+    public function checkDateAvailability(Request $request)
+    {
+        $request->validate([
+            'doctor_id' => 'required|integer',
+            'appointment_date' => 'required|date',
+        ]);
+
+        $blackout = $this->scheduleQuery->getBlackout((int) $request->doctor_id, $request->appointment_date);
+
+        return response()->json([
+            'unavailable' => (bool) $blackout,
+            'reason' => $blackout?->reason,
+        ]);
+    }
+
+    /**
      * Commits a reviewed batch of appointment reassignments -- see
      * DoctorScheduleExceptionController::store(), which is where the
      * suggestions this batch is built from originally come from (a doctor

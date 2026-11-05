@@ -833,6 +833,24 @@ $(document).on('change', '.reassignDateInput', function () {
 
             if (!slots || !slots.length) {
                 select.html('<option value="">-- no slots on this date --</option>');
+
+                // Tell the user if this date is itself a disabled
+                // (unavailable) date for the doctor, not just fully booked.
+                $.post('/doctor-appointments/check-date-availability', {
+                    doctor_id: currentExceptionDoctorId,
+                    appointment_date: newDate,
+                    _token: $('meta[name="csrf-token"]').attr('content')
+                }).done(function (res) {
+                    if (res && res.unavailable && row.find('.reassignDateInput').val() === newDate) {
+                        select.html('<option value="">-- doctor unavailable on this date --</option>');
+                        Swal.fire({
+                            icon: 'warning',
+                            title: 'Doctor Not Available',
+                            text: `This doctor's schedule is disabled on ${newDate}. Please pick a different date.`
+                        });
+                    }
+                });
+
                 queueItem.new_date = newDate;
                 queueItem.new_time = null;
                 queueItem.new_session_id = null;

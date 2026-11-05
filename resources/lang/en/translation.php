@@ -136,6 +136,7 @@ return [
 
     "appointment" => "Appointment",
     "doctorappointments" => "Doctor Appointments",
+    "doctorunavailabledates" => "Doctor Unavailable Dates",
     "doctorschedules" => "Doctor Schedules",
     "doctorvisitinvoices" => "Doctor Visit Invoices",
     "diagnosticinvoices" => "Diagnostic Tests Invoices",
