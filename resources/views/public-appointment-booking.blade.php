@@ -276,6 +276,6 @@ Book Doctor Appointment Online
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
-<script src="{{ URL::asset('build/js/pages/public-appointment-booking.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/public-appointment-booking.init.js') }}?v={{ filemtime(public_path('build/js/pages/public-appointment-booking.init.js')) }}"></script>
 
 @endsection
