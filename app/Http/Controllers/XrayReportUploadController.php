@@ -527,6 +527,8 @@ class XrayReportUploadController extends Controller
 
             \Log::error('X-Ray Report WhatsApp Send Failed: ' . $e->getMessage());
 
+            ReportWhatsappDueGate::logSendFailure(self::MESSAGE_TYPE, $invoice->invoice_no, $e);
+
             return ['sent' => false, 'reason' => 'unexpected error (see log).'];
         }
     }

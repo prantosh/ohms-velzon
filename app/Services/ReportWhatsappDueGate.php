@@ -120,6 +120,10 @@ class ReportWhatsappDueGate
             return;
         }
 
+        if (DB::table('invoices')->where('invoice_no', $invoiceNo)->where('cancelled', 'Y')->exists()) {
+            return;
+        }
+
         foreach ([
             PathologyReportController::class,
             CardiologyReportController::class,
@@ -137,6 +141,61 @@ class ReportWhatsappDueGate
 
                 Log::error('Held report WhatsApp release failed (' . $controller . ') for ' . $invoiceNo . ': ' . $e->getMessage());
             }
+        }
+    }
+
+    /**
+     * Safety net run by the reports:release-held-whatsapp scheduled command:
+     * releases every held report whose invoice is now fully paid but whose
+     * release never happened in the payment request itself (request died,
+     * or the due was cleared by some other path). Returns the invoice
+     * numbers it processed.
+     *
+     * @return array<int, string>
+     */
+    public static function releaseAllPaid(): array
+    {
+        $invoiceNos = DB::table('whatsapp_message_logs as w')
+            ->join('invoices as i', 'i.invoice_no', '=', 'w.invoice_no')
+            ->where('w.status', self::HELD)
+            ->where('i.due_amount', '<=', 0)
+            ->where(fn ($q) => $q->whereNull('i.cancelled')->orWhere('i.cancelled', '!=', 'Y'))
+            ->distinct()
+            ->pluck('w.invoice_no')
+            ->all();
+
+        foreach ($invoiceNos as $invoiceNo) {
+            self::releaseAll($invoiceNo);
+        }
+
+        return $invoiceNos;
+    }
+
+    /**
+     * Records a report send that threw before reaching WATI, so it shows
+     * up as FAILED in the WhatsApp message report instead of only in
+     * laravel.log (a released report that silently failed was otherwise
+     * invisible to staff).
+     */
+    public static function logSendFailure(string $messageType, string $invoiceNo, \Throwable $e): void
+    {
+        try {
+
+            $invoice = DB::table('invoices')->where('invoice_no', $invoiceNo)->first(['patient_mobile_no', 'patient_name']);
+
+            DB::table('whatsapp_message_logs')->insert([
+                'invoice_no' => $invoiceNo,
+                'mobile_no' => $invoice->patient_mobile_no ?? '',
+                'patient_name' => $invoice->patient_name ?? null,
+                'message_type' => $messageType,
+                'status' => 'FAILED',
+                'response' => json_encode(['error' => mb_substr($e->getMessage(), 0, 1000)]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        } catch (\Throwable $ignored) {
+            // Logging the failure must never itself break the caller.
         }
     }
 }

@@ -1075,9 +1075,11 @@ class TestResultEntryController extends Controller
 
             return $sent;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
 
             \Log::error('Test Report WhatsApp Send Failed: ' . $e->getMessage());
+
+            ReportWhatsappDueGate::logSendFailure('TEST_REPORT', $invoice->invoice_no, $e);
 
             return false;
         }

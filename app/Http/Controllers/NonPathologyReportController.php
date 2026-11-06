@@ -691,9 +691,11 @@ class NonPathologyReportController extends Controller
 
             return $sent;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
 
             \Log::error('Non-Pathology Report WhatsApp Send Failed: ' . $e->getMessage());
+
+            ReportWhatsappDueGate::logSendFailure('NON_PATHOLOGY_REPORT', $finding->invoice_no, $e);
 
             return false;
         }

@@ -760,9 +760,11 @@ class UsgReportController extends Controller
 
             return $sent;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
 
             \Log::error('USG Report WhatsApp Send Failed: ' . $e->getMessage());
+
+            ReportWhatsappDueGate::logSendFailure('USG_REPORT', $finding->invoice_no, $e);
 
             return false;
         }

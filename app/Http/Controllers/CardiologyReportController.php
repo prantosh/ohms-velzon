@@ -754,9 +754,11 @@ class CardiologyReportController extends Controller
 
             return $sent;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
 
             \Log::error('Cardiology Report WhatsApp Send Failed: ' . $e->getMessage());
+
+            ReportWhatsappDueGate::logSendFailure('CARDIOLOGY_REPORT', $finding->invoice_no, $e);
 
             return false;
         }

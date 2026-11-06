@@ -44,6 +44,11 @@ class Kernel extends ConsoleKernel
         // WhatsApp send is deliberately delayed 2 hours from the latest
         // upload/replace. This picks up whatever's due every 5 minutes.
         $schedule->command('xray:send-due-whatsapp')->everyFiveMinutes();
+
+        // Safety net for the due-payment report hold -- sends held reports
+        // whose invoice is now fully paid but whose release never ran in
+        // the payment request itself (see ReportWhatsappDueGate::releaseAllPaid()).
+        $schedule->command('reports:release-held-whatsapp')->everyFiveMinutes()->withoutOverlapping();
     }
 
     /**

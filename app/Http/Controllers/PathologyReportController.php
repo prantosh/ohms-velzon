@@ -1891,9 +1891,11 @@ class PathologyReportController extends Controller
 
             return $sent;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
 
             \Log::error('Pathology Combined Invoice WhatsApp Send Failed: ' . $e->getMessage());
+
+            ReportWhatsappDueGate::logSendFailure('PATHOLOGY_REPORT', $invoiceNo, $e);
 
             return false;
         }
