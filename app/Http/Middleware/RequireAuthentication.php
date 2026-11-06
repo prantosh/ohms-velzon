@@ -24,6 +24,7 @@ class RequireAuthentication
         'book-appointment',
         'doctor-schedule.pdf',
         'index', // language switch: index/{locale}
+        'webhooks/wati', // WATI delivery receipts -- secret-in-URL, see WatiWebhookController
     ];
 
     public function handle(Request $request, Closure $next)

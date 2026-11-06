@@ -18,7 +18,9 @@ class CheckMaintenanceMode
      * that dead-ends) is blocked except for the auth flow itself, so a
      * session that expires mid-maintenance can still log back in as Admin.
      */
-    private const EXEMPT_PREFIXES = ['login', 'logout', 'password', 'register', 'maintenance-mode'];
+    // webhooks/wati: WATI delivery receipts are fire-and-forget from WATI's
+    // side, so refusing them during maintenance would lose them for good.
+    private const EXEMPT_PREFIXES = ['login', 'logout', 'password', 'register', 'maintenance-mode', 'webhooks/wati'];
 
     public function handle(Request $request, Closure $next)
     {

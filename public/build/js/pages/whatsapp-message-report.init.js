@@ -34,6 +34,40 @@ function renderTypeCell(stats) {
     return `<td class="text-end">${sentHtml}${noteHtml}</td>`;
 }
 
+// Delivery receipts are a breakdown of Sent (see the "How to read" note):
+// awaiting = sent messages with no delivered/read/failed receipt yet.
+function renderDeliveryCards(prefix, totals) {
+    let delivered = totals.delivered_count || 0;
+    let notDelivered = totals.not_delivered_count || 0;
+    document.getElementById(`${prefix}-delivered_count`).innerText = delivered;
+    document.getElementById(`${prefix}-read_count`).innerText = totals.read_count || 0;
+    document.getElementById(`${prefix}-not_delivered_count`).innerText = notDelivered;
+    document.getElementById(`${prefix}-awaiting_count`).innerText =
+        Math.max(0, (totals.sent_count || 0) - delivered - notDelivered);
+}
+
+function renderDeliveryCell(row) {
+    if (row.status !== 'SENT') return '<span class="text-muted">-</span>';
+
+    let badgeClass = {
+        'READ': 'bg-primary',
+        'DELIVERED': 'bg-success',
+        'FAILED': 'bg-danger',
+        'SENT': 'bg-info',
+    }[row.delivery_status] ?? 'bg-warning text-dark';
+
+    let lines = [];
+    if (row.read_at_fmt) lines.push(`Read ${escapeHtml(row.read_at_fmt)}`);
+    if (row.delivered_at_fmt) lines.push(`Delivered ${escapeHtml(row.delivered_at_fmt)}`);
+    if (row.delivery_status === 'FAILED') {
+        if (row.delivery_failed_at_fmt) lines.push(`Failed ${escapeHtml(row.delivery_failed_at_fmt)}`);
+        if (row.delivery_failure_reason) lines.push(`<span class="text-danger">${escapeHtml(row.delivery_failure_reason)}</span>`);
+    }
+
+    let detail = lines.length ? `<div class="small text-muted mt-1">${lines.join('<br>')}</div>` : '';
+    return `<span class="badge ${badgeClass}">${escapeHtml(row.delivery_label)}</span>${detail}`;
+}
+
 /* ==========================================================
    SUMMARY TAB
 ========================================================== */
@@ -60,6 +94,7 @@ async function loadSummary() {
     if (mySeq !== summaryRequestSeq) return;
 
     document.getElementById('summaryTotalsRow').style.display = 'none';
+    document.getElementById('summaryDeliveryRow').style.display = 'none';
     document.getElementById('summaryCard').style.display = 'none';
     document.getElementById('summaryNoDataWrap').style.display = 'none';
     document.getElementById('printSummaryBtn').style.display = 'none';
@@ -77,7 +112,10 @@ async function loadSummary() {
     document.getElementById('grand-skipped_count').innerText = g.skipped_count;
     document.getElementById('grand-success_rate').innerText = successRate(g.sent_count, g.failed_count);
 
+    renderDeliveryCards('grand', g);
+
     document.getElementById('summaryTotalsRow').style.display = 'flex';
+    document.getElementById('summaryDeliveryRow').style.display = 'flex';
 
     // Category columns are whatever distinct message types actually exist in
     // whatsapp_message_logs -- rebuild the header every load so a brand-new
@@ -105,6 +143,9 @@ async function loadSummary() {
             <td class="text-end text-success">${row.sent_count}</td>
             <td class="text-end ${row.failed_count > 0 ? 'text-danger fw-semibold' : ''}">${row.failed_count}</td>
             <td class="text-end">${row.skipped_count}</td>
+            <td class="text-end text-success">${row.delivered_count}</td>
+            <td class="text-end text-primary">${row.read_count}</td>
+            <td class="text-end ${row.not_delivered_count > 0 ? 'text-danger fw-semibold' : ''}">${row.not_delivered_count}</td>
             ${typeCells}
             <td class="text-center">
                 <button type="button" class="btn btn-sm btn-soft-primary view-day-btn" data-date="${row.log_date}">
@@ -123,6 +164,9 @@ async function loadSummary() {
         <td class="text-end">${g.sent_count}</td>
         <td class="text-end">${g.failed_count}</td>
         <td class="text-end">${g.skipped_count}</td>
+        <td class="text-end">${g.delivered_count}</td>
+        <td class="text-end">${g.read_count}</td>
+        <td class="text-end">${g.not_delivered_count}</td>
         ${totalTypeCells}
         <td></td>
     </tr>
@@ -186,6 +230,7 @@ async function loadDetail() {
     if (mySeq !== detailRequestSeq) return;
 
     document.getElementById('detailTotalsRow').style.display = 'none';
+    document.getElementById('detailDeliveryRow').style.display = 'none';
     document.getElementById('detailCard').style.display = 'none';
     document.getElementById('detailNoDataWrap').style.display = 'none';
     document.getElementById('printDetailBtn').style.display = 'none';
@@ -203,7 +248,10 @@ async function loadDetail() {
     document.getElementById('detail-skipped_count').innerText = s.skipped_count;
     document.getElementById('detail-success_rate').innerText = successRate(s.sent_count, s.failed_count);
 
+    renderDeliveryCards('detail', s);
+
     document.getElementById('detailTotalsRow').style.display = 'flex';
+    document.getElementById('detailDeliveryRow').style.display = 'flex';
 
     let statusBadgeClass = {
         'SENT': 'bg-success',
@@ -223,6 +271,7 @@ async function loadDetail() {
             <td>${escapeHtml(row.mobile_no)}</td>
             <td><span class="badge ${typeBadgeClass[row.type_label] ?? 'bg-secondary'}">${escapeHtml(row.type_label)}</span></td>
             <td><span class="badge ${statusBadgeClass[row.status] ?? 'bg-secondary'}">${escapeHtml(row.status)}</span></td>
+            <td>${renderDeliveryCell(row)}</td>
             <td class="small" title="${escapeHtml(row.response_preview ?? '')}">${row.status === 'SENT' ? escapeHtml(row.message_id) || '-' : escapeHtml(row.response_preview) || '-'}</td>
         </tr>
         `;

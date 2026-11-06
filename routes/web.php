@@ -154,6 +154,16 @@ Route::post('/password/reset', [App\Http\Controllers\Auth\ResetPasswordControlle
     ->middleware('guest')
     ->name('password.update');
 
+/*
+|--------------------------------------------------------------------------
+| WATI WEBHOOK -- WhatsApp delivery / read receipts (server-to-server)
+|--------------------------------------------------------------------------
+*/
+
+Route::post('/webhooks/wati/{secret}', [App\Http\Controllers\WatiWebhookController::class, 'handle'])
+    ->middleware('throttle:600,1')
+    ->name('webhooks.wati');
+
 //Language Translation
 
 
