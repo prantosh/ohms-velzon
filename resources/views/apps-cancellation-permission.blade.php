@@ -40,7 +40,7 @@
 
         <div class="card">
 
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
                 <h5 class="card-title mb-0">Pending Cancellation Requests</h5>
                 <button type="button" class="btn btn-sm btn-soft-primary" id="btnRefreshPending">
                     <i class="ri-refresh-line"></i>
@@ -52,7 +52,7 @@
 
                 <div class="table-responsive">
 
-                    <table class="table table-bordered align-middle">
+                    <table class="table table-bordered align-middle table-mobile-cards">
 
                         <thead class="table-light">
                             <tr>
@@ -116,7 +116,7 @@
 
         <div class="card" id="invoiceResultCard" style="display:none;">
 
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
                 <h5 class="card-title mb-0">Invoice Details</h5>
                 <span id="statusBadge"></span>
             </div>
@@ -211,6 +211,6 @@
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/cancellation-permission.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/cancellation-permission.init.js') }}?v={{ @filemtime(public_path('build/js/pages/cancellation-permission.init.js')) }}"></script>
 
 @endsection

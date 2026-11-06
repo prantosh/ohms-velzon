@@ -95,7 +95,7 @@
 
         <div class="card">
 
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
                 <h5 class="card-title mb-0">Disabled Dates</h5>
                 <span class="badge bg-danger">{{ $exceptions->count() }} date(s)</span>
             </div>

@@ -73,7 +73,7 @@ class AppServiceProvider extends ServiceProvider
             //
         }
 
-        View::composer('layouts.sidebar', function ($view) {
+        View::composer(['layouts.sidebar', 'layouts.mobile-menu'], function ($view) {
 
             $allowedPages = null;
 

@@ -62,6 +62,7 @@
         @unless(request()->boolean('embed'))
         @include('layouts.topbar')
         @include('layouts.sidebar')
+        @include('layouts.mobile-menu')
         @endunless
         <!-- ============================================================== -->
         <!-- Start right Content here -->

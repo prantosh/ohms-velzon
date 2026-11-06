@@ -58,6 +58,14 @@
     <div class="layout-width">
         <div class="navbar-header">
             <div class="d-flex">
+                <!-- Mobile admin menu button (Admin only, shown below 1025px, see layouts/mobile-menu) -->
+                @if(optional(Auth::user())->role === 'Admin')
+                <button type="button" class="btn btn-sm px-3 fs-22 header-item btn-topbar mobile-menu-btn align-items-center"
+                        data-bs-toggle="offcanvas" data-bs-target="#mobileAdminMenu" aria-controls="mobileAdminMenu"
+                        aria-label="Open menu">
+                    <i class="ri-menu-line"></i>
+                </button>
+                @endif
                 <!-- LOGO -->
                 <div class="navbar-brand-box horizontal-logo"
      style="width:auto; min-width:90px;">
