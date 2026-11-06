@@ -564,20 +564,77 @@ class KeyParameterService
             return $this->replaceKeyParamBlock($contentHtml, $tableHtml);
         }
 
-        // [^<]* rather than \s* -- CKEditor's editing view can't display a
-        // truly empty block element, so it fills the placeholder with a
-        // non-breaking space (U+00A0) before the data round-trips back
-        // here; PCRE's \s doesn't match that multi-byte character without
-        // the /u modifier, so the old pattern silently failed to match at
-        // all once a report had actually been through the live editor
-        // (direct DB/tinker tests never exercised this, since they never
-        // round-tripped the placeholder through CKEditor first).
-        return preg_replace(
-            '/<div[^>]*data-auto-key-param-table="1"[^>]*>[^<]*<\/div>/i',
-            $tableHtml,
-            $contentHtml,
-            1
-        );
+        // Fast path: the untouched placeholder (empty, or CKEditor's lone
+        // U+00A0 filler -- hence [^<]* rather than \s*, which doesn't match
+        // that multi-byte character without /u).
+        if (preg_match_all('/data-auto-key-param-table/i', $contentHtml) === 1) {
+            $replaced = preg_replace(
+                '/<div[^>]*data-auto-key-param-table="1"[^>]*>[^<]*<\/div>/i',
+                $tableHtml,
+                $contentHtml,
+                1,
+                $count
+            );
+
+            if ($count === 1) {
+                return $replaced;
+            }
+        }
+
+        return $this->spliceIntoEditedPlaceholder($contentHtml, $tableHtml);
+    }
+
+    /**
+     * Staff often type a remark ("*Checked Twice", "*Comment: ...") with
+     * the cursor still inside the placeholder; CKEditor then keeps the
+     * text inside it (often with <strong> etc.) and copies the
+     * placeholder's attribute onto each new line made with Enter. The old
+     * regex then didn't match at all and the whole results table vanished
+     * from the print (e.g. LAB/1126/102/0083). Here the FIRST placeholder
+     * becomes the table, with whatever was typed inside it kept right
+     * below; any later copies just lose the attribute and print as the
+     * normal text they are (or are dropped when empty).
+     */
+    private function spliceIntoEditedPlaceholder(string $contentHtml, string $tableHtml): string
+    {
+        $dom = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $dom->loadHTML('<?xml encoding="utf-8" ?><div id="__root__">' . $contentHtml . '</div>', LIBXML_NOERROR | LIBXML_NOWARNING);
+        libxml_clear_errors();
+
+        $root = $dom->getElementById('__root__');
+        if (!$root) {
+            return $contentHtml;
+        }
+
+        $placeholders = iterator_to_array((new \DOMXPath($dom))->query('//*[@data-auto-key-param-table]'));
+        if (!$placeholders) {
+            return $contentHtml;
+        }
+
+        $isBlank = fn (\DOMElement $el) => trim(str_replace("\u{00A0}", ' ', $el->textContent)) === ''
+            && !$el->getElementsByTagName('img')->length
+            && !$el->getElementsByTagName('table')->length;
+
+        foreach ($placeholders as $index => $el) {
+
+            if ($index === 0) {
+                $el->parentNode->insertBefore($dom->createComment('__AUTO_KEY_PARAM_TABLE__'), $el);
+            }
+
+            if ($isBlank($el)) {
+                $el->parentNode->removeChild($el);
+            } else {
+                $el->removeAttribute('data-auto-key-param-table');
+            }
+        }
+
+        $html = '';
+        foreach ($root->childNodes as $child) {
+            $html .= $dom->saveHTML($child);
+        }
+
+        return str_replace('<!--__AUTO_KEY_PARAM_TABLE__-->', $tableHtml, $html);
     }
 
     /**
