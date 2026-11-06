@@ -44,7 +44,16 @@
                 <input type="date" name="to" value="{{ request('to') }}" class="form-control">
             </div>
 
-            <div class="col-md-4">
+            <div class="col-md-2">
+                <label class="form-label fw-semibold">Final Payment</label>
+                <select name="payment_status" class="form-select">
+                    <option value="">All</option>
+                    <option value="paid" @selected(request('payment_status') === 'paid')>Fully Paid</option>
+                    <option value="due" @selected(request('payment_status') === 'due')>Due</option>
+                </select>
+            </div>
+
+            <div class="col-md-2">
                 <button type="submit" class="btn btn-primary">Filter</button>
                 <a href="{{ route('report-print-due-log.index') }}" class="btn btn-light">Reset</a>
             </div>
@@ -53,11 +62,11 @@
 
         <div class="table-responsive">
 
-            <table class="table table-bordered align-middle">
+            <table class="table table-bordered align-middle table-mobile-cards">
 
                 <thead class="table-light">
                     <tr>
-                        <th>Printed At</th>
+                        <th>Report Printed At</th>
                         <th>Invoice No</th>
                         <th>Patient</th>
                         <th>Test Items</th>
@@ -65,22 +74,30 @@
                         <th class="text-end">Paid</th>
                         <th class="text-end">Due</th>
                         <th>Printed By</th>
-                        <th>Type</th>
+                        <th>Final Payment Status</th>
                     </tr>
                 </thead>
 
                 <tbody>
                     @forelse($logs as $log)
                         <tr>
-                            <td class="text-nowrap">{{ optional($log->printed_at)->format('d-m-Y H:i') }}</td>
-                            <td class="fw-semibold">{{ $log->invoice_no }}</td>
-                            <td>{{ $log->patient_name }}<br><small class="text-muted">{{ $log->patient_mobile_no }}</small></td>
-                            <td>{{ $log->test_items }}</td>
-                            <td class="text-end">{{ number_format($log->total_amount, 2) }}</td>
-                            <td class="text-end">{{ number_format($log->paid_amount, 2) }}</td>
-                            <td class="text-end text-danger fw-semibold">{{ number_format($log->due_amount, 2) }}</td>
-                            <td>{{ $log->printed_by_name }}<br><small class="text-muted">{{ $log->ip_address }}</small></td>
-                            <td>{{ $log->print_type }}</td>
+                            <td data-label="Report Printed At" class="text-nowrap">{{ optional($log->printed_at)->format('d-m-Y H:i') }}</td>
+                            <td data-label="Invoice No" class="fw-semibold">{{ $log->invoice_no }}</td>
+                            <td data-label="Patient">{{ $log->patient_name }}<br><small class="text-muted">{{ $log->patient_mobile_no }}</small></td>
+                            <td data-label="Test Items">{{ $log->test_items }}</td>
+                            <td data-label="Total" class="text-end">{{ number_format($log->total_amount, 2) }}</td>
+                            <td data-label="Paid" class="text-end">{{ number_format($log->paid_amount, 2) }}</td>
+                            <td data-label="Due" class="text-end text-danger fw-semibold">{{ number_format($log->due_amount, 2) }}</td>
+                            <td data-label="Printed By">{{ $log->printed_by_name }}<br><small class="text-muted">{{ $log->ip_address }}</small></td>
+                            @php
+                                $finalPayment = $log->final_payment ?? ['label' => '-', 'badge' => 'bg-light text-muted', 'lines' => []];
+                            @endphp
+                            <td data-label="Final Payment Status">
+                                <span class="badge {{ $finalPayment['badge'] }}">{{ $finalPayment['label'] }}</span>
+                                @foreach($finalPayment['lines'] as $line)
+                                    <div class="small text-muted mt-1 text-nowrap">{{ $line }}</div>
+                                @endforeach
+                            </td>
                         </tr>
                     @empty
                         <tr>
