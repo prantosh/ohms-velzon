@@ -2093,10 +2093,10 @@ class DiagnosticInvoiceController extends Controller
 
             /*
             |--------------------------------------------------------------------------
-            | DOCTOR REPLACEMENT (USG ONLY) -- AT FINAL/DUE PAYMENT
+            | DOCTOR REPLACEMENT -- AT FINAL/DUE PAYMENT
             |--------------------------------------------------------------------------
             | The doctor originally selected when the invoice was raised can be
-            | swapped for a different USG doctor at the point the remaining due
+            | swapped for a different doctor at the point the remaining due
             | amount is collected. The patient's line amount (and therefore the
             | invoice total/paid/due) never changes here -- only how that fixed
             | amount splits between the clinic's own charge and the doctor's
@@ -2104,7 +2104,9 @@ class DiagnosticInvoiceController extends Controller
             | this exact test (doctor_test_payment_masters), looked up
             | server-side rather than trusted from the request, since this is
             | recomputing money, not just accepting a fresh line like store() does.
-            | Restricted to USG001 lines only, per the requirement.
+            | Allowed on any line that already carries a performing doctor
+            | (originally USG001 only; widened so e.g. ECHO/CRD001 lines can be
+            | corrected too).
             |--------------------------------------------------------------------------
             */
 
@@ -2119,11 +2121,12 @@ class DiagnosticInvoiceController extends Controller
                         ->where('invoice_no', $invoice->invoice_no)
                         ->first();
 
-                    // Not this invoice's line, not USG, or nothing actually
-                    // changed -- silently skip rather than error, since the
-                    // dropdown always submits its currently-selected value
-                    // whether or not the operator touched it.
-                    if (!$line || $line->item_code !== 'USG001') {
+                    // Not this invoice's line, a line with no performing
+                    // doctor, or nothing actually changed -- silently skip
+                    // rather than error, since the dropdown always submits
+                    // its currently-selected value whether or not the
+                    // operator touched it.
+                    if (!$line || empty($line->doctor_id)) {
                         continue;
                     }
 
@@ -2221,7 +2224,7 @@ class DiagnosticInvoiceController extends Controller
                             $doctorPayable,
                             $oldPayableData,
                             $doctorPayable->only($doctorPayable->getFillable()),
-                            'Doctor changed at final payment (USG)'
+                            'Doctor changed at final payment'
                         );
                     }
                 }
@@ -2461,13 +2464,16 @@ class DiagnosticInvoiceController extends Controller
                 'Diagnostic invoice due payment collected'
             );
 
+            // Reports whose WhatsApp was held for this payment go out now
+            // that nothing is due (no-op while any due remains). Runs BEFORE
+            // the invoice WhatsApp below so a hang/fatal in that send can't
+            // leave the held reports unreleased; anything still missed is
+            // picked up by the reports:release-held-whatsapp sweeper.
+            \App\Services\ReportWhatsappDueGate::releaseAll($invoice->invoice_no);
+
             $this->autoSendInvoiceWhatsapp(
                 $invoice->id
             );
-
-            // Reports whose WhatsApp was held for this payment go out now
-            // that nothing is due (no-op while any due remains).
-            \App\Services\ReportWhatsappDueGate::releaseAll($invoice->invoice_no);
 
             return response()->json([
                 'status' => true,

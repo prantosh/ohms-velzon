@@ -2917,9 +2917,9 @@ $('#btnBackToEditDuePayment').on('click', function () {
 
 /*
 |--------------------------------------------------------------------------
-| USG DOCTOR REPLACEMENT (EDIT MODE - DUE PAYMENT SCREEN)
+| DOCTOR REPLACEMENT (EDIT MODE - DUE PAYMENT SCREEN)
 |--------------------------------------------------------------------------
-| Lets the operator swap the doctor originally selected for a USG line at
+| Lets the operator swap the doctor originally selected for a test line at
 | the point the remaining due amount is collected -- see
 | DiagnosticInvoiceController::update()'s matching comment for why this
 | exists and how the payable is recalculated. Reuses the exact same
@@ -2929,7 +2929,7 @@ $('#btnBackToEditDuePayment').on('click', function () {
 |--------------------------------------------------------------------------
 */
 
-function loadUsgDoctorReplacementOptions(select) {
+function loadDoctorReplacementOptions(select) {
 
     let itemCodeSub = select.data('item-code-sub');
     let currentDoctorId = String(select.data('current-doctor-id'));
@@ -2967,7 +2967,7 @@ $(document).on('change', '.changeDoctorSelect', function () {
 if (window.editMode) {
 
     $('.changeDoctorSelect').each(function () {
-        loadUsgDoctorReplacementOptions($(this));
+        loadDoctorReplacementOptions($(this));
     });
 }
 
