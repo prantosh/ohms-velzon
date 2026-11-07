@@ -277,35 +277,35 @@
 
                 <div class="row" id="detailTotalsRow" style="display:none;">
 
-                    <div class="col mb-3">
+                    <div class="col-4 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0" id="detail-total_count">0</h5>
                             <small class="text-muted">Total Messages</small>
                         </div></div>
                     </div>
 
-                    <div class="col mb-3">
+                    <div class="col-4 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-success" id="detail-sent_count">0</h5>
                             <small class="text-muted">Sent</small>
                         </div></div>
                     </div>
 
-                    <div class="col mb-3">
+                    <div class="col-4 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-danger" id="detail-failed_count">0</h5>
                             <small class="text-muted">Failed</small>
                         </div></div>
                     </div>
 
-                    <div class="col mb-3">
+                    <div class="col-4 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-secondary" id="detail-skipped_count">0</h5>
                             <small class="text-muted">Skipped (Auto-Send Off)</small>
                         </div></div>
                     </div>
 
-                    <div class="col mb-3">
+                    <div class="col-4 col-md mb-3">
                         <div class="card h-100 border border-success"><div class="card-body text-center">
                             <h5 class="mb-0 text-success" id="detail-success_rate">0%</h5>
                             <small class="text-muted fw-semibold">Success Rate</small>
@@ -316,28 +316,28 @@
 
                 <div class="row" id="detailDeliveryRow" style="display:none;">
 
-                    <div class="col mb-3">
+                    <div class="col-6 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-success" id="detail-delivered_count">0</h5>
                             <small class="text-muted">Delivered to Phone</small>
                         </div></div>
                     </div>
 
-                    <div class="col mb-3">
+                    <div class="col-6 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-primary" id="detail-read_count">0</h5>
                             <small class="text-muted">Read by Patient</small>
                         </div></div>
                     </div>
 
-                    <div class="col mb-3">
+                    <div class="col-6 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-danger" id="detail-not_delivered_count">0</h5>
                             <small class="text-muted">Not Delivered</small>
                         </div></div>
                     </div>
 
-                    <div class="col mb-3">
+                    <div class="col-6 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-warning" id="detail-awaiting_count">0</h5>
                             <small class="text-muted">Awaiting Receipt</small>
@@ -356,7 +356,7 @@
 
                         <div class="table-responsive">
 
-                            <table class="table table-bordered align-middle">
+                            <table class="table table-bordered align-middle table-mobile-cards">
 
                                 <thead class="table-light">
                                     <tr>

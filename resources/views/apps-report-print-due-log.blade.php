@@ -4,6 +4,10 @@
     Report Print With Due Log
 @endsection
 
+@section('css')
+<link href="{{ URL::asset('build/libs/flatpickr/flatpickr.min.css') }}" rel="stylesheet" type="text/css" />
+@endsection
+
 @section('content')
 
 @component('components.breadcrumb')
@@ -36,12 +40,12 @@
 
             <div class="col-md-2">
                 <label class="form-label fw-semibold">From</label>
-                <input type="date" name="from" value="{{ request('from') }}" class="form-control">
+                <input type="text" name="from" value="{{ request('from') }}" class="form-control flatpickr" placeholder="dd-mm-yyyy">
             </div>
 
             <div class="col-md-2">
                 <label class="form-label fw-semibold">To</label>
-                <input type="date" name="to" value="{{ request('to') }}" class="form-control">
+                <input type="text" name="to" value="{{ request('to') }}" class="form-control flatpickr" placeholder="dd-mm-yyyy">
             </div>
 
             <div class="col-md-2">
@@ -116,4 +120,9 @@
 
 </div>
 
+@endsection
+
+@section('script')
+<script src="{{ URL::asset('build/libs/flatpickr/flatpickr.min.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/flatpickr-dmy.init.js') }}"></script>
 @endsection

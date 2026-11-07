@@ -265,14 +265,14 @@ async function loadDetail() {
     result.rows.forEach(row => {
         tbody.innerHTML += `
         <tr>
-            <td>${escapeHtml(row.time_fmt)}</td>
-            <td class="fw-semibold">${escapeHtml(row.invoice_no)}</td>
-            <td>${escapeHtml(row.patient_name) || '-'}</td>
-            <td>${escapeHtml(row.mobile_no)}</td>
-            <td><span class="badge ${typeBadgeClass[row.type_label] ?? 'bg-secondary'}">${escapeHtml(row.type_label)}</span></td>
-            <td><span class="badge ${statusBadgeClass[row.status] ?? 'bg-secondary'}">${escapeHtml(row.status)}</span></td>
-            <td>${renderDeliveryCell(row)}</td>
-            <td class="small" title="${escapeHtml(row.response_preview ?? '')}">${row.status === 'SENT' ? escapeHtml(row.message_id) || '-' : escapeHtml(row.response_preview) || '-'}</td>
+            <td data-label="Time">${escapeHtml(row.time_fmt)}</td>
+            <td data-label="Invoice / Appt No" class="fw-semibold">${escapeHtml(row.invoice_no)}</td>
+            <td data-label="Patient / User">${escapeHtml(row.patient_name) || '-'}</td>
+            <td data-label="Mobile No">${escapeHtml(row.mobile_no)}</td>
+            <td data-label="Type"><span class="badge ${typeBadgeClass[row.type_label] ?? 'bg-secondary'}">${escapeHtml(row.type_label)}</span></td>
+            <td data-label="Status"><span class="badge ${statusBadgeClass[row.status] ?? 'bg-secondary'}">${escapeHtml(row.status)}</span></td>
+            <td data-label="Delivery">${renderDeliveryCell(row)}</td>
+            <td data-label="Message ID / Error" class="small" title="${escapeHtml(row.response_preview ?? '')}">${row.status === 'SENT' ? escapeHtml(row.message_id) || '-' : escapeHtml(row.response_preview) || '-'}</td>
         </tr>
         `;
     });

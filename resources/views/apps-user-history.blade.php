@@ -10,6 +10,8 @@
       rel="stylesheet"
       type="text/css" />
 
+<link href="{{ URL::asset('build/libs/flatpickr/flatpickr.min.css') }}" rel="stylesheet" type="text/css" />
+
 <style>
 
 .dash-section-header{
@@ -122,12 +124,12 @@
 
                     <div class="col-md-3">
                         <label class="form-label fw-semibold">From Date</label>
-                        <input type="date" id="fromDateInput" class="form-control">
+                        <input type="text" id="fromDateInput" class="form-control flatpickr" placeholder="dd-mm-yyyy">
                     </div>
 
                     <div class="col-md-3">
                         <label class="form-label fw-semibold">To Date</label>
-                        <input type="date" id="toDateInput" class="form-control">
+                        <input type="text" id="toDateInput" class="form-control flatpickr" placeholder="dd-mm-yyyy">
                     </div>
 
                     <div class="col-md-2">
@@ -271,6 +273,9 @@
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/user-history.init.js') }}"></script>
+<script src="{{ URL::asset('build/libs/flatpickr/flatpickr.min.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/flatpickr-dmy.init.js') }}"></script>
+
+<script src="{{ URL::asset('build/js/pages/user-history.init.js') }}?v={{ filemtime(public_path('build/js/pages/user-history.init.js')) }}"></script>
 
 @endsection

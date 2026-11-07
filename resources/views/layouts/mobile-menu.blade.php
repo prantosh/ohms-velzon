@@ -21,7 +21,63 @@
             return $section;
         })
         ->filter(fn ($section) => $section['items']->isNotEmpty());
+
+    // Pages listed in the mobile menu get a compact phone layout (below).
+    $isMobileMenuPage = collect(config('mobile_menu', []))
+        ->pluck('items')->flatten(1)->pluck('route')
+        ->contains($currentRoute);
 @endphp
+
+{{--
+    Compact phone layout for mobile-menu pages only: smaller text and
+    tighter spacing so more fits on screen without scrolling. Applies
+    below 768px only, so desktop / tablet views are unchanged. Scoped to
+    .page-content so the topbar and menu keep their normal size.
+--}}
+@if($isMobileMenuPage)
+<style>
+    @media (max-width: 767.98px) {
+        .page-content {
+            --vz-body-font-size: .75rem;
+            font-size: .75rem;
+        }
+
+        .page-content .page-title-box { padding-top: .5rem; padding-bottom: .5rem; margin-bottom: .75rem; }
+        .page-content .page-title-box h4 { font-size: .8rem; }
+        .page-content .page-title-box .breadcrumb { font-size: .7rem; }
+
+        .page-content .card { margin-bottom: .75rem; }
+        .page-content .card-header,
+        .page-content .card-body,
+        .page-content .card-footer { padding: .6rem .65rem; }
+        .page-content .card-title,
+        .page-content h5 { font-size: .8rem; }
+        .page-content h4 { font-size: .9rem; }
+        .page-content h6 { font-size: .75rem; }
+
+        .page-content .form-label { font-size: .7rem; margin-bottom: .2rem; }
+        .page-content .form-control,
+        .page-content .form-select,
+        .page-content .input-group-text {
+            font-size: .75rem;
+            padding: .35rem .5rem;
+            min-height: auto;
+        }
+        .page-content .form-select { padding-right: 1.75rem; }
+        .page-content .btn { font-size: .75rem; padding: .35rem .65rem; }
+        .page-content .btn-sm { font-size: .7rem; padding: .25rem .5rem; }
+
+        .page-content .table { font-size: .72rem; }
+        .page-content .table > :not(caption) > * > * { padding: .4rem .35rem; }
+        .page-content .table-mobile-cards td { padding: .25rem .2rem; }
+        .page-content .badge { font-size: .65rem; }
+
+        .page-content .nav-link { font-size: .75rem; padding: .4rem .6rem; }
+        .page-content .pagination { font-size: .72rem; flex-wrap: wrap; }
+        .page-content .row { --vz-gutter-x: .75rem; }
+    }
+</style>
+@endif
 
 {{-- Mobile menu is Admin-only (the topbar button is gated the same way). --}}
 @if($isAdmin)
@@ -55,6 +111,7 @@
             padding: .35rem .25rem;
             text-align: left !important;
             white-space: normal !important;
+            overflow-wrap: anywhere;
         }
         .table-mobile-cards td[data-label]::before {
             content: attr(data-label);
