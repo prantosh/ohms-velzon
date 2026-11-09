@@ -69,6 +69,7 @@ return [
     "cloudbackup" => "Backups",
     "systemlog" => "System Log Viewer",
     "reportprintduelog" => "Report Print With Due Log",
+    "invoicedoctorcorrection" => "Invoice Doctor Correction",
     "maintenancemode" => "Maintenance Mode",
     "whatsappautosendsettings" => "WhatsApp Auto-Send Settings",
     "userinvoicereport" => "Reconciliation for any User",

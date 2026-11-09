@@ -3243,6 +3243,16 @@ Route::middleware(['auth'])
     ->get('/report-print-due-log', [\App\Http\Controllers\ReportPrintDueLogController::class, 'index'])
     ->name('report-print-due-log.index');
 
+// Admin-only (enforced in the controller; deliberately not in config/access_pages)
+Route::middleware(['auth'])->prefix('invoice-doctor-correction')->group(function () {
+    Route::get('/', [\App\Http\Controllers\InvoiceDoctorCorrectionController::class, 'index'])
+        ->name('invoice-doctor-correction.index');
+    Route::get('/search', [\App\Http\Controllers\InvoiceDoctorCorrectionController::class, 'search'])
+        ->name('invoice-doctor-correction.search');
+    Route::post('/update', [\App\Http\Controllers\InvoiceDoctorCorrectionController::class, 'update'])
+        ->name('invoice-doctor-correction.update');
+});
+
 Route::get('{any}', [App\Http\Controllers\HomeController::class, 'index'])
     ->where('any', '.*')
     ->name('index');

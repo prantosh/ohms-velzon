@@ -108,6 +108,9 @@
                             <li class="nav-item">
                                         <a href="{{ route('report-print-due-log.index') }}" class="nav-link">@lang('translation.reportprintduelog')</a>
                                         </li>
+                            <li class="nav-item">
+                                        <a href="{{ route('invoice-doctor-correction.index') }}" class="nav-link">@lang('translation.invoicedoctorcorrection')</a>
+                                        </li>
                             @endif
                             @if(is_null($allowedPages) || in_array('maintenance-mode', $allowedPages))
                             <li class="nav-item">
