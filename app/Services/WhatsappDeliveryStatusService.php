@@ -10,8 +10,9 @@ use Illuminate\Support\Facades\DB;
  * failed) to the matching whatsapp_message_logs row.
  *
  * Matching: WATI echoes back the `localMessageId` it returned in the
- * original send response (stored in the generated column
- * wati_local_message_id). The first matched event also records WhatsApp's
+ * original send response (saved in `response`; copied into the indexed
+ * wati_local_message_id column by the first event, see claimByResponse).
+ * The first matched event also records WhatsApp's
  * own message id (wamid) into `message_id`, used as a fallback key for any
  * later event that only carries that id.
  *
@@ -31,6 +32,10 @@ class WhatsappDeliveryStatusService
         self::DELIVERED => 2,
         self::READ => 3,
     ];
+
+    // How many of the newest log rows to search when an event's
+    // localMessageId is not on any row yet (see claimByResponse).
+    private const CLAIM_WINDOW_ROWS = 20000;
 
     // Incoming patient messages and contact events -- not about a message we sent.
     private const IGNORED_EVENTS = [
@@ -90,7 +95,8 @@ class WhatsappDeliveryStatusService
             $log = null;
 
             if ($localMessageId) {
-                $log = DB::table('whatsapp_message_logs')->where('wati_local_message_id', $localMessageId)->first($columns);
+                $log = DB::table('whatsapp_message_logs')->where('wati_local_message_id', $localMessageId)->first($columns)
+                    ?? $this->claimByResponse($localMessageId, $columns);
             }
 
             if (!$log && $whatsappMessageId) {
@@ -128,6 +134,41 @@ class WhatsappDeliveryStatusService
         }
 
         return isset($log) ? (int) $log->id : null;
+    }
+
+    /**
+     * Send sites store WATI's full send response in `response` but do not
+     * fill wati_local_message_id themselves. On the first event for a
+     * message, find its row by searching recent responses for the id, then
+     * store the id on the row so later events hit the index directly.
+     * Only the newest rows are scanned (primary-key range), since a webhook
+     * event arrives shortly after its send.
+     */
+    private function claimByResponse(string $localMessageId, array $columns): ?object
+    {
+        $maxId = (int) DB::table('whatsapp_message_logs')->max('id');
+        $like = '%' . addcslashes($localMessageId, '%_\\') . '%';
+
+        $candidates = DB::table('whatsapp_message_logs')
+            ->where('id', '>', $maxId - self::CLAIM_WINDOW_ROWS)
+            ->whereNull('wati_local_message_id')
+            ->where('response', 'like', $like)
+            ->orderByDesc('id')
+            ->get(array_merge($columns, ['response']));
+
+        foreach ($candidates as $row) {
+            $decoded = json_decode((string) $row->response, true);
+            if (is_array($decoded) && ($decoded['local_message_id'] ?? null) === $localMessageId) {
+                DB::table('whatsapp_message_logs')
+                    ->where('id', $row->id)
+                    ->whereNull('wati_local_message_id')
+                    ->update(['wati_local_message_id' => substr($localMessageId, 0, 64)]);
+                unset($row->response);
+                return $row;
+            }
+        }
+
+        return null;
     }
 
     private function buildUpdates(object $log, string $status, Carbon $eventAt, ?string $failureReason): array
