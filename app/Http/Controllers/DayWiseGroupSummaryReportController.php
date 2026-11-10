@@ -35,7 +35,17 @@ class DayWiseGroupSummaryReportController extends Controller
         'OTHER_INCOME' => 'DON001',
     ];
 
-    private const UNASSIGNED_GROUP_LABEL = 'Unassigned (No Reporting Group)';
+    // Same rule as CashLedgerService: from this day, doctor-visit invoices of
+    // a Dental/Eye doctor are reported under that group, not generic Doctor Visit.
+    private const DOCTOR_VISIT_SPECIALISATION_GROUPING_FROM = '2026-11-01';
+
+    private const DOCTOR_VISIT_ITEM_CODE_BY_SPECIALISATION = [
+        4 => 'DEN001',  // DENTAL
+        15 => 'EYE001', // EYE
+        16 => 'EYE001', // OPTOMETRY -- reported with Eye
+    ];
+
+    private const UNASSIGNED_GROUP_LABEL ='Unassigned (No Reporting Group)';
 
     private const UNASSIGNED_FILTER = 'unassigned';
 
@@ -209,6 +219,17 @@ class DayWiseGroupSummaryReportController extends Controller
         return $groupId ? ($ctx['groupNames'][$groupId] ?? self::UNASSIGNED_GROUP_LABEL) : self::UNASSIGNED_GROUP_LABEL;
     }
 
+    private function doctorVisitItemCode(string $date, $specialisationCode): string
+    {
+        $default = self::FALLBACK_ITEM_CODE_BY_INVOICE_TYPE['DOCTOR_VISIT'];
+
+        if ($date < self::DOCTOR_VISIT_SPECIALISATION_GROUPING_FROM) {
+            return $default;
+        }
+
+        return self::DOCTOR_VISIT_ITEM_CODE_BY_SPECIALISATION[(int) $specialisationCode] ?? $default;
+    }
+
     /** Whether the (already resolved) group label passes the group filter. */
     private function groupAllowed(string $label, array $ctx): bool
     {
@@ -229,6 +250,7 @@ class DayWiseGroupSummaryReportController extends Controller
     {
         $query = DB::table('daily_transactions as dt')
             ->leftJoin('invoices as inv', 'inv.invoice_no', '=', 'dt.invoice_reference')
+            ->leftJoin('doctors as doc', 'doc.id', '=', 'inv.doctor_id')
             ->whereIn('dt.transaction_type', ['RECEIVED', 'REFUND'])
             ->where('dt.status', '!=', 'CANCELLED')
             ->whereDate('dt.transaction_date', '>=', $from)
@@ -247,6 +269,7 @@ class DayWiseGroupSummaryReportController extends Controller
             'dt.operator_id',
             'dt.operator_name',
             'inv.invoice_type',
+            'doc.specialisation_code as doctor_specialisation_code',
             DB::raw('COALESCE(inv.invoice_no, dt.invoice_reference) as invoice_no')
         )->get();
 
@@ -266,7 +289,7 @@ class DayWiseGroupSummaryReportController extends Controller
             $userNames[$uid] = $t->operator_name ?? 'Unknown';
 
             $weights = $t->invoice_type === 'DOCTOR_VISIT'
-                ? [self::FALLBACK_ITEM_CODE_BY_INVOICE_TYPE['DOCTOR_VISIT'] => 1.0]
+                ? [$this->doctorVisitItemCode($date, $t->doctor_specialisation_code) => 1.0]
                 : ($weightMaps[$t->invoice_no] ?? [null => 1.0]);
 
             $isCash = $t->payment_mode === 'Cash';
@@ -323,6 +346,7 @@ class DayWiseGroupSummaryReportController extends Controller
         $query = DB::table('doctor_payables as dp')
             ->leftJoin('users as u', 'u.id', '=', 'dp.created_by')
             ->leftJoin('invoices as inv', 'inv.id', '=', 'dp.invoice_id')
+            ->leftJoin('doctors as doc', 'doc.id', '=', 'inv.doctor_id')
             ->where('dp.payment_status', '!=', 'CANCELLED')
             ->where(function ($q) {
                 $q->whereNull('inv.cancelled')
@@ -336,7 +360,7 @@ class DayWiseGroupSummaryReportController extends Controller
             $query->where('dp.created_by', $ctx['userId']);
         }
 
-        $rows = $query->select('dp.created_at', 'dp.item_code', 'dp.invoice_type', 'dp.created_by', 'u.name as user_name', 'dp.payable_amount')->get();
+        $rows = $query->select('dp.created_at', 'dp.item_code', 'dp.invoice_type', 'dp.created_by', 'u.name as user_name', 'dp.payable_amount', 'doc.specialisation_code as doctor_specialisation_code')->get();
 
         foreach ($rows as $row) {
 
@@ -344,7 +368,7 @@ class DayWiseGroupSummaryReportController extends Controller
             $userNames[$uid] = $row->user_name ?? 'Unknown';
 
             $itemCode = $row->invoice_type === 'DOCTOR_VISIT'
-                ? self::FALLBACK_ITEM_CODE_BY_INVOICE_TYPE['DOCTOR_VISIT']
+                ? $this->doctorVisitItemCode(substr($row->created_at, 0, 10), $row->doctor_specialisation_code)
                 : $row->item_code;
 
             $label = $this->groupLabelForItemCode($itemCode, $ctx);
@@ -362,6 +386,8 @@ class DayWiseGroupSummaryReportController extends Controller
         $query = DB::table('doctor_settlement_items as dsi')
             ->join('doctor_settlements as ds', 'ds.id', '=', 'dsi.settlement_id')
             ->leftJoin('users as u', 'u.id', '=', 'ds.created_by')
+            ->leftJoin('invoices as inv', 'inv.id', '=', 'dsi.invoice_id')
+            ->leftJoin('doctors as doc', 'doc.id', '=', 'inv.doctor_id')
             ->where('ds.status', '!=', 'CANCELLED')
             ->whereDate('ds.settlement_date', '>=', $from)
             ->whereDate('ds.settlement_date', '<=', $to);
@@ -370,7 +396,7 @@ class DayWiseGroupSummaryReportController extends Controller
             $query->where('ds.created_by', $ctx['userId']);
         }
 
-        $rows = $query->select('ds.settlement_date', 'dsi.item_code', 'dsi.invoice_type', 'ds.created_by', 'u.name as user_name', 'ds.payment_mode', 'dsi.settlement_amount')->get();
+        $rows = $query->select('ds.settlement_date', 'dsi.item_code', 'dsi.invoice_type', 'ds.created_by', 'u.name as user_name', 'ds.payment_mode', 'dsi.settlement_amount', 'doc.specialisation_code as doctor_specialisation_code')->get();
 
         foreach ($rows as $row) {
 
@@ -378,7 +404,7 @@ class DayWiseGroupSummaryReportController extends Controller
             $userNames[$uid] = $row->user_name ?? 'Unknown';
 
             $itemCode = $row->invoice_type === 'DOCTOR_VISIT'
-                ? self::FALLBACK_ITEM_CODE_BY_INVOICE_TYPE['DOCTOR_VISIT']
+                ? $this->doctorVisitItemCode(substr($row->settlement_date, 0, 10), $row->doctor_specialisation_code)
                 : $row->item_code;
 
             $label = $this->groupLabelForItemCode($itemCode, $ctx);
