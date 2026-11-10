@@ -18,10 +18,15 @@ function fmtQty(value) {
 let requestSeq = 0;
 
 function currentFilters() {
-    return {
+    const filters = {
         from_date: document.getElementById('from_date-field').value,
         to_date: document.getElementById('to_date-field').value,
     };
+
+    const itemId = document.getElementById('item_id-field').value;
+    if (itemId) filters.item_id = itemId;
+
+    return filters;
 }
 
 function renderDetail(result, params) {

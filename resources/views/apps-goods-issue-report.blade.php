@@ -58,6 +58,16 @@
                         <input type="text" id="to_date-field" class="form-control flatpickr" required>
                     </div>
 
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">Item</label>
+                        <select id="item_id-field" class="form-select">
+                            <option value="">All Items</option>
+                            @foreach($items as $item)
+                                <option value="{{ $item->id }}">{{ $item->item_name }} ({{ $item->item_code }})</option>
+                            @endforeach
+                        </select>
+                    </div>
+
                     <div class="col-md-2 mb-3">
                         <button type="button" class="btn btn-primary w-100" id="loadReportBtn">
                             <i class="ri-search-line"></i>
