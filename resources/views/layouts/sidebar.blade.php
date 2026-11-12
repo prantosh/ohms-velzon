@@ -111,6 +111,9 @@
                             <li class="nav-item">
                                         <a href="{{ route('invoice-doctor-correction.index') }}" class="nav-link">@lang('translation.invoicedoctorcorrection')</a>
                                         </li>
+                            <li class="nav-item">
+                                        <a href="{{ route('cash-adjustment.index') }}" class="nav-link">Cash Adjustments</a>
+                                        </li>
                             @endif
                             @if(is_null($allowedPages) || in_array('maintenance-mode', $allowedPages))
                             <li class="nav-item">
@@ -338,12 +341,6 @@
                                         <a href="{{ route('doctor-schedules.index') }}" class="nav-link">@lang('translation.doctorschedules')</a>
                                         </li>
                             @endif
-                            @if(is_null($allowedPages) || in_array('doctor-history', $allowedPages))
-                            <li class="nav-item">
-                                        <a href="{{ route('doctor-history.index') }}" class="nav-link">@lang('translation.doctorhistory')</a>
-                                        </li>
-                            @endif
-                            
                             @if(is_null($allowedPages) || in_array('doctor-payable', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('doctor-payable.index') }}" class="nav-link">@lang('translation.doctorpayablestatusall')</a>
@@ -367,6 +364,11 @@
                             @if(is_null($allowedPages) || in_array('doctor-visit-payment-report', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('doctor-visit-payment-report.index') }}" class="nav-link">@lang('translation.doctorvisitpaymentreport')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('doctor-fee-waiver-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('doctor-fee-waiver-report.index') }}" class="nav-link">@lang('translation.doctorfeewaiverreport')</a>
                                         </li>
                             @endif
                             @if(is_null($allowedPages) || in_array('doctor-test-payment-report', $allowedPages))
@@ -499,7 +501,7 @@
                     </a>
                     <div class="collapse menu-dropdown" id="sidebarUsers">
                         <ul class="nav nav-sm flex-column">
-                            @if(is_null($allowedPages) || in_array('patient-history', $allowedPages) || in_array('user-history', $allowedPages) || in_array('doctor-activity-history', $allowedPages) || in_array('invoice-cancellation-history', $allowedPages))
+                            @if(is_null($allowedPages) || in_array('patient-history', $allowedPages) || in_array('user-history', $allowedPages) || in_array('doctor-activity-history', $allowedPages) || in_array('doctor-history', $allowedPages) || in_array('invoice-cancellation-history', $allowedPages))
                             <li class="nav-item">
                                 <a class="nav-link menu-link" href="#sidebarReportHistory" data-bs-toggle="collapse" role="button"
                                     aria-expanded="false" aria-controls="sidebarReportHistory">
@@ -520,6 +522,11 @@
                                         @if(is_null($allowedPages) || in_array('doctor-activity-history', $allowedPages))
                                         <li class="nav-item">
                                                     <a href="{{ route('doctor-activity-history.index') }}" class="nav-link">@lang('translation.doctoractivityhistory')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('doctor-history', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('doctor-history.index') }}" class="nav-link">@lang('translation.doctorhistory')</a>
                                                     </li>
                                         @endif
                                         @if(is_null($allowedPages) || in_array('invoice-cancellation-history', $allowedPages))

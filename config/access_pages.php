@@ -105,4 +105,5 @@ return [
     'whatsapp-auto-send-settings' => 'WhatsApp Auto-Send Settings',
     'whatsapp-message-report' => 'WhatsApp Message Report',
     'doctor-visit-collection-report' => 'Doctor Visit Collection Report',
+    'doctor-fee-waiver-report' => 'Doctor Fee Waiver Report',
 ];

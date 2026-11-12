@@ -630,9 +630,20 @@ class HomeController extends Controller
             return $user;
         });
 
+        // Doctors on leave today = doctor_schedule_exceptions rows dated today.
+        $doctorsOnLeave = DB::table('doctor_schedule_exceptions as e')
+            ->join('doctors as d', 'd.id', '=', 'e.doctor_id')
+            ->whereDate('e.exception_date', now()->toDateString())
+            ->where('d.status', 'Active')
+            ->orderBy('d.doctor_name')
+            ->pluck('d.doctor_name')
+            ->unique()
+            ->values();
+
         return response()->json([
             'status' => true,
             'users' => $liveUsers->values(),
+            'doctors_on_leave' => $doctorsOnLeave,
         ]);
     }
 

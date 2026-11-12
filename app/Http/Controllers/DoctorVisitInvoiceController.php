@@ -128,6 +128,8 @@ class DoctorVisitInvoiceController extends Controller
                         'invoice_item_details.item_description_sub',
                         'invoices.cancelled',
                         'invoices.cancelled_at',
+                        'invoices.fee_waived',
+                        'invoices.waived_amount',
                         'invoices.refund_amount',
                         'invoices.refund_date',
                         'invoices.remarks'
@@ -351,8 +353,10 @@ class DoctorVisitInvoiceController extends Controller
     public function store(Request $request, AuditService $auditService)
     {
         $request->validate([
-            'patient_age' => 'required',
+            'patient_age' => 'required|digits_between:1,2',
             'patient_gender' => 'required',
+        ], [
+            'patient_age.digits_between' => 'Age must be a number of up to 2 digits.',
         ]);
 
         $appointment =
@@ -707,6 +711,12 @@ class DoctorVisitInvoiceController extends Controller
         | another ledger entry. Only patient name / age / gender are
         | updatable here, and only where they actually changed.
         */
+
+        $request->validate([
+            'patient_age' => 'nullable|digits_between:1,2',
+        ], [
+            'patient_age.digits_between' => 'Age must be a number of up to 2 digits.',
+        ]);
 
         $nameChanged =
             $request->filled('patient_name') &&
@@ -1199,6 +1209,156 @@ class DoctorVisitInvoiceController extends Controller
     }
 
 
+
+    /*
+    |--------------------------------------------------------------------------
+    | WAIVE FEE
+    |--------------------------------------------------------------------------
+    | The doctor exempts the consultation fee after the invoice was raised
+    | (e.g. a poor patient). The invoice is NOT cancelled -- it stays a real
+    | visit with paid_amount 0 and status 'Waived'. Whatever was collected is
+    | refunded through the daily-transaction ledger, the doctor's unpaid
+    | payable is cancelled (he waived his fee), and who/why/how much is
+    | recorded on the invoice. Same-day-or-granted-permission rule as
+    | cancellation, since this also hands money back.
+    */
+
+    public function waiveFee(Request $request, $id, AuditService $auditService)
+    {
+        $request->validate([
+            'reason' => 'required|string|max:500',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+
+            $invoice = Invoice::lockForUpdate()->findOrFail($id);
+
+            if ($invoice->invoice_type !== 'DOCTOR_VISIT') {
+                return $this->waiveError('Only a doctor visit invoice fee can be waived.');
+            }
+
+            if ($invoice->cancelled === 'Y') {
+                return $this->waiveError('This invoice is cancelled.');
+            }
+
+            if ($invoice->fee_waived) {
+                return $this->waiveError('The fee on this invoice has already been waived.');
+            }
+
+            $check = \App\Support\InvoiceCancellationApproval::check($invoice, Auth::id());
+
+            if (!$check['allowed']) {
+                return $this->waiveError(str_replace('cancellation', 'waiver', $check['message']));
+            }
+
+            if (DB::table('doctor_payables')
+                ->where('invoice_id', $invoice->id)
+                ->where('payment_status', 'PAID')
+                ->exists()) {
+
+                return $this->waiveError("The doctor has already been paid for this visit; the fee can no longer be waived.");
+            }
+
+            $oldData = $invoice->only($invoice->getFillable());
+
+            $paid = (float) $invoice->paid_amount;
+
+            $waivedAmount = $paid > 0
+                ? $paid
+                : max(0, (float) $invoice->total_amount - (float) $invoice->discount);
+
+            if ($paid > 0) {
+
+                \App\Support\DailyTransactionRecorder::insert([
+
+                    'transaction_date' => now()->toDateString(),
+                    'transaction_type' => 'REFUND',
+
+                    'received_amount' => 0,
+                    'refund_amount' => $paid,
+
+                    'invoice_reference' => $invoice->invoice_no,
+
+                    'patient_id' => $invoice->patient_id,
+                    'patient_name' => $invoice->patient_name,
+
+                    'operator_id' => Auth::id(),
+                    'operator_name' => Auth::user()->name,
+
+                    'payment_mode' => $invoice->payment_mode ?? 'Cash',
+
+                    'remarks' => 'Doctor visit fee waived: ' . $request->reason,
+                    'status' => 'ACTIVE',
+
+                    'created_by' => Auth::id(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                app(CashInHandService::class)->apply(
+                    Auth::id(),
+                    'REFUND',
+                    $invoice->payment_mode ?? 'Cash',
+                    $paid
+                );
+            }
+
+            \App\Support\DoctorPayableCancellation::cancelUnpaidForInvoice($invoice->id);
+
+            $invoice->update([
+                'fee_waived' => true,
+                'waived_amount' => $waivedAmount,
+                'waived_by' => Auth::id(),
+                'waived_at' => now(),
+                'waiver_approved_by_doctor_id' => $invoice->doctor_id,
+                'waiver_reason' => $request->reason,
+                'paid_amount' => 0,
+                'due_amount' => 0,
+                'status' => 'Waived',
+                'updated_by' => Auth::id(),
+            ]);
+
+            DB::commit();
+
+            $auditService->logUpdate(
+                self::MODULE_CODE,
+                $invoice,
+                $oldData,
+                $invoice->only($invoice->getFillable()),
+                'Doctor visit fee waived (₹' . number_format($waivedAmount, 2) . '): ' . $request->reason
+            );
+
+            return response()->json([
+                'status' => true,
+                'message' => $paid > 0
+                    ? 'Fee waived. Refund ₹' . number_format($paid, 2) . ' to the patient.'
+                    : 'Fee waived.'
+            ]);
+
+        } catch (\Exception $e) {
+
+            DB::rollBack();
+
+            \Log::error($e);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Unable to waive the fee.'
+            ], 500);
+        }
+    }
+
+    private function waiveError(string $message)
+    {
+        DB::rollBack();
+
+        return response()->json([
+            'status' => false,
+            'message' => $message
+        ], 422);
+    }
 
     private function generatePayableNo()
     {

@@ -394,6 +394,11 @@ Route::post(
     [DoctorVisitInvoiceController::class, 'markPaymentFailed']
 )->name('doctor-visit-invoice.mark-payment-failed');
 
+Route::post(
+    '/doctor-visit-invoice/{id}/waive-fee',
+    [DoctorVisitInvoiceController::class, 'waiveFee']
+)->name('doctor-visit-invoice.waive-fee');
+
 Route::get(
     '/doctor-visit-invoice/print/{id}',
     [DoctorVisitInvoiceController::class, 'printInvoice']
@@ -1482,6 +1487,16 @@ Route::prefix('goods-receipt-report')->group(function () {
     Route::get('/print-detail', [GoodsReceiptReportController::class, 'printDetail']);
     Route::get('/summary', [GoodsReceiptReportController::class, 'summary']);
     Route::get('/print-summary', [GoodsReceiptReportController::class, 'printSummary']);
+
+});
+
+Route::prefix('doctor-fee-waiver-report')->group(function () {
+
+    Route::get('/', [\App\Http\Controllers\DoctorFeeWaiverReportController::class, 'index'])
+        ->name('doctor-fee-waiver-report.index');
+
+    Route::get('/list', [\App\Http\Controllers\DoctorFeeWaiverReportController::class, 'list']);
+    Route::get('/print', [\App\Http\Controllers\DoctorFeeWaiverReportController::class, 'print']);
 
 });
 
@@ -3251,6 +3266,19 @@ Route::middleware(['auth'])->prefix('invoice-doctor-correction')->group(function
         ->name('invoice-doctor-correction.search');
     Route::post('/update', [\App\Http\Controllers\InvoiceDoctorCorrectionController::class, 'update'])
         ->name('invoice-doctor-correction.update');
+});
+
+// Admin-only (enforced in the controller; deliberately not in config/access_pages)
+Route::middleware(['auth'])->prefix('cash-adjustment')->group(function () {
+    Route::get('/', [\App\Http\Controllers\CashAdjustmentController::class, 'index'])
+        ->name('cash-adjustment.index');
+    Route::get('/data', [\App\Http\Controllers\CashAdjustmentController::class, 'data'])
+        ->name('cash-adjustment.data');
+    Route::post('/store', [\App\Http\Controllers\CashAdjustmentController::class, 'store'])
+        ->name('cash-adjustment.store');
+    Route::post('/{id}/cancel', [\App\Http\Controllers\CashAdjustmentController::class, 'cancel'])
+        ->whereNumber('id')
+        ->name('cash-adjustment.cancel');
 });
 
 Route::get('{any}', [App\Http\Controllers\HomeController::class, 'index'])

@@ -71,7 +71,7 @@ class DoctorAppointmentController extends Controller
             'patient_id' => 'nullable|integer|exists:patients,id',
             'patient_name' => 'required',
             'patient_mobile_no' => 'required',
-            'patient_age' => 'nullable',
+            'patient_age' => 'nullable|digits_between:1,2',
             'patient_gender' => 'nullable',
             'appointment_date' => 'required|date',
             'appointment_time' => 'required',

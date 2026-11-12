@@ -1339,23 +1339,7 @@ class DiagnosticInvoiceController extends Controller
             ]);
         }
 
-        $count = DB::table('patients')
-            ->where(
-                'mobile_no',
-                $request->mobile_no
-            )
-            ->count() + 1;
-
-        $patientId =
-            \App\Support\OfflineMode::prefix('P') .
-            $request->mobile_no .
-            '-' .
-            str_pad(
-                $count,
-                2,
-                '0',
-                STR_PAD_LEFT
-            );
+        $patientId = \App\Models\Patient::nextPatientId((string) $request->mobile_no);
 
         return response()->json([
             'status' => true,

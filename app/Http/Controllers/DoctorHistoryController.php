@@ -104,6 +104,10 @@ class DoctorHistoryController extends Controller
             |--------------------------------------------------------------------------
             */
 
+            // Hundreds of visit rows exhaust the default 128M in dompdf.
+            ini_set('memory_limit', '512M');
+            set_time_limit(120);
+
             $data = $this->getHistoryData($request);
 
             $doctor = 'All Doctors';
@@ -263,6 +267,12 @@ private function getHistoryData(Request $request): array
 
         })
 
+        // The appointment's own age/gender is only a booking-time snapshot
+        // and is often blank (walk-ins); the invoice form then collects
+        // them and saves to the invoice and patients record, never back to
+        // the appointment. Fall back invoice -> appointment -> patients.
+        ->leftJoin('patients', 'patients.patient_id', '=', 'doctor_appointments.patient_id')
+
         ->select(
 
             'doctor_appointments.id',
@@ -273,9 +283,9 @@ private function getHistoryData(Request $request): array
 
             'doctor_appointments.patient_name',
 
-            'doctor_appointments.patient_gender',
+            DB::raw("COALESCE(NULLIF(invoices.patient_gender, ''), NULLIF(doctor_appointments.patient_gender, ''), NULLIF(patients.gender, '')) as patient_gender"),
 
-            'doctor_appointments.patient_age',
+            DB::raw("COALESCE(NULLIF(invoices.patient_age, ''), NULLIF(doctor_appointments.patient_age, ''), NULLIF(patients.age, '')) as patient_age"),
 
             'doctor_appointments.patient_mobile_no',
 

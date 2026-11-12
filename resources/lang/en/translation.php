@@ -54,6 +54,7 @@ return [
     "purchaseorderreport" => "Purchase Order Report",
     "goodsreceiptreport" => "Goods Receipt Report",
     "goodsissuereport" => "Goods Issue Report",
+    "doctorfeewaiverreport" => "Doctor Fee Waiver Report",
     "stockasondate" => "Stock As On Date",
     "patientcardmaster" => "Patient Card Master",
     "expenditurecategorymaster" => "Expenditure Category Master",

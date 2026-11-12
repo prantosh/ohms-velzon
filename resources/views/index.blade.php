@@ -58,6 +58,14 @@
     0%{ transform:translateX(0); }
     100%{ transform:translateX(-50%); }
 }
+.live-users-bar .leave-dot{
+    background:#f06548;
+    animation:none;
+}
+.live-user-chip.leave-chip{
+    padding:3px 14px;
+    background:#fdeeea;
+}
 .live-user-chip{
     display:inline-flex;
     align-items:center;
@@ -83,7 +91,7 @@
 <div class="container-fluid">
 
 <div class="row mb-4 align-items-center dash-page-header">
-    <div class="col-md-9">
+    <div class="col-md-6">
         <h4 class="fw-bold mb-1">
             Clinic & Diagnostic Dashboard
         </h4>
@@ -91,6 +99,17 @@
             <i class="ri-calendar-event-line align-middle me-1"></i>
             {{ \Carbon\Carbon::today()->format('l, d F Y') }} &mdash; here's what's happening today.
         </p>
+    </div>
+    <div class="col-md-3">
+        <div id="leaveBar" class="live-users-bar" style="display:none;">
+            <div class="live-users-label">
+                <span class="live-dot leave-dot"></span>
+                On Leave Today
+            </div>
+            <div class="live-users-track-wrap">
+                <div id="leaveTrack" class="live-users-track"></div>
+            </div>
+        </div>
     </div>
     <div class="col-md-3">
         <div id="liveUsersBar" class="live-users-bar" style="display:none;">
@@ -133,10 +152,10 @@
             </div>
 
             <div class="ms-4 text-end">
-                <div class="fw-bold text-success">
+                <div class="fw-bold {{ $userSummary['cash_in_hand'] < 0 ? 'text-danger' : 'text-success' }}">
                     ₹ {{ number_format($userSummary['cash_in_hand'], 0) }}
                 </div>
-                <small class="text-muted">Cash In Hand</small>
+                <small class="text-muted">{{ $userSummary['cash_in_hand'] < 0 ? 'Cash Deficit (pending Admin adjustment)' : 'Cash In Hand' }}</small>
             </div>
         </div>
 
@@ -179,10 +198,10 @@
         </div>
 
         <div class="ms-4 text-end">
-            <div class="fw-bold text-success">
+            <div class="fw-bold {{ $cashInHand < 0 ? 'text-danger' : 'text-success' }}">
                 ₹ {{ number_format($cashInHand, 0) }}
             </div>
-            <small class="text-muted">Cash In Hand</small>
+            <small class="text-muted">{{ $cashInHand < 0 ? 'Cash Deficit (pending Admin adjustment)' : 'Cash In Hand' }}</small>
         </div>
     </div>
 
@@ -782,45 +801,50 @@ new ApexCharts(
             .replace(/"/g, '&quot;');
     }
 
+    // Only duplicate (for the seamless CSS scroll loop) once the chips
+    // actually overflow the container and need to scroll -- measured
+    // directly, since these bars are narrow 1/4-width columns.
+    function renderMarquee(barId, trackId, chips) {
+
+        var bar = document.getElementById(barId);
+        var track = document.getElementById(trackId);
+        var wrap = track.parentElement;
+
+        if (!chips) {
+            bar.style.display = 'none';
+            return;
+        }
+
+        track.style.animation = 'none';
+        track.innerHTML = chips;
+        bar.style.display = 'flex';
+
+        if (track.scrollWidth > wrap.clientWidth) {
+            track.innerHTML = chips + chips;
+            track.style.animation = '';
+        }
+    }
+
     function loadLiveUsers() {
 
         fetch('{{ route('liveUsers') }}')
             .then(res => res.json())
             .then(data => {
 
-                var bar = document.getElementById('liveUsersBar');
-                var track = document.getElementById('liveUsersTrack');
-                var wrap = track.parentElement;
+                var users = (data.status && data.users) ? data.users : [];
+                var leave = (data.status && data.doctors_on_leave) ? data.doctors_on_leave : [];
 
-                if (!data.status || !data.users || !data.users.length) {
-                    bar.style.display = 'none';
-                    return;
-                }
-
-                var chips = data.users.map(function (user) {
+                renderMarquee('liveUsersBar', 'liveUsersTrack', users.map(function (user) {
                     return '<span class="live-user-chip">' +
                         '<img src="' + escapeHtml(user.avatar_url) + '" alt="' + escapeHtml(user.name) + '">' +
                         '<span>' + escapeHtml(user.name) + '</span>' +
                         '</span>';
-                }).join('');
+                }).join(''));
 
-                // Only duplicate (for the seamless CSS scroll loop) once the
-                // chips actually overflow this container and need to
-                // scroll -- measured directly rather than a fixed user
-                // count, since this bar is a narrow 1/4-width column (not
-                // the full-width bar it originally was), so the same
-                // number of users can overflow here when it wouldn't have
-                // before.
-                track.style.animation = 'none';
-                track.innerHTML = chips;
-                bar.style.display = 'flex';
-
-                var needsScroll = track.scrollWidth > wrap.clientWidth;
-
-                if (needsScroll) {
-                    track.innerHTML = chips + chips;
-                    track.style.animation = '';
-                }
+                // Nothing on leave today => the bar stays hidden.
+                renderMarquee('leaveBar', 'leaveTrack', leave.map(function (name) {
+                    return '<span class="live-user-chip leave-chip"><span>' + escapeHtml(name) + '</span></span>';
+                }).join(''));
             })
             .catch(function () {});
     }

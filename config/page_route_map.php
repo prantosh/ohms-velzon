@@ -79,6 +79,7 @@ return [
     'purchase-order-report.index' => 'purchase-order-report',
     'goods-receipt-report.index' => 'goods-receipt-report',
     'goods-issue-report.index' => 'goods-issue-report',
+    'doctor-fee-waiver-report.index' => 'doctor-fee-waiver-report',
     'stock-as-on-date.index' => 'stock-as-on-date',
     'patient-card.index' => 'patient-card',
     'expenditure-category.index' => 'expenditure-category',

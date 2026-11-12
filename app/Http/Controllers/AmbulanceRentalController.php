@@ -128,6 +128,7 @@ class AmbulanceRentalController extends Controller
 
             'patient_id' => 'required',
             'patient_name' => 'required',
+            'patient_age' => 'nullable|digits_between:1,2',
 
             'from_destination' => 'nullable|max:255',
             'address' => 'nullable',

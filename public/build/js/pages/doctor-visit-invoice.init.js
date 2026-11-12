@@ -115,9 +115,13 @@ function buildInvoiceRowHtml(raw) {
 
                                         : raw.invoice_no
 
-                                            ? `<span class="badge bg-success">
-                        Invoice Created
+                                            ? (raw.fee_waived
+                                                ? `<span class="badge bg-info" title="Waived ₹${raw.waived_amount ?? 0}">
+                        Fee Waived
                    </span>`
+                                                : `<span class="badge bg-success">
+                        Invoice Created
+                   </span>`)
 
                                             : `<span class="badge bg-warning">
                         Pending
@@ -177,6 +181,15 @@ function buildInvoiceRowHtml(raw) {
                         <i class="ri-delete-bin-line"></i>
 
                     </button>
+
+                    ${!raw.fee_waived ? `
+                    <button class="btn btn-sm btn-outline-info waiveFeeBtn"
+                        data-id="${raw.invoice_id}"
+                        data-paid="${raw.paid_amount ?? 0}"
+                        title="Waive Fee (doctor exempts the fee)">
+                        <i class="ri-hand-heart-line"></i>
+                    </button>
+                    ` : ''}
 
                     ${(window.isAdminUser && (raw.paid_amount > 0)) ? `
                     <button class="btn btn-sm btn-warning markPaymentFailedBtn"
@@ -288,12 +301,12 @@ function renderInvoiceTables() {
             // column header still works normally from here.
             order: [],
             // Action column was auto-sized by DataTables to ~75px; widened
-            // to double that (150px). autoWidth must be off, otherwise
+            // to 210px (1.4x the earlier 150px). autoWidth must be off, otherwise
             // DataTables recalculates and overrides this fixed width based
             // on content instead of respecting it.
             autoWidth: false,
             columnDefs: [
-                { targets: -1, width: '150px' }
+                { targets: -1, width: '210px' }
             ]
         });
     });
@@ -1283,6 +1296,71 @@ $(document).on(
                         icon: "error",
                         title: "Error",
                         text: xhr.responseJSON?.message || "Unable to mark payment as failed."
+                    });
+                }
+            });
+        });
+    }
+);
+
+// Doctor exempts the fee after the invoice was raised. Unlike Cancel, the
+// invoice stays as a real visit (status Waived, amount 0); any amount
+// collected is refunded in the ledger and the reason is recorded.
+$(document).on(
+    "click",
+    ".waiveFeeBtn",
+    function () {
+
+        let id = $(this).data("id");
+        let paid = parseFloat($(this).data("paid")) || 0;
+
+        Swal.fire({
+            title: "Waive Fee?",
+            html: paid > 0
+                ? "The doctor exempts the fee. The invoice stays as a visit with ₹0; <b>refund ₹" + paid.toFixed(2) + "</b> to the patient."
+                : "The doctor exempts the fee. The invoice stays as a visit with ₹0.",
+            icon: "question",
+            input: "textarea",
+            inputLabel: "Reason",
+            inputValue: "Doctor Waived Fee",
+            inputPlaceholder: "Why is the fee waived? (e.g. poor patient, exempted by doctor)",
+            inputValidator: (value) => {
+                if (!value || !value.trim()) {
+                    return "Please enter a reason.";
+                }
+            },
+            showCancelButton: true,
+            confirmButtonText: "Yes, Waive Fee",
+            cancelButtonText: "No"
+        }).then((result) => {
+
+            if (!result.isConfirmed) {
+                return;
+            }
+
+            $.ajax({
+                url: "/doctor-visit-invoice/" + id + "/waive-fee",
+                type: "POST",
+                data: {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    reason: result.value
+                },
+                success: function (response) {
+                    Swal.fire({
+                        icon: response.status ? "success" : "error",
+                        title: response.status ? "Fee Waived" : "Error",
+                        text: response.message
+                    });
+
+                    if (response.status) {
+                        loadInvoices();
+                    }
+                },
+                error: function (xhr) {
+                    Swal.fire({
+                        icon: "error",
+                        title: "Error",
+                        text: xhr.responseJSON?.message || "Unable to waive the fee."
                     });
                 }
             });

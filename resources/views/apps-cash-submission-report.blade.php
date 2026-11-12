@@ -146,6 +146,8 @@
 
         </div>
 
+        <div class="alert alert-danger" id="deficitAlert" style="display:none;"></div>
+
         <div class="row" id="detailRow" style="display:none;">
 
             <div class="col-lg-6">

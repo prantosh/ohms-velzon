@@ -359,8 +359,11 @@ class CashLedgerService
         $cashCollectedByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'cash_collected')));
         $nonCashCollectedByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'non_cash_collected')));
         $refundByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'refund')));
-        $doctorPaymentCashSourceByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'doctor_payment_cash_source')));
-        $doctorPaymentNonCashSourceByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'doctor_payment_non_cash_source')));
+        // Doctor payments are exact settlement amounts (never a proportional
+        // split of one patient payment), so they must NOT be rounded to 10 --
+        // doing so made this summary disagree with the Detail Transaction view.
+        $doctorPaymentCashSourceByItem = array_map(fn($v) => round((float) $v, 2), array_combine(array_keys($totals), array_column($totals, 'doctor_payment_cash_source')));
+        $doctorPaymentNonCashSourceByItem = array_map(fn($v) => round((float) $v, 2), array_combine(array_keys($totals), array_column($totals, 'doctor_payment_non_cash_source')));
 
         $rows = collect($totals)
             ->map(function ($cols, $itemCode) use ($itemCodeToName, $cashCollectedByItem, $nonCashCollectedByItem, $refundByItem, $doctorPaymentCashSourceByItem, $doctorPaymentNonCashSourceByItem) {
@@ -805,6 +808,36 @@ class CashLedgerService
 
         $doctorPayable = $this->doctorPayableCreatedBy($userId, $fromDate, $toDate);
 
+        // Approved Admin adjustments (cash handed back by accounts to clear
+        // a deficit) dated within the range -- added to the day's position,
+        // listed on the slip, and NOT part of the ledger above so they never
+        // reach the reporting-group allocation or any revenue figure.
+        $adjustments = DB::table('cash_adjustments')
+            ->where('user_id', $userId)
+            ->where('status', 'ACTIVE')
+            ->whereBetween('adjustment_date', [$fromDate, $toDate])
+            ->orderBy('id')
+            ->get(['adjustment_no', 'adjustment_date', 'amount', 'source', 'reference_date', 'reference_note', 'remarks', 'created_by_name'])
+            ->map(fn($a) => [
+                'adjustment_no' => $a->adjustment_no,
+                'adjustment_date' => $a->adjustment_date,
+                'amount' => round((float) $a->amount, 2),
+                'source' => $a->source,
+                'reference_date' => $a->reference_date,
+                'reference_note' => $a->reference_note,
+                'remarks' => $a->remarks,
+                'approved_by' => $a->created_by_name,
+            ])
+            ->all();
+
+        $adjustmentTotal = round(array_sum(array_column($adjustments, 'amount')), 2);
+
+        // Deficits from EARLIER days still unresolved (0 or negative).
+        // Information only -- never reduces this day's deposit.
+        $pendingPriorDeficit = app(CashInHandService::class)->pendingDeficitBefore((int) $userId, $fromDate);
+
+        $netCash = round($cashCollected - $cashRefunded - $cashPaidToDoctors, 2);
+
         return [
             'ledger' => $ledger,
             'doctor_payments' => $doctorPaymentDetail,
@@ -816,8 +849,12 @@ class CashLedgerService
                 'cash_refunded' => $cashRefunded,
                 'doctor_payable' => $doctorPayable,
                 'cash_paid_to_doctors' => $cashPaidToDoctors,
-                'net_cash_to_deposit' => round($cashCollected - $cashRefunded - $cashPaidToDoctors, 2),
+                'net_cash_to_deposit' => $netCash,
+                'adjustment_total' => $adjustmentTotal,
+                'pending_prior_deficit' => $pendingPriorDeficit,
+                'closing_position' => round($netCash + $adjustmentTotal, 2),
             ],
+            'adjustments' => $adjustments,
         ];
     }
 

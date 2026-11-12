@@ -28,6 +28,7 @@ return [
             ['label' => 'Patient Detail Correction', 'icon' => 'ri-user-settings-line', 'route' => 'patient-detail-correction.index', 'page' => 'patient-detail-correction'],
             ['label' => 'Report Print With Due Log', 'icon' => 'ri-printer-line', 'route' => 'report-print-due-log.index', 'admin_only' => true],
             ['label' => 'Invoice Doctor Correction', 'icon' => 'ri-stethoscope-line', 'route' => 'invoice-doctor-correction.index', 'admin_only' => true],
+            ['label' => 'Cash Adjustments', 'icon' => 'ri-exchange-dollar-line', 'route' => 'cash-adjustment.index', 'admin_only' => true],
         ],
     ],
 

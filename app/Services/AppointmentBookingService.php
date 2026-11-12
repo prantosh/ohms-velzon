@@ -200,9 +200,7 @@ class AppointmentBookingService
 
         if (!$patient) {
 
-            $count = Patient::where('mobile_no', $data['patient_mobile_no'])->count() + 1;
-
-            $patientCode = \App\Support\OfflineMode::prefix('P') . $data['patient_mobile_no'] . '-' . str_pad($count, 2, '0', STR_PAD_LEFT);
+            $patientCode = Patient::nextPatientId((string) $data['patient_mobile_no']);
 
             $patient = Patient::create([
                 'patient_id' => $patientCode,

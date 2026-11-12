@@ -35,6 +35,7 @@ async function loadDetail() {
     let hasActivity = result.status && (result.ledger.length || Number(result.summary?.non_cash_collected ?? 0) !== 0);
 
     if (!hasActivity) {
+        document.getElementById('deficitAlert').style.display = 'none';
         document.getElementById('noDataWrap').style.display = 'block';
         return;
     }
@@ -45,8 +46,37 @@ async function loadDetail() {
     document.getElementById('summary-non_cash_collected').innerText = '₹' + fmtMoney(s.non_cash_collected);
     document.getElementById('summary-cash_refunded').innerText = '₹' + fmtMoney(s.cash_refunded);
     document.getElementById('summary-cash_paid_to_doctors').innerText = '₹' + fmtMoney(s.doctor_payable) + ' / ₹' + fmtMoney(s.cash_paid_to_doctors);
-    document.getElementById('summary-net_cash_to_deposit').innerText = '₹' + fmtMoney(s.net_cash_to_deposit);
+    // A deposit can never be negative -- a shortfall shows as 0 here, with
+    // the deficit explained in the alert below.
+    document.getElementById('summary-net_cash_to_deposit').innerText =
+        '₹' + fmtMoney(Math.max(0, Number(s.closing_position ?? s.net_cash_to_deposit ?? 0)));
 
+    // Deficit warning -- a negative day position means nothing to deposit.
+    // It is NOT recovered from later collections; it stays pending until an
+    // Admin posts an Accounts Adjustment.
+    let deficitAlert = document.getElementById('deficitAlert');
+    let closing = Number(s.closing_position ?? s.net_cash_to_deposit ?? 0);
+    let pendingPrior = Math.abs(Number(s.pending_prior_deficit ?? 0));
+    let adjustment = Number(s.adjustment_total ?? 0);
+    let messages = [];
+
+    if (closing < 0) {
+        messages.push('Cash deficit of ₹' + fmtMoney(Math.abs(closing)) +
+            '. Nothing to deposit; the deficit stays pending until an Admin posts an Accounts Adjustment (it is not recovered from later collections).');
+    }
+    if (adjustment > 0) {
+        messages.push('Accounts adjustment of ₹' + fmtMoney(adjustment) + ' applied to this day.');
+    }
+    if (pendingPrior > 0) {
+        messages.push('₹' + fmtMoney(pendingPrior) + ' deficit from earlier days is still unadjusted (does not reduce today\'s deposit).');
+    }
+
+    if (messages.length) {
+        deficitAlert.innerText = messages.join(' ');
+        deficitAlert.style.display = 'block';
+    } else {
+        deficitAlert.style.display = 'none';
+    }
     document.getElementById('summaryRow').style.display = 'flex';
     document.getElementById('detailRow').style.display = 'flex';
 

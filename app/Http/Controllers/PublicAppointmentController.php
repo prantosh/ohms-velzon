@@ -259,7 +259,7 @@ class PublicAppointmentController extends Controller
             'doctor_schedule_session_id' => 'required|exists:doctor_schedule_sessions,id',
             'patient_name' => 'required',
             'patient_mobile_no' => 'required|regex:/^[1-9][0-9]{9}$/',
-            'patient_age' => 'required',
+            'patient_age' => 'required|digits_between:1,2',
             'patient_gender' => 'required',
             'appointment_date' => 'required|date',
             'appointment_time' => 'required',

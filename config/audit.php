@@ -217,6 +217,7 @@ return [
 
     'PATIENT_DETAIL_CORRECTION' => 'Patient Detail Correction',
     'INVOICE_DOCTOR_CORRECTION' => 'Invoice Doctor Correction',
+    'CASH_ADJUSTMENT' => 'Cash Adjustment',
 
 ],
 

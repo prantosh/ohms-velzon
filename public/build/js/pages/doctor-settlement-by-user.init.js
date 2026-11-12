@@ -391,17 +391,45 @@ document.getElementById('btnConfirmSettle').addEventListener('click', async func
         }
     });
 
-    const response = await fetch('/doctor-settlement/store', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
-    });
+    const postSettlement = async function () {
+        const response = await fetch('/doctor-settlement/store', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken(),
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
 
-    const result = await response.json();
+        return response.json();
+    };
+
+    let result = await postSettlement();
+
+    // Cash settlement larger than the user's cash in hand -- ask before
+    // letting it create a (carried-forward) deficit.
+    if (!result.status && result.cash_shortfall) {
+
+        const confirmation = await Swal.fire({
+            icon: 'warning',
+            title: 'Cash shortfall',
+            text: result.message,
+            showCancelButton: true,
+            confirmButtonText: 'Pay anyway',
+            cancelButtonText: 'Cancel'
+        });
+
+        if (!confirmation.isConfirmed) {
+            return;
+        }
+
+        payload.confirm_cash_shortfall = true;
+
+        Swal.fire({ title: 'Saving....', allowOutsideClick: false, showConfirmButton: false, didOpen: () => Swal.showLoading() });
+
+        result = await postSettlement();
+    }
 
     if (!result.status) {
 

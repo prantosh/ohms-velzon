@@ -51,6 +51,13 @@ class Invoice extends Model
         'cancellation_approved_by',
         'cancellation_remarks',
 
+        'fee_waived',
+        'waived_amount',
+        'waived_by',
+        'waived_at',
+        'waiver_approved_by_doctor_id',
+        'waiver_reason',
+
         'payment_failed_reason',
         'payment_failed_by',
         'payment_failed_at',
