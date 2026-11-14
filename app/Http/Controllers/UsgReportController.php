@@ -413,6 +413,8 @@ class UsgReportController extends Controller
 
         PdfPageNumbers::add($pdf, 110 - 14.17, 'right'); // right side, 5mm lower than the default spot
 
+        \App\Support\PdfWatermark::add($pdf);
+
         return $pdf->stream('usg-report-preview.pdf');
     }
 

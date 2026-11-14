@@ -823,6 +823,7 @@ class PathologyReportController extends Controller
         );
 
         PdfPageNumbers::add($pdf);
+        \App\Support\PdfWatermark::add($pdf);
 
         return $pdf->stream('pathology-report-preview.pdf');
     }

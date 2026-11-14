@@ -381,6 +381,7 @@ class CardiologyReportController extends Controller
         );
 
         PdfPageNumbers::add($pdf);
+        \App\Support\PdfWatermark::add($pdf);
 
         return $pdf->stream('cardiology-report-preview.pdf');
     }
