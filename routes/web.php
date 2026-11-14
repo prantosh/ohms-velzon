@@ -103,7 +103,10 @@ use App\Http\Controllers\EmployeePerformanceController;
 use App\Http\Controllers\InvoiceCancellationHistoryController;
 use App\Http\Controllers\ReportingGroupController;
 
-
+Route::middleware(['auth'])->prefix('user-messages')->group(function () {
+    Route::get('/poll', [\App\Http\Controllers\UserMessageController::class, 'poll']);
+    Route::post('/read', [\App\Http\Controllers\UserMessageController::class, 'markRead']);
+});
 
 /*
 |--------------------------------------------------------------------------

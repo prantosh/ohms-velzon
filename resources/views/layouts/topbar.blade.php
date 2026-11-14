@@ -213,6 +213,24 @@
 
               
 
+                <div class="dropdown topbar-head-dropdown ms-1 header-item" id="userMessagesDropdown">
+                    <button type="button" class="btn btn-icon btn-topbar btn-ghost-secondary rounded-circle position-relative" id="userMessagesBtn" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        <i class='bx bx-bell fs-22'></i>
+                        <span class="position-absolute topbar-badge fs-10 translate-middle badge rounded-pill bg-danger d-none" id="userMessagesBadge">0</span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-lg dropdown-menu-end p-0">
+                        <div class="dropdown-head bg-primary bg-pattern rounded-top">
+                            <div class="p-3 d-flex justify-content-between align-items-center">
+                                <h6 class="m-0 fs-16 fw-semibold text-white">Messages</h6>
+                                <a href="javascript:void(0);" class="text-white fs-12" id="userMessagesReadAll">Mark all read</a>
+                            </div>
+                        </div>
+                        <div style="max-height: 320px; overflow-y: auto;" id="userMessagesList">
+                            <div class="text-center text-muted p-3">No messages</div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="ms-1 header-item d-none d-sm-flex">
                     <button type="button" class="btn btn-icon btn-topbar btn-ghost-secondary rounded-circle" data-toggle="fullscreen">
                         <i class='bx bx-fullscreen fs-22'></i>
@@ -255,6 +273,88 @@
         </div>
     </div>
 </header>
+
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 2000;" id="userMessagesToasts"></div>
+<script>
+(function () {
+    var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '{{ csrf_token() }}';
+    var seen = null; // ids already known; null until first poll so old unread don't toast on page load... except unread ones, handled below
+    var badge = document.getElementById('userMessagesBadge');
+    var list = document.getElementById('userMessagesList');
+
+    function esc(s) {
+        var d = document.createElement('div');
+        d.textContent = s == null ? '' : s;
+        return d.innerHTML;
+    }
+
+    function markRead(id) {
+        var body = new URLSearchParams();
+        if (id) body.append('id', id);
+        return fetch('{{ url('/user-messages/read') }}', {
+            method: 'POST',
+            headers: {'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest'},
+            body: body
+        });
+    }
+
+    function popup(m) {
+        var box = document.getElementById('userMessagesToasts');
+        var el = document.createElement('div');
+        el.className = 'toast align-items-center text-bg-success border-0';
+        el.setAttribute('role', 'alert');
+        el.innerHTML = '<div class="toast-body"><strong>' + esc(m.title) + '</strong><br>' + esc(m.message) + '</div>' +
+            '<button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-2" data-bs-dismiss="toast"></button>';
+        box.appendChild(el);
+        new bootstrap.Toast(el, {autohide: false}).show();
+        el.addEventListener('hidden.bs.toast', function () { el.remove(); markRead(m.id).then(poll); });
+    }
+
+    function render(data) {
+        badge.textContent = data.unread;
+        badge.classList.toggle('d-none', !data.unread);
+
+        if (!data.messages.length) {
+            list.innerHTML = '<div class="text-center text-muted p-3">No messages</div>';
+        } else {
+            list.innerHTML = data.messages.map(function (m) {
+                return '<a href="' + esc(m.link || 'javascript:void(0);') + '" class="dropdown-item notify-item py-2 text-wrap user-msg" data-id="' + m.id + '"' +
+                    (m.unread ? ' style="background:rgba(var(--vz-primary-rgb),.08)"' : '') + '>' +
+                    '<div class="fw-semibold fs-13">' + esc(m.title) + '</div>' +
+                    '<div class="fs-12 text-muted">' + esc(m.message) + '</div>' +
+                    '<div class="fs-11 text-muted mt-1"><i class="mdi mdi-clock-outline"></i> ' + esc(m.time) + '</div></a>';
+            }).join('');
+        }
+
+        // Pop up any unread message not yet shown in this page session.
+        data.messages.forEach(function (m) {
+            if (m.unread && (!seen || seen.indexOf(m.id) === -1)) popup(m);
+        });
+        seen = (seen || []).concat(data.messages.map(function (m) { return m.id; }));
+    }
+
+    function poll() {
+        if (document.hidden) return;
+        fetch('{{ url('/user-messages/poll') }}', {headers: {'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'}})
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) { if (d) render(d); })
+            .catch(function () {});
+    }
+
+    list.addEventListener('click', function (e) {
+        var a = e.target.closest('.user-msg');
+        if (a) markRead(a.dataset.id);
+    });
+
+    document.getElementById('userMessagesReadAll').addEventListener('click', function () {
+        markRead().then(poll);
+    });
+
+    poll();
+    setInterval(poll, 20000);
+    document.addEventListener('visibilitychange', poll);
+})();
+</script>
 
 <!-- removeNotificationModal -->
 <div id="removeNotificationModal" class="modal fade zoomIn" tabindex="-1" aria-hidden="true">

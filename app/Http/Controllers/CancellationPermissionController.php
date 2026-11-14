@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Invoice;
 use App\Models\InvoiceCancellationPermission;
+use App\Models\UserMessage;
 use App\Services\AuditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -232,6 +233,25 @@ class CancellationPermissionController extends Controller
                 'Cancellation permission granted for invoice ' . $permission->invoice_no
                     . ' (requested by ' . optional($permission->requestedByUser)->name . ')'
             );
+
+            // Tell the requester right away (shows in their topbar bell). A
+            // failure here must not undo the grant itself.
+            try {
+                UserMessage::create([
+                    'user_id' => $permission->requested_by,
+                    'type' => UserMessage::TYPE_CANCELLATION_GRANTED,
+                    'title' => 'Cancellation permission granted',
+                    'message' => 'Your permission for cancellation for invoice number '
+                        . $permission->invoice_no . ' has been granted by '
+                        . Auth::user()->name . ' (' . Auth::user()->role . ')'
+                        . ' on ' . now()->format('d-m-Y h:i A') . '.'
+                        . ($request->remarks ? ' Remarks: ' . $request->remarks : '')
+                        . ' You can now cancel it from the Invoice Cancellation page.',
+                    'link' => url('/invoice-cancellation'),
+                ]);
+            } catch (Exception $e) {
+                Log::error($e);
+            }
 
             return response()->json([
                 'status' => true,
