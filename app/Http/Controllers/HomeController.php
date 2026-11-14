@@ -549,6 +549,7 @@ class HomeController extends Controller
 
         return [
             [
+                'key' => 'doctor_visit',
                 'label' => 'Doctor Visit Collection',
                 'count' => $doctorVisitRow->total_count ?? 0,
                 'amount' => $doctorVisitRow->total_amount ?? 0,
@@ -557,6 +558,7 @@ class HomeController extends Controller
                 'amount_caption' => 'Collection',
             ],
             [
+                'key' => 'diagnostic',
                 'label' => 'Diagnostic Collection',
                 'count' => $diagnosticRow->total_count ?? 0,
                 'amount' => $diagnosticRow->total_amount ?? 0,
@@ -565,6 +567,7 @@ class HomeController extends Controller
                 'amount_caption' => 'Collection',
             ],
             [
+                'key' => 'oxygen',
                 'label' => 'Oxygen/Concentrator Collection',
                 'count' => $oxygenConcentratorCount,
                 'amount' => $oxygenConcentratorAmount,
@@ -573,6 +576,7 @@ class HomeController extends Controller
                 'amount_caption' => 'Collection',
             ],
             [
+                'key' => 'refund',
                 'label' => 'Refund',
                 'count' => $refunds->total_count ?? 0,
                 'amount' => $refunds->total_amount ?? 0,
@@ -581,6 +585,7 @@ class HomeController extends Controller
                 'amount_caption' => 'Refunded',
             ],
             [
+                'key' => 'doctor_payment',
                 'label' => 'Doctor Payment Made',
                 'count' => $doctorPayments->total_count ?? 0,
                 'amount' => $doctorPayments->total_amount ?? 0,
@@ -589,6 +594,84 @@ class HomeController extends Controller
                 'amount_caption' => 'Paid',
             ],
         ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Drill-down rows behind one "Today's Invoices By ..." tile
+    |--------------------------------------------------------------------------
+    | Uses exactly the same filters as buildInvoiceSummaryTiles() (today +
+    | daily_transactions.created_by, non-cancelled) so the modal's rows and
+    | total always agree with the tile that was clicked. Non-Admins can only
+    | open their own tiles.
+    */
+
+    public function tileDetails(Request $request)
+    {
+        $request->validate([
+            'type' => 'required|in:doctor_visit,diagnostic,oxygen,refund,doctor_payment',
+            'user_id' => 'required|integer',
+        ]);
+
+        $userId = (int) $request->user_id;
+
+        if (Auth::user()->role !== 'Admin' && $userId !== (int) Auth::id()) {
+            abort(403);
+        }
+
+        $type = $request->type;
+        $today = Carbon::today();
+        $isCollection = in_array($type, ['doctor_visit', 'diagnostic', 'oxygen'], true);
+
+        $q = DB::table('daily_transactions as dt')
+            ->leftJoin('invoices as inv', 'inv.invoice_no', '=', 'dt.invoice_reference')
+            ->leftJoin('doctors as doc', 'doc.id', '=', 'inv.doctor_id')
+            ->whereDate('dt.transaction_date', $today)
+            ->where('dt.created_by', $userId)
+            ->where('dt.status', '!=', 'CANCELLED')
+            ->orderByDesc('dt.id');
+
+        if ($isCollection) {
+            $q->where('dt.transaction_type', 'RECEIVED')
+                ->whereIn('inv.invoice_type', [
+                    'doctor_visit' => ['DOCTOR_VISIT'],
+                    'diagnostic' => ['DIAGNOSTIC'],
+                    'oxygen' => ['OXYGEN_RENT', 'CONCENTRATOR_RENT'],
+                ][$type])
+                ->where(function ($w) {
+                    $w->whereNull('inv.cancelled')->orWhere('inv.cancelled', '!=', 'Y');
+                });
+            $amountCol = 'dt.received_amount';
+        } elseif ($type === 'refund') {
+            $q->where('dt.transaction_type', 'REFUND');
+            $amountCol = 'dt.refund_amount';
+        } else {
+            $q->where('dt.transaction_type', 'PAYMENT');
+            $amountCol = 'dt.doctor_payment_amount';
+        }
+
+        $rows = $q->get([
+            'dt.created_at as time',
+            'dt.invoice_reference',
+            'dt.patient_id',
+            'dt.patient_name',
+            'inv.patient_mobile_no',
+            DB::raw("COALESCE(NULLIF(inv.doctor_name, ''), doc.doctor_name, NULLIF(inv.referred_name, '')) as doctor_name"),
+            'inv.total_amount',
+            'dt.payment_mode',
+            'dt.reference_no',
+            'dt.remarks',
+            DB::raw("$amountCol as amount"),
+        ])->map(function ($r) {
+            $r->time = $r->time ? Carbon::parse($r->time)->format('h:i A') : '';
+            return $r;
+        });
+
+        return response()->json([
+            'status' => true,
+            'rows' => $rows,
+            'total' => (float) $rows->sum('amount'),
+        ]);
     }
 
     /*

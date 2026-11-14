@@ -231,6 +231,7 @@ Route::post('/update-password/{id}', [App\Http\Controllers\HomeController::class
 Route::post('/unlock-screen', [App\Http\Controllers\HomeController::class, 'unlockScreen'])->name('unlockScreen');
 Route::post('/lock-screen', [App\Http\Controllers\HomeController::class, 'lockScreen'])->name('lockScreen');
 Route::get('/live-users', [App\Http\Controllers\HomeController::class, 'liveUsers'])->name('liveUsers');
+Route::get('/dashboard/tile-details', [App\Http\Controllers\HomeController::class, 'tileDetails'])->name('dashboard.tileDetails');
 
 
 

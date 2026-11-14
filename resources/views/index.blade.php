@@ -160,7 +160,7 @@
         </div>
 
         <div class="card-body">
-            @include('partials.dashboard-invoice-tiles', ['tiles' => $userSummary['tiles']])
+            @include('partials.dashboard-invoice-tiles', ['tiles' => $userSummary['tiles'], 'tileUserId' => $userSummary['user_id']])
         </div>
     </div>
 
@@ -675,7 +675,9 @@
 
 <th>Patient</th>
 
-<th>Amount</th>
+<th class="text-end">Amount</th>
+
+<th>Type</th>
 
 <th>Mode</th>
 
@@ -695,9 +697,23 @@
 
 <td>{{ $row->patient_name }}</td>
 
-<td class="text-end">
-₹ {{ number_format($row->received_amount,2) }}
+@php
+    // RECEIVED rows carry the money in received_amount, REFUND rows in
+    // refund_amount and doctor-settlement PAYMENT rows in
+    // doctor_payment_amount -- received_amount is 0 for the last two.
+    if ($row->transaction_type === 'REFUND') {
+        $txnAmount = $row->refund_amount; $txnLabel = 'Refund'; $txnClass = 'text-danger';
+    } elseif ($row->transaction_type === 'PAYMENT') {
+        $txnAmount = $row->doctor_payment_amount; $txnLabel = 'Doctor Payment'; $txnClass = 'text-danger';
+    } else {
+        $txnAmount = $row->received_amount; $txnLabel = 'Received'; $txnClass = 'text-success';
+    }
+@endphp
+<td class="text-end {{ $txnClass }}">
+₹ {{ number_format($txnAmount ?? 0,2) }}
 </td>
+
+<td>{{ $txnLabel }}</td>
 
 <td>{{ $row->payment_mode }}</td>
 
@@ -735,6 +751,44 @@
 
 
 
+{{-- Drill-down modal for the "Today's Invoices By ..." tiles --}}
+<div class="modal fade" id="tileDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tileDetailTitle"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Time</th>
+                                <th>Invoice No</th>
+                                <th>Patient</th>
+                                <th>Mobile</th>
+                                <th>Doctor</th>
+                                <th>Mode</th>
+                                <th>Reference / Remarks</th>
+                                <th class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tileDetailBody"></tbody>
+                        <tfoot>
+                            <tr class="fw-bold">
+                                <td colspan="8" class="text-end">Total</td>
+                                <td class="text-end" id="tileDetailTotal"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 
@@ -742,6 +796,54 @@
 
 <script src="{{ URL::asset('build/libs/apexcharts/apexcharts.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/app.js') }}"></script>
+<script>
+(function () {
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const money = n => '₹ ' + Number(n || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    function openTile(el) {
+        const body = document.getElementById('tileDetailBody');
+        document.getElementById('tileDetailTitle').textContent = el.dataset.title + ' - Today';
+        document.getElementById('tileDetailTotal').textContent = '';
+        body.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Loading...</td></tr>';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('tileDetailModal')).show();
+
+        const url = @json(route('dashboard.tileDetails')) + '?type=' + encodeURIComponent(el.dataset.type) + '&user_id=' + encodeURIComponent(el.dataset.userId);
+
+        fetch(url, {headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}})
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(d => {
+                if (!d.rows.length) {
+                    body.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No transactions.</td></tr>';
+                    return;
+                }
+                body.innerHTML = d.rows.map((r, i) => `<tr>
+                    <td>${i + 1}</td>
+                    <td>${esc(r.time)}</td>
+                    <td>${esc(r.invoice_reference)}</td>
+                    <td>${esc(r.patient_name)}<br><small class="text-muted">${esc(r.patient_id)}</small></td>
+                    <td>${esc(r.patient_mobile_no)}</td>
+                    <td>${esc(r.doctor_name)}</td>
+                    <td>${esc(r.payment_mode)}</td>
+                    <td>${esc(r.reference_no || r.remarks)}</td>
+                    <td class="text-end">${money(r.amount)}</td>
+                </tr>`).join('');
+                document.getElementById('tileDetailTotal').textContent = money(d.total);
+            })
+            .catch(() => {
+                body.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-4">Could not load details.</td></tr>';
+            });
+    }
+
+    document.addEventListener('click', e => {
+        const t = e.target.closest('.tile-detail-trigger');
+        if (t) openTile(t);
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('tile-detail-trigger')) openTile(e.target);
+    });
+})();
+</script>
 
 <script>
 
