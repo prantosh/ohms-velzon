@@ -2422,12 +2422,21 @@ $(document).on(
 |--------------------------------------------------------------------------
 */
 
+function ageLabel(y, m) {
+    if (String(y ?? '').trim() === '' && String(m ?? '').trim() === '') { return '-'; }
+    y = parseInt(y, 10) || 0;
+    m = parseInt(m, 10) || 0;
+    var mo = m + (m === 1 ? ' Month' : ' Months');
+    if (y === 0) { return mo; }
+    return m > 0 ? y + (y === 1 ? ' Year ' : ' Years ') + mo : String(y);
+}
+
 function showConfirmOffcanvas() {
 
     $('#review-patient_id').text($('#patient_id').val() || '-');
     $('#review-patient_name').text($('#patient_name').val() || '-');
     $('#review-patient_age_gender').text(
-        ($('#patient_age').val() || '-') + ' / ' + ($('#patient_gender').val() || '-')
+        ageLabel($('#patient_age').val(), $('#patient_age_months').val()) + ' / ' + ($('#patient_gender').val() || '-')
     );
     $('#review-patient_mobile_no').text($('#patient_mobile_no').val() || '-');
     $('#review-test_date').text($('#test_date').val() || '-');
@@ -3406,6 +3415,7 @@ $(document).on('click', '#searchPatient', function () {
     disableInvoiceSection();
     $('#patient_name').val('');
     $('#patient_age').val('');
+    $('#patient_age_months').val('');
 
     $('#patient_gender').val('');
 
@@ -3481,7 +3491,7 @@ $(document).on('click', '#searchPatient', function () {
                             </td>
 
                             <td class="text-center">
-                                ${row.age ?? ''}
+                                ${row.age_display ?? row.age ?? ''}
                             </td>
 
                             <td>
@@ -3564,7 +3574,7 @@ $(document).on('click', '#searchPatient', function () {
                             .val('')
                             .prop('readonly', false);
 
-                        $('#patient_age')
+                        $('#patient_age, #patient_age_months')
                             .val('')
                             .prop('readonly', false);
 
@@ -3587,6 +3597,7 @@ $(document).on('click', '#searchPatient', function () {
                         $('#patient_id').val('');
                         $('#patient_name').val('');
                         $('#patient_age').val('');
+                        $('#patient_age_months').val('');
                         $('#patient_gender').val('');
 
                         disableInvoiceSection();
@@ -3651,7 +3662,7 @@ $(document).on(
             .val('')
             .prop('readonly', false);
 
-        $('#patient_age')
+        $('#patient_age, #patient_age_months')
             .val('')
             .prop('readonly', false);
 
@@ -3696,8 +3707,8 @@ $(document).on(
                     .val(p.patient_name)
                     .prop('readonly', true);
 
-                $('#patient_age')
-                    .val(p.age);
+                $('#patient_age').val(p.age_years_now ?? p.age ?? '');
+                    $('#patient_age_months').val(p.age_years_now == null ? '' : (p.age_months_now ?? 0));
 
                 $('#patient_gender')
                     .val(p.gender)
@@ -3732,7 +3743,7 @@ $(document).on(
                         }
 
                         window.isEmployeeMember = d.is_member;
-                        window.isSeniorCitizen = parseInt(p.age) >= 60;
+                        window.isSeniorCitizen = parseInt(p.age_years_now ?? p.age) >= 60;
                     }
                 );
             }
@@ -4033,7 +4044,7 @@ $(document).on(
 
         if (
             $('#patient_name').val().trim() === '' ||
-            $('#patient_age').val().trim() === '' ||
+            ($('#patient_age').val().trim() === '' && $('#patient_age_months').val().trim() === '') ||
             $('#patient_gender').val() === ''
         ) {
 
@@ -4091,6 +4102,11 @@ $(document).on(
                         age:
                             $('#patient_age').val(),
 
+
+                        age_months:
+
+                            $('#patient_age_months').val(),
+
                         gender:
                             $('#patient_gender').val()
                     },
@@ -4117,6 +4133,11 @@ $(document).on(
 
                                 age:
                                     $('#patient_age').val(),
+
+
+                                age_months:
+
+                                    $('#patient_age_months').val(),
 
                                 mobile_no:
                                     $('#patient_mobile_no').val(),

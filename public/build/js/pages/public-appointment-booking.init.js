@@ -382,6 +382,7 @@ $(document).on('click', '#saveAppointmentBtn', function () {
     let timeVal = $('#appointment_time').val();
     let patientName = $('#patient_name').val().trim();
     let patientAge = $('#patient_age').val();
+    let patientAgeMonths = $('#patient_age_months').val();
     let patientGender = $('#patient_gender').val();
 
     if (!doctorId || !dateStr || !timeVal || !sessionId) {
@@ -389,7 +390,7 @@ $(document).on('click', '#saveAppointmentBtn', function () {
         return;
     }
 
-    if (!patientName || !patientAge || !patientGender) {
+    if (!patientName || (String(patientAge).trim() === '' && String(patientAgeMonths).trim() === '') || !patientGender) {
         Swal.fire({ icon: 'warning', title: 'Please fill in patient name, age and gender' });
         return;
     }
@@ -415,6 +416,7 @@ $(document).on('click', '#saveAppointmentBtn', function () {
             patient_name: patientName,
             patient_mobile_no: verifiedMobile,
             patient_age: patientAge,
+            patient_age_months: patientAgeMonths,
             patient_gender: patientGender,
             appointment_date: mysqlDate,
             appointment_time: timeVal,

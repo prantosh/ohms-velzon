@@ -82,7 +82,8 @@ class PatientHistoryController extends Controller
             }
         })
             ->orderBy('patient_name')
-            ->get(['id', 'patient_id', 'patient_name', 'age', 'gender', 'status', 'mobile_no']);
+            ->get(['id', 'patient_id', 'patient_name', 'age', 'age_months', 'age_recorded_on', 'gender', 'status', 'mobile_no'])
+            ->each(fn ($p) => $p->exposeAge());
 
         if ($patients->isEmpty()) {
 
@@ -132,9 +133,15 @@ class PatientHistoryController extends Controller
         $request->validate([
             'id' => 'required|exists:patients,id',
             'patient_name' => 'required|string|max:255',
-            'age' => 'nullable|integer|min:0|max:150',
+            'age' => 'nullable|string|max:20',
             'gender' => 'nullable|in:Male,Female,Other',
         ]);
+
+        try {
+            $parsedAge = \App\Support\PatientAge::fromInput($request->age, $request->age_months);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
+        }
 
         $patient = Patient::findOrFail($request->id);
 
@@ -142,7 +149,8 @@ class PatientHistoryController extends Controller
 
         $patient->update([
             'patient_name' => $request->patient_name,
-            'age' => $request->age,
+            'age' => $parsedAge['years'] ?? null,
+            'age_months' => $parsedAge['months'] ?? null,
             'gender' => $request->gender,
         ]);
 
@@ -162,6 +170,9 @@ class PatientHistoryController extends Controller
                 'patient_id' => $patient->patient_id,
                 'patient_name' => $patient->patient_name,
                 'age' => $patient->age,
+                'age_display' => $patient->display_age,
+                'age_years_now' => $patient->currentAge()['years'],
+                'age_months_now' => $patient->currentAge()['months'] ?? 0,
                 'gender' => $patient->gender,
             ],
         ]);

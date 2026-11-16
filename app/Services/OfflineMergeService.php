@@ -156,6 +156,8 @@ class OfflineMergeService
                     'patient_name' => $row->patient_name,
                     'mobile_no' => $row->mobile_no,
                     'age' => $row->age,
+                    'age_months' => $row->age_months ?? null,
+                    'age_recorded_on' => $row->age_recorded_on ?? null,
                     'gender' => $row->gender,
                     'status' => $row->status,
                 ]);
@@ -226,6 +228,7 @@ class OfflineMergeService
                     'patient_name' => $row->patient_name,
                     'patient_mobile_no' => $row->patient_mobile_no,
                     'patient_age' => $row->patient_age,
+                    'patient_age_months' => $row->patient_age_months ?? null,
                     'patient_gender' => $row->patient_gender,
                     'appointment_date' => $row->appointment_date,
                     'appointment_time' => $row->appointment_time,

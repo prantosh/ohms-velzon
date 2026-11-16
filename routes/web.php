@@ -94,6 +94,7 @@ use App\Http\Controllers\DailyTransactionReportController;
 use App\Http\Controllers\WhatsappMessageReportController;
 use App\Http\Controllers\DoctorVisitCollectionReportController;
 use App\Http\Controllers\ItemWiseReportController;
+use App\Http\Controllers\ServiceSummaryReportController;
 use App\Http\Controllers\MonthlyReconciliationReportController;
 use App\Http\Controllers\ReportingGroupSummaryReportController;
 use App\Http\Controllers\UserInvoiceReportController;
@@ -1827,6 +1828,15 @@ Route::middleware(['auth'])->prefix('item-wise-report')->group(function () {
     Route::get('/print-detail', [ItemWiseReportController::class, 'printDetail']);
     Route::get('/summary', [ItemWiseReportController::class, 'summary']);
     Route::get('/print-summary', [ItemWiseReportController::class, 'printSummary']);
+
+});
+
+Route::middleware(['auth'])->prefix('service-summary-report')->group(function () {
+
+    Route::get('/', [ServiceSummaryReportController::class, 'index'])
+        ->name('service-summary-report.index');
+    Route::get('/report', [ServiceSummaryReportController::class, 'report']);
+    Route::get('/print', [ServiceSummaryReportController::class, 'print']);
 
 });
 

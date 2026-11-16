@@ -51,6 +51,9 @@ function resetPatientSection() {
     let ageField = document.querySelector('#patient_age-field');
     ageField.value = '';
     ageField.readOnly = true;
+    let monthsField = document.querySelector('#patient_age_months-field');
+    monthsField.value = '';
+    monthsField.readOnly = true;
 
     let genderField = document.querySelector('#patient_gender-field');
     genderField.value = '';
@@ -73,7 +76,9 @@ function selectExistingPatient(patient) {
     // staff can correct them right here -- issue() propagates the
     // correction back to the patients table.
     document.querySelector('#patient_age-field').value = patient.age ?? '';
+    document.querySelector('#patient_age_months-field').value = patient.ageMonths ?? '';
     document.querySelector('#patient_age-field').readOnly = false;
+    document.querySelector('#patient_age_months-field').readOnly = false;
 
     document.querySelector('#patient_gender-field').value = patient.gender ?? '';
     document.querySelector('#patient_gender-field').disabled = false;
@@ -94,6 +99,9 @@ function enableNewPatientEntry() {
     let ageField = document.querySelector('#patient_age-field');
     ageField.value = '';
     ageField.readOnly = false;
+    let monthsField = document.querySelector('#patient_age_months-field');
+    monthsField.value = '';
+    monthsField.readOnly = false;
 
     document.querySelector('#patient_gender-field').value = '';
     document.querySelector('#patient_gender-field').disabled = false;
@@ -146,12 +154,13 @@ document.getElementById('searchPatientBtn').addEventListener('click', async func
             <tr class="patientRow" style="cursor:pointer"
                 data-patient-id="${row.patient_id}"
                 data-patient-name="${row.patient_name}"
-                data-age="${row.age ?? ''}"
+                data-age="${row.age_years_now ?? row.age ?? ''}"
+                data-age-months="${row.age_years_now == null ? '' : (row.age_months_now ?? 0)}"
                 data-gender="${row.gender ?? ''}">
 
                 <td>${row.patient_id}</td>
                 <td>${row.patient_name}</td>
-                <td>${row.age ?? ''}</td>
+                <td>${row.age_display ?? row.age ?? ''}</td>
                 <td>${row.gender ?? ''}</td>
 
             </tr>
@@ -193,6 +202,7 @@ document.getElementById('patientResultsBody').addEventListener('click', function
         patient_id: row.dataset.patientId,
         patient_name: row.dataset.patientName,
         age: row.dataset.age,
+        ageMonths: row.dataset.ageMonths,
         gender: row.dataset.gender
     });
 });
@@ -202,9 +212,10 @@ document.getElementById('generatePatientIdBtn').addEventListener('click', async 
     let mobile = document.querySelector('#search_mobile_no').value.trim();
     let name = document.querySelector('#patient_name-field').value.trim();
     let age = document.querySelector('#patient_age-field').value.trim();
+    let ageMonths = document.querySelector('#patient_age_months-field').value.trim();
     let gender = document.querySelector('#patient_gender-field').value;
 
-    if (!name || !age || !gender) {
+    if (!name || (age === '' && ageMonths === '') || !gender) {
 
         Swal.fire({
             icon: 'warning',
@@ -231,6 +242,7 @@ document.getElementById('generatePatientIdBtn').addEventListener('click', async 
             patient_name: name,
             mobile_no: mobile,
             age: age,
+            age_months: ageMonths,
             gender: gender
         })
     });
@@ -550,6 +562,7 @@ document.getElementById('issueForm').addEventListener('submit', async function (
     formData.append('patient_name', document.querySelector('#patient_name-field').value);
     formData.append('patient_mobile_no', document.querySelector('#search_mobile_no').value);
     formData.append('patient_age', document.querySelector('#patient_age-field').value);
+    formData.append('patient_age_months', document.querySelector('#patient_age_months-field').value);
     formData.append('patient_gender', document.querySelector('#patient_gender-field').value);
     formData.append('remarks', document.querySelector('#remarks-field').value);
     formData.append('discount_amount', document.querySelector('#discount_amount-field').value || 0);

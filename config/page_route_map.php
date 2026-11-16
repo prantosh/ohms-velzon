@@ -121,6 +121,7 @@ return [
     'whatsapp-message-report.index' => 'whatsapp-message-report',
     'doctor-visit-collection-report.index' => 'doctor-visit-collection-report',
     'item-wise-report.index' => 'item-wise-report',
+    'service-summary-report.index' => 'service-summary-report',
     'monthly-reconciliation-report.index' => 'monthly-reconciliation-report',
     'reporting-group-summary-report.index' => 'reporting-group-summary-report',
     'user-reconciliation.index' => 'user-reconciliation',

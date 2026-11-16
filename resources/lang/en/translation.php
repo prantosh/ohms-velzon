@@ -87,6 +87,7 @@ return [
     "dailytransactionreport" => "Daily Transaction Detail",
     "whatsappmessagereport" => "Whatsapp Message Detail",
     "doctorvisitcollectionreport" => "Doctor Visit Collection Report",
+    "servicesummaryreport" => "Service Summary (Date-wise)",
     "itemwisereport" => "Category-wise Summary & Detail",
     "monthlyreconciliationreport" => "Monthly Reconciliation Statement",
     "userreconciliationdashboard" => "User Reconciliation Dashboard",

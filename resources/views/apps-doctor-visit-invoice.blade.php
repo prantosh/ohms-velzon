@@ -252,13 +252,13 @@ Doctor Visit Invoice
                     </div>
                         <div class="col-md-3 mb-3">
                         <label class="form-label">
-                            Age <span class="text-danger">*</span>
+                            Age (Years / Months) <span class="text-danger">*</span>
                         </label>
 
-                        <input type="text"
-                               id="patient_age"
-                               class="form-control"
-                               required>
+<div class="input-group">
+<input type="number" min="0" max="150" id="patient_age" class="form-control" placeholder="Years">
+<input type="number" min="0" max="11" id="patient_age_months" class="form-control" placeholder="Months">
+</div>
                     </div>
                     <div class="col-md-3 mb-3">
                         <label class="form-label">
@@ -570,5 +570,5 @@ Doctor Visit Invoice
 <script>
     window.isAdminUser = {{ (auth()->user() && auth()->user()->role === 'Admin') ? 'true' : 'false' }};
 </script>
-<script src="{{ URL::asset('build/js/pages/doctor-visit-invoice.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/doctor-visit-invoice.init.js') }}?v={{ @filemtime(public_path('build/js/pages/doctor-visit-invoice.init.js')) ?: 1 }}"></script>
 @endsection

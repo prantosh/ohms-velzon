@@ -600,6 +600,11 @@
                                         <a href="{{ route('item-wise-report.index') }}" class="nav-link">@lang('translation.itemwisereport')</a>
                                         </li>
                             @endif
+                            @if(is_null($allowedPages) || in_array('service-summary-report', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('service-summary-report.index') }}" class="nav-link">@lang('translation.servicesummaryreport')</a>
+                                        </li>
+                            @endif
                             @if(is_null($allowedPages) || in_array('monthly-reconciliation-report', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('monthly-reconciliation-report.index') }}" class="nav-link">@lang('translation.monthlyreconciliationreport')</a>

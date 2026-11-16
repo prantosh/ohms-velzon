@@ -202,13 +202,13 @@ Create Diagnostic Invoice
                                    class="form-control">
                         </div>
 
-                        <div class="col-md-2">
-                            <label>Age</label>
+                        <div class="col-md-3">
+                            <label>Age (Years / Months)</label>
 
-                            <input type="text"
-                                   id="patient_age"
-                                   name="patient_age"
-                                   class="form-control">
+<div class="input-group">
+<input type="number" min="0" max="150" id="patient_age" name="patient_age" class="form-control" placeholder="Years">
+<input type="number" min="0" max="11" id="patient_age_months" name="patient_age_months" class="form-control" placeholder="Months">
+</div>
                         </div>
 
                         <div class="col-md-3">
@@ -740,6 +740,6 @@ Select
 <script src="{{ URL::asset('build/libs/flatpickr/flatpickr.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/pages/flatpickr-dmy.init.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}?v={{ @filemtime(public_path('build/js/pages/apps-diagnostic-invoice.init.js')) ?: 1 }}"></script>
 
 @endsection

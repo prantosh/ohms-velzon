@@ -240,8 +240,11 @@ Book Doctor Appointment Online
                 </div>
 
                 <div class="col-md-4">
-                    <label class="form-label">Age</label>
-                    <input type="number" class="form-control" id="patient_age" min="0" max="120">
+                    <label class="form-label">Age (Years / Months)</label>
+<div class="input-group">
+<input type="number" min="0" max="150" id="patient_age" class="form-control" placeholder="Years">
+<input type="number" min="0" max="11" id="patient_age_months" class="form-control" placeholder="Months">
+</div>
                 </div>
 
                 <div class="col-md-4">
@@ -276,6 +279,6 @@ Book Doctor Appointment Online
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
-<script src="{{ URL::asset('build/js/pages/public-appointment-booking.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/public-appointment-booking.init.js') }}?v={{ @filemtime(public_path('build/js/pages/public-appointment-booking.init.js')) ?: 1 }}"></script>
 
 @endsection

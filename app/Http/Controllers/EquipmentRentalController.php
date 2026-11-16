@@ -200,6 +200,12 @@ class EquipmentRentalController extends Controller
                 ], 422);
             }
 
+            try {
+                $parsedAge = \App\Support\PatientAge::fromInput($request->patient_age, $request->patient_age_months);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
+            }
+
             $patient = Patient::where('patient_id', $request->patient_id)->first();
 
             if (!$patient) {
@@ -208,7 +214,9 @@ class EquipmentRentalController extends Controller
                     'patient_id' => $request->patient_id,
                     'patient_name' => $request->patient_name,
                     'mobile_no' => $request->patient_mobile_no,
-                    'age' => $request->patient_age,
+                    'age' => $parsedAge['years'] ?? null,
+                    'age_months' => $parsedAge['months'] ?? null,
+                    'age_recorded_on' => $parsedAge ? now()->toDateString() : null,
                     'gender' => $request->patient_gender,
                     'status' => 'A',
                     'created_at' => now(),
@@ -222,14 +230,15 @@ class EquipmentRentalController extends Controller
                 // locked) -- propagate any correction back to the shared
                 // patients record, same pattern as
                 // DoctorVisitInvoiceController.
-                $oldPatientData = $patient->only(['age', 'gender']);
+                $oldPatientData = $patient->only(['age', 'age_months', 'gender']);
 
                 $patient->update([
-                    'age' => $request->patient_age,
+                    'age' => $parsedAge['years'] ?? null,
+                    'age_months' => $parsedAge['months'] ?? null,
                     'gender' => $request->patient_gender,
                 ]);
 
-                $newPatientData = $patient->only(['age', 'gender']);
+                $newPatientData = $patient->only(['age', 'age_months', 'gender']);
 
                 if ($oldPatientData !== $newPatientData) {
 
@@ -256,7 +265,9 @@ class EquipmentRentalController extends Controller
                 'patient_id' => $request->patient_id,
                 'patient_name' => $request->patient_name,
                 'patient_mobile_no' => $request->patient_mobile_no,
-                'patient_age' => $request->patient_age,
+                'patient_age' => $parsedAge
+                    ? \App\Support\PatientAge::format($parsedAge['years'], $parsedAge['months'])
+                    : null,
                 'patient_gender' => $request->patient_gender,
 
                 'invoice_date' => now()->toDateString(),

@@ -540,7 +540,8 @@ $('#patient_search').on('change', function () {
 
         success: function (patient) {
 
-            $('#patient_age').val(patient.age);
+            $('#patient_age').val(patient.age_years_now ?? patient.age ?? '');
+            $('#patient_age_months').val(patient.age_years_now == null ? '' : (patient.age_months_now ?? 0));
 
             $('#patient_gender').val(patient.gender);
         }
@@ -564,6 +565,7 @@ $(document).on('click', '#clearPatientSelectionBtn', function () {
     $('#display_patient_id').val('');
     $('#patient_name').val('');
     $('#patient_age').val('');
+    $('#patient_age_months').val('');
     $('#patient_gender').val('');
 
     $('#clearPatientSelectionWrap').hide();
@@ -792,6 +794,9 @@ function saveAppointment() {
 
                 patient_age:
                     $('#patient_age').val(),
+
+                patient_age_months:
+                    $('#patient_age_months').val(),
 
                 patient_gender:
                     $('#patient_gender').val(),

@@ -193,13 +193,21 @@ class AmbulanceRentalController extends Controller
 
             $dueAmount = max(0, round($netPayable - $receivedAmount, 2));
 
+            try {
+                $parsedAge = \App\Support\PatientAge::fromInput($request->patient_age, $request->patient_age_months);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
+            }
+
             if (!DB::table('patients')->where('patient_id', $request->patient_id)->exists()) {
 
                 DB::table('patients')->insert([
                     'patient_id' => $request->patient_id,
                     'patient_name' => $request->patient_name,
                     'mobile_no' => $request->patient_mobile_no,
-                    'age' => $request->patient_age,
+                    'age' => $parsedAge['years'] ?? null,
+                    'age_months' => $parsedAge['months'] ?? null,
+                    'age_recorded_on' => $parsedAge ? now()->toDateString() : null,
                     'gender' => $request->patient_gender,
                     'status' => 'A',
                     'created_at' => now(),
@@ -218,7 +226,9 @@ class AmbulanceRentalController extends Controller
                 'patient_id' => $request->patient_id,
                 'patient_name' => $request->patient_name,
                 'patient_mobile_no' => $request->patient_mobile_no,
-                'patient_age' => $request->patient_age,
+                'patient_age' => $parsedAge
+                    ? \App\Support\PatientAge::format($parsedAge['years'], $parsedAge['months'])
+                    : null,
                 'patient_gender' => $request->patient_gender,
 
                 'invoice_date' => $request->booking_date ?? now()->toDateString(),

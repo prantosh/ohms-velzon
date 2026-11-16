@@ -105,6 +105,21 @@ class AppointmentBookingService
             ];
         }
 
+        // Age is optional for appointments (most are booked over the phone);
+        // only validate it when something was entered.
+        $parsedAge = null;
+
+        try {
+            if (
+                trim((string) ($data['patient_age'] ?? '')) !== '' ||
+                trim((string) ($data['patient_age_months'] ?? '')) !== ''
+            ) {
+                $parsedAge = \App\Support\PatientAge::fromInput($data['patient_age'] ?? null, $data['patient_age_months'] ?? null);
+            }
+        } catch (\InvalidArgumentException $e) {
+            return ['status' => false, 'message' => $e->getMessage(), 'appointment' => null];
+        }
+
         // A real patients.id (set when the operator matched an existing
         // patient via the mobile-number search before this booking) means
         // this is a known patient whose record we should correct in place
@@ -116,15 +131,16 @@ class AppointmentBookingService
 
         if ($patient) {
 
-            $oldPatientData = $patient->only(['patient_name', 'age', 'gender']);
+            $oldPatientData = $patient->only(['patient_name', 'age', 'age_months', 'gender']);
 
             $patient->update([
                 'patient_name' => $data['patient_name'],
-                'age' => $data['patient_age'] ?? $patient->age,
+                'age' => $parsedAge ? $parsedAge['years'] : $patient->age,
+                'age_months' => $parsedAge ? $parsedAge['months'] : $patient->age_months,
                 'gender' => $data['patient_gender'] ?? $patient->gender,
             ]);
 
-            $newPatientData = $patient->only(['patient_name', 'age', 'gender']);
+            $newPatientData = $patient->only(['patient_name', 'age', 'age_months', 'gender']);
 
             if ($oldPatientData !== $newPatientData) {
 
@@ -154,7 +170,8 @@ class AppointmentBookingService
                 'patient_id' => $patientCode,
                 'patient_name' => $data['patient_name'],
                 'mobile_no' => $data['patient_mobile_no'],
-                'age' => $data['patient_age'] ?? null,
+                'age' => $parsedAge['years'] ?? null,
+                'age_months' => $parsedAge['months'] ?? null,
                 'gender' => $data['patient_gender'] ?? null,
                 'status' => 'A',
             ]);
@@ -257,7 +274,8 @@ class AppointmentBookingService
                     'patient_id' => $patient->patient_id,
                     'patient_name' => $data['patient_name'],
                     'patient_mobile_no' => $data['patient_mobile_no'],
-                    'patient_age' => $data['patient_age'] ?? null,
+                    'patient_age' => $parsedAge['years'] ?? null,
+                    'patient_age_months' => $parsedAge['months'] ?? null,
                     'patient_gender' => $data['patient_gender'] ?? null,
                     'appointment_date' => $data['appointment_date'],
                     'appointment_time' => $data['appointment_time'],

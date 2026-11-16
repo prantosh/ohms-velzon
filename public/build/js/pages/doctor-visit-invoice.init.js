@@ -195,7 +195,8 @@ function buildInvoiceRowHtml(raw) {
                     data-appointment_id="${raw.id}"
                     data-patient_id="${raw.patient_id ?? ''}"
                     data-doctor_id="${raw.doctor_id ?? ''}"
-                    data-patient_age="${raw.patient_age ?? ''}"
+                    data-patient_age="${raw.age_years_raw ?? ''}"
+                    data-patient_age_months="${raw.age_years_raw == null ? '' : (raw.age_months_raw ?? 0)}"
                     data-patient_gender="${raw.patient_gender ?? ''}"
                     data-appointment_no="${raw.appointment_no ?? ''}"
                     data-patient_name="${raw.patient_name ?? ''}"
@@ -652,8 +653,8 @@ $(document).on(
         $("#patient_name")
             .val($(this).data("patient_name"));
 
-        $("#patient_age")
-            .val($(this).data("patient_age"));
+        $("#patient_age").val($(this).data("patient_age"));
+            $("#patient_age_months").val($(this).data("patient_age_months"));
 
         $("#patient_gender")
             .val($(this).data("patient_gender"));
@@ -726,8 +727,8 @@ $(document).on(
         $("#patient_name")
             .val($(this).data("patient_name"));
 
-        $("#patient_age")
-            .val($(this).data("patient_age"));
+        $("#patient_age").val($(this).data("patient_age"));
+            $("#patient_age_months").val($(this).data("patient_age_months"));
 
         $("#patient_gender")
             .val($(this).data("patient_gender"));
@@ -896,7 +897,7 @@ $(document).on(
         |--------------------------------------------------------------------------
         */
 
-        if (!$("#patient_age").val() || !$("#patient_gender").val()) {
+        if (($("#patient_age").val() === '' && $("#patient_age_months").val() === '') || !$("#patient_gender").val()) {
 
             Swal.fire({
 
@@ -955,7 +956,7 @@ $(document).on(
         $("#review-appointment_no").text($("#appointment_no").val() || '-');
         $("#review-patient_id").text($("#patient_id").val() || '-');
         $("#review-patient_name").text($("#patient_name").val() || '-');
-        $("#review-patient_age").text($("#patient_age").val() || '-');
+        $("#review-patient_age").text((($("#patient_age").val() === '' && $("#patient_age_months").val() === '') ? '-' : (function (y, m) { y = parseInt(y, 10) || 0; m = parseInt(m, 10) || 0; var mo = m + (m === 1 ? ' Month' : ' Months'); return y === 0 ? mo : (m > 0 ? y + (y === 1 ? ' Year ' : ' Years ') + mo : String(y)); })($("#patient_age").val(), $("#patient_age_months").val())));
         $("#review-patient_gender").text($("#patient_gender").val() || '-');
         $("#review-doctor_name").text($("#doctor_name").val() || '-');
         $("#review-visit_date").text(formatDisplayDate($("#visit_date").val()) || '-');
@@ -1027,6 +1028,9 @@ $("#btnConfirmSaveInvoice").on("click", function () {
                 $("#patient_name").val(),
             patient_age:
                 $("#patient_age").val(),
+
+            patient_age_months:
+                $("#patient_age_months").val(),
             patient_gender:
                 $("#patient_gender").val(),
             invoice_date:

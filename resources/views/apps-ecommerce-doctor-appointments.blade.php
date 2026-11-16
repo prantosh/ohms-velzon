@@ -266,18 +266,18 @@
                         </small>
 
                     </div>
-                    <div class="col-md-2 mb-3">
+                    <div class="col-md-3 mb-3">
 
                         <label class="form-label">
-                            Age
+
+                            Age (Years / Months)
+
                         </label>
 
-                        <input type="number"
-                               class="form-control"
-                               id="patient_age"
-                               placeholder="Enter Age"
-                               min="0"
-                               max="120">
+<div class="input-group">
+<input type="number" min="0" max="150" id="patient_age" class="form-control" placeholder="Years">
+<input type="number" min="0" max="11" id="patient_age_months" class="form-control" placeholder="Months">
+</div>
 
                     </div>
 
@@ -438,7 +438,7 @@
 
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
-<script src="{{ URL::asset('build/js/pages/ecommerce-doctor-appointment-list.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/ecommerce-doctor-appointment-list.init.js') }}?v={{ @filemtime(public_path('build/js/pages/ecommerce-doctor-appointment-list.init.js')) ?: 1 }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
 @endsection

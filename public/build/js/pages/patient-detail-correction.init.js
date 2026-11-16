@@ -35,7 +35,8 @@ async function searchPatient() {
     document.getElementById('edit-patient_id').value = currentPatient.patient_id;
     document.getElementById('edit-mobile_no').value = currentPatient.mobile_no ?? '';
     document.getElementById('edit-patient_name').value = currentPatient.patient_name ?? '';
-    document.getElementById('edit-age').value = currentPatient.age ?? '';
+    document.getElementById('edit-age').value = currentPatient.age_years_now ?? '';
+    document.getElementById('edit-age_months').value = currentPatient.age_years_now == null ? '' : (currentPatient.age_months_now ?? 0);
     document.getElementById('edit-gender').value = currentPatient.gender ?? '';
 
     document.getElementById('edit-patient_name').readOnly = !!result.name_protected;
@@ -85,7 +86,8 @@ async function saveCorrection() {
         body: JSON.stringify({
             patient_id: currentPatient.patient_id,
             patient_name: name,
-            age: document.getElementById('edit-age').value || null,
+            age: document.getElementById('edit-age').value,
+            age_months: document.getElementById('edit-age_months').value,
             gender: document.getElementById('edit-gender').value || null,
         }),
     });
@@ -98,7 +100,9 @@ async function saveCorrection() {
     }
 
     currentPatient.patient_name = result.patient.patient_name;
-    currentPatient.age = result.patient.age;
+    currentPatient.age = result.patient.age_display ?? result.patient.age;
+    currentPatient.age_years_now = result.patient.age_years_now;
+    currentPatient.age_months_now = result.patient.age_months_now;
     currentPatient.gender = result.patient.gender;
 
     Swal.fire({ icon: 'success', title: 'Updated', text: result.message, timer: 2000, showConfirmButton: false });

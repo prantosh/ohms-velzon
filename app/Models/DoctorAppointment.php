@@ -24,6 +24,8 @@ class DoctorAppointment extends Model
 
         'patient_age',
 
+        'patient_age_months',
+
         'patient_gender',
 
         'appointment_date',

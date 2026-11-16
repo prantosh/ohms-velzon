@@ -93,6 +93,9 @@ class PatientDetailCorrectionController extends Controller
                 'patient_id' => $patient->patient_id,
                 'patient_name' => $patient->patient_name,
                 'age' => $patient->age,
+                'age_display' => $patient->display_age,
+                'age_years_now' => $patient->currentAge()['years'],
+                'age_months_now' => $patient->currentAge()['months'] ?? 0,
                 'gender' => $patient->gender,
                 'mobile_no' => $patient->mobile_no,
             ],
@@ -113,9 +116,15 @@ class PatientDetailCorrectionController extends Controller
         $request->validate([
             'patient_id' => 'required|string|exists:patients,patient_id',
             'patient_name' => 'required|string|max:150',
-            'age' => 'nullable|integer|min:0|max:150',
+            'age' => 'nullable|string|max:20',
             'gender' => 'nullable|in:Male,Female,Other',
         ]);
+
+        try {
+            $parsedAge = \App\Support\PatientAge::fromInput($request->age, $request->age_months);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
+        }
 
         $patient = Patient::where('patient_id', $request->patient_id)->first();
 
@@ -140,9 +149,12 @@ class PatientDetailCorrectionController extends Controller
             }
         }
 
-        $oldData = $patient->only(['patient_name', 'age', 'gender']);
+        $oldData = $patient->only(['patient_name', 'age', 'age_months', 'gender']);
 
-        $newAge = $request->filled('age') ? (int) $request->age : null;
+        $newAge = $parsedAge['years'] ?? null;
+        $newAgeMonths = $parsedAge['months'] ?? null;
+        // Invoice/appointment rows keep a display snapshot ("7 mo", "3 y 2 mo", "34").
+        $newAgeText = \App\Support\PatientAge::format($newAge, $newAgeMonths);
         $newGender = $request->gender ?: null;
 
         $patientId = $patient->patient_id;
@@ -156,6 +168,7 @@ class PatientDetailCorrectionController extends Controller
             $patient->update([
                 'patient_name' => $newName,
                 'age' => $newAge,
+                'age_months' => $newAgeMonths,
                 'gender' => $newGender,
             ]);
 
@@ -165,7 +178,7 @@ class PatientDetailCorrectionController extends Controller
                 ->where('patient_id', $patientId)
                 ->update([
                     'patient_name' => $newName,
-                    'patient_age' => $newAge,
+                    'patient_age' => $newAgeText,
                     'patient_gender' => $newGender,
                 ]);
 
@@ -174,6 +187,7 @@ class PatientDetailCorrectionController extends Controller
                 ->update([
                     'patient_name' => $newName,
                     'patient_age' => $newAge,
+                    'patient_age_months' => $newAgeMonths,
                     'patient_gender' => $newGender,
                 ]);
 
@@ -198,7 +212,7 @@ class PatientDetailCorrectionController extends Controller
             return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
         }
 
-        $newData = $patient->only(['patient_name', 'age', 'gender']);
+        $newData = $patient->only(['patient_name', 'age', 'age_months', 'gender']);
 
         $remarks = "Patient details corrected and propagated -- "
             . collect($propagated)->map(fn ($count, $table) => "{$table}: {$count}")->implode(', ');
@@ -208,7 +222,7 @@ class PatientDetailCorrectionController extends Controller
         return response()->json([
             'status' => true,
             'message' => 'Patient details updated and propagated across all linked records.',
-            'patient' => $newData,
+            'patient' => $newData + ['age_display' => $patient->display_age, 'age_years_now' => $patient->currentAge()['years'], 'age_months_now' => $patient->currentAge()['months'] ?? 0],
             'propagated' => $propagated,
         ]);
     }

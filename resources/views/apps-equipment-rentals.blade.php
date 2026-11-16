@@ -466,13 +466,13 @@
                         <div class="col-md-4 mb-3">
 
                             <label class="form-label">
-                                Age
-                            </label>
+                                Age (Years / Months)
+                                </label>
 
-                            <input type="text"
-                                   id="patient_age-field"
-                                   class="form-control"
-                                   readonly>
+<div class="input-group">
+<input type="number" min="0" max="150" id="patient_age-field" class="form-control" placeholder="Years" readonly>
+<input type="number" min="0" max="11" id="patient_age-field_months" class="form-control" placeholder="Months" readonly>
+</div>
 
                         </div>
 
@@ -759,6 +759,6 @@
 <script>
     window.isAdminUser = {{ (auth()->user() && auth()->user()->role === 'Admin') ? 'true' : 'false' }};
 </script>
-<script src="{{ URL::asset('build/js/pages/equipment-rental.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/equipment-rental.init.js') }}?v={{ @filemtime(public_path('build/js/pages/equipment-rental.init.js')) ?: 1 }}"></script>
 
 @endsection

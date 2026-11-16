@@ -113,6 +113,7 @@ class DoctorConsultationListController extends Controller
                 'doctor_appointments.patient_name',
                 'doctor_appointments.patient_mobile_no',
                 DB::raw("COALESCE(NULLIF(doctor_appointments.patient_age, ''), NULLIF(patients.age, '')) as patient_age"),
+                DB::raw("CASE WHEN NULLIF(doctor_appointments.patient_age, '') IS NOT NULL THEN doctor_appointments.patient_age_months ELSE patients.age_months END as patient_age_months"),
                 DB::raw("COALESCE(NULLIF(doctor_appointments.patient_gender, ''), NULLIF(patients.gender, '')) as patient_gender"),
                 'doctor_appointments.appointment_time',
                 'doctor_appointments.appointment_status',
@@ -126,6 +127,8 @@ class DoctorConsultationListController extends Controller
             $row->appointment_time_fmt = $row->appointment_time
                 ? Carbon::parse($row->appointment_time)->format('h:i A')
                 : null;
+
+            $row->patient_age = \App\Support\PatientAge::format($row->patient_age, $row->patient_age_months);
 
             $row->invoice_prepared = !is_null($row->invoice_id);
 

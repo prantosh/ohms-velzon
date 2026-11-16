@@ -57,6 +57,7 @@ return [
     'invoice-cancellation' => 'Invoice Cancellation',
     'invoice-cancellation-history' => 'Invoice Cancellation History',
     'item-wise-report' => 'Item Wise Report',
+    'service-summary-report' => 'Service Summary Report (Date-wise)',
     'kit-master' => 'Kit Master',
     'maintenance-mode' => 'Maintenance Mode',
     'membership-fee' => 'Membership Fee Collection',

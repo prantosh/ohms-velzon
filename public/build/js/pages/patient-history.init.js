@@ -105,10 +105,12 @@ async function searchMobile() {
     result.patients.forEach(p => {
         let option = document.createElement('option');
         option.value = p.id;
-        option.textContent = `${p.patient_name} (${p.patient_id ?? 'N/A'}) - Age ${p.age ?? '-'}, ${p.gender ?? '-'}, Mobile ${p.mobile_no ?? '-'}`;
+        option.textContent = `${p.patient_name} (${p.patient_id ?? 'N/A'}) - Age ${p.age_display ?? p.age ?? '-'}, ${p.gender ?? '-'}, Mobile ${p.mobile_no ?? '-'}`;
         option.dataset.patientId = p.patient_id ?? '';
         option.dataset.patientName = p.patient_name;
-        option.dataset.age = p.age ?? '';
+        option.dataset.age = p.age_display ?? p.age ?? '';
+        option.dataset.ageYears = p.age_years_now ?? p.age ?? '';
+        option.dataset.ageMonths = p.age_years_now == null ? '' : (p.age_months_now ?? 0);
         option.dataset.gender = p.gender ?? '';
         option.dataset.mobileNo = p.mobile_no ?? '';
         select.appendChild(option);
@@ -145,6 +147,8 @@ function selectPatient() {
         patient_id: option.dataset.patientId,
         patient_name: option.dataset.patientName,
         age: option.dataset.age,
+        ageYears: option.dataset.ageYears,
+        ageMonths: option.dataset.ageMonths,
         gender: option.dataset.gender,
         mobile_no: option.dataset.mobileNo
     };
@@ -175,8 +179,11 @@ document.getElementById('btnEditPatient').addEventListener('click', function () 
             <div class="text-start">
                 <label class="form-label">Name</label>
                 <input id="swal-patient-name" class="form-control mb-2" value="${escapeHtml(currentPatient.patient_name)}">
-                <label class="form-label">Age</label>
-                <input id="swal-patient-age" type="number" min="0" max="150" class="form-control mb-2" value="${escapeHtml(currentPatient.age ?? '')}">
+                <label class="form-label">Age (Years / Months)</label>
+                <div class="input-group mb-2">
+                    <input id="swal-patient-age" type="number" min="0" max="150" placeholder="Years" class="form-control" value="${escapeHtml(currentPatient.ageYears ?? '')}">
+                    <input id="swal-patient-age-months" type="number" min="0" max="11" placeholder="Months" class="form-control" value="${escapeHtml(currentPatient.ageMonths ?? '')}">
+                </div>
                 <label class="form-label">Sex</label>
                 <select id="swal-patient-gender" class="form-select">
                     <option value="">Select</option>
@@ -200,10 +207,16 @@ document.getElementById('btnEditPatient').addEventListener('click', function () 
                 return false;
             }
 
+            if (document.getElementById('swal-patient-age').value.trim() === '' && document.getElementById('swal-patient-age-months').value.trim() === '') {
+                Swal.showValidationMessage('Enter age in years and/or months');
+                return false;
+            }
+
             return {
                 id: currentPatient.id,
                 patient_name: name,
-                age: document.getElementById('swal-patient-age').value || null,
+                age: document.getElementById('swal-patient-age').value,
+                age_months: document.getElementById('swal-patient-age-months').value,
                 gender: document.getElementById('swal-patient-gender').value || null
             };
         }
@@ -240,7 +253,9 @@ document.getElementById('btnEditPatient').addEventListener('click', function () 
                 }
 
                 currentPatient.patient_name = response.patient.patient_name;
-                currentPatient.age = response.patient.age;
+                currentPatient.age = response.patient.age_display ?? response.patient.age;
+                currentPatient.ageYears = response.patient.age_years_now ?? response.patient.age;
+                currentPatient.ageMonths = response.patient.age_months_now ?? 0;
                 currentPatient.gender = response.patient.gender;
 
                 let select = document.querySelector('#patientSelect');
@@ -248,6 +263,8 @@ document.getElementById('btnEditPatient').addEventListener('click', function () 
                 if (option) {
                     option.dataset.patientName = currentPatient.patient_name;
                     option.dataset.age = currentPatient.age ?? '';
+                    option.dataset.ageYears = currentPatient.ageYears ?? '';
+                    option.dataset.ageMonths = currentPatient.ageMonths ?? '';
                     option.dataset.gender = currentPatient.gender ?? '';
                     option.textContent = `${currentPatient.patient_name} (${currentPatient.patient_id ?? 'N/A'}) - Age ${currentPatient.age ?? '-'}, ${currentPatient.gender ?? '-'}, Mobile ${currentPatient.mobile_no ?? '-'}`;
                 }

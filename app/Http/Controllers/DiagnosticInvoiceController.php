@@ -610,6 +610,15 @@ class DiagnosticInvoiceController extends Controller
                     '0',
                     STR_PAD_LEFT
                 );
+            try {
+                $parsedAge = \App\Support\PatientAge::fromInput($request->patient_age, $request->patient_age_months);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json([
+                    'status' => false,
+                    'message' => $e->getMessage()
+                ], 422);
+            }
+
             $patient =
                 DB::table('patients')
                     ->where(
@@ -633,7 +642,13 @@ class DiagnosticInvoiceController extends Controller
                             $request->patient_mobile_no,
 
                         'age' =>
-                            $request->patient_age,
+                            $parsedAge['years'] ?? null,
+
+                        'age_months' =>
+                            $parsedAge['months'] ?? null,
+
+                        'age_recorded_on' =>
+                            $parsedAge ? now()->toDateString() : null,
 
                         'gender' =>
                             $request->patient_gender,
@@ -662,16 +677,17 @@ class DiagnosticInvoiceController extends Controller
                 if ($patientModel) {
 
                     $oldPatientData =
-                        $patientModel->only(['patient_name', 'age', 'gender']);
+                        $patientModel->only(['patient_name', 'age', 'age_months', 'gender']);
 
                     $patientModel->update([
                         'patient_name' => $request->patient_name,
-                        'age' => $request->patient_age,
+                        'age' => $parsedAge['years'] ?? null,
+                        'age_months' => $parsedAge['months'] ?? null,
                         'gender' => $request->patient_gender,
                     ]);
 
                     $newPatientData =
-                        $patientModel->only(['patient_name', 'age', 'gender']);
+                        $patientModel->only(['patient_name', 'age', 'age_months', 'gender']);
 
                     if ($oldPatientData !== $newPatientData) {
 
@@ -815,7 +831,9 @@ class DiagnosticInvoiceController extends Controller
                         $request->patient_name,
 
                     'patient_age' =>
-                        $request->patient_age,
+                        $parsedAge
+                            ? \App\Support\PatientAge::format($parsedAge['years'], $parsedAge['months'])
+                            : null,
 
                     'patient_gender' =>
                         $request->patient_gender,
@@ -1248,9 +1266,8 @@ class DiagnosticInvoiceController extends Controller
     }
     public function getPatientDiscountEligibility($patientId)
     {
-        $patient = DB::table('patients')
-            ->where('patient_id', $patientId)
-            ->first();
+        // Eloquent (not DB::table) -- currentAge() is a Patient model method.
+        $patient = Patient::where('patient_id', $patientId)->first();
 
         $messages = [];
 
@@ -1261,7 +1278,7 @@ class DiagnosticInvoiceController extends Controller
             ]);
         }
 
-        if ((int) $patient->age >= 60) {
+        if ((int) ($patient->currentAge()['years'] ?? $patient->age) >= 60) {
 
             $messages[] =
                 'Patient is eligible for discount under Senior Citizen category.';
@@ -1485,7 +1502,7 @@ class DiagnosticInvoiceController extends Controller
     {
         $mobile = trim($request->mobile_no);
 
-        $patients = DB::table('patients')
+        $patients = Patient::query()
 
             ->where('status', 'A')
 
@@ -1507,8 +1524,11 @@ class DiagnosticInvoiceController extends Controller
                 'patient_id',
                 'patient_name',
                 'age',
+                'age_months',
+                'age_recorded_on',
                 'gender'
-            ]);
+            ])
+            ->each(fn ($p) => $p->exposeAge());
 
         return response()->json([
             'status' => true,
@@ -1600,9 +1620,10 @@ class DiagnosticInvoiceController extends Controller
     }
     public function getPatient($patientId)
     {
-        $patient = DB::table('patients')
-            ->where('patient_id', $patientId)
-            ->first();
+        $patient = Patient::where('patient_id', $patientId)->first();
+        if ($patient) {
+            $patient->exposeAge();
+        }
 
         return response()->json([
             'status' => true,
@@ -2764,6 +2785,12 @@ class DiagnosticInvoiceController extends Controller
     }
     public function savePatient(Request $request)
     {
+        try {
+            $parsedAge = \App\Support\PatientAge::fromInput($request->age, $request->age_months);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
+        }
+
         DB::table('patients')->updateOrInsert(
             [
                 'patient_id' => $request->patient_id
@@ -2771,7 +2798,9 @@ class DiagnosticInvoiceController extends Controller
             [
                 'patient_name' => $request->patient_name,
                 'mobile_no' => $request->mobile_no,
-                'age' => $request->age,
+                'age' => $parsedAge['years'] ?? null,
+                'age_months' => $parsedAge['months'] ?? null,
+                'age_recorded_on' => $parsedAge ? now()->toDateString() : null,
                 'gender' => $request->gender,
                 'status' => 'A',
                 'updated_at' => now(),

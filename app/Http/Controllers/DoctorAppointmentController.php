@@ -72,6 +72,7 @@ class DoctorAppointmentController extends Controller
             'patient_name' => 'required',
             'patient_mobile_no' => 'required',
             'patient_age' => 'nullable',
+            'patient_age_months' => 'nullable',
             'patient_gender' => 'nullable',
             'appointment_date' => 'required|date',
             'appointment_time' => 'required',
@@ -90,6 +91,7 @@ class DoctorAppointmentController extends Controller
             'patient_name' => $request->patient_name,
             'patient_mobile_no' => $request->patient_mobile_no,
             'patient_age' => $request->patient_age,
+            'patient_age_months' => $request->patient_age_months,
             'patient_gender' => $request->patient_gender,
             'appointment_date' => $request->appointment_date,
             'appointment_time' => $request->appointment_time,
@@ -261,6 +263,8 @@ class DoctorAppointmentController extends Controller
                 'patient_id',
                 'patient_name',
                 'age',
+                'age_months',
+                'age_recorded_on',
                 'gender'
             ]);
 
@@ -309,6 +313,10 @@ class DoctorAppointmentController extends Controller
         $patient = Patient::where('id', $request->patient_id)
             ->where('mobile_no', $request->mobile_no)
             ->first();
+
+        if ($patient) {
+            $patient->exposeAge();
+        }
 
         return response()->json($patient);
     }

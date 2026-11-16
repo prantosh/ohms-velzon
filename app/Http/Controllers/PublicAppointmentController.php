@@ -239,12 +239,21 @@ class PublicAppointmentController extends Controller
             'doctor_schedule_session_id' => 'required|exists:doctor_schedule_sessions,id',
             'patient_name' => 'required',
             'patient_mobile_no' => 'required|regex:/^[1-9][0-9]{9}$/',
-            'patient_age' => 'required',
+            'patient_age' => 'nullable',
+            'patient_age_months' => 'nullable',
             'patient_gender' => 'required',
             'appointment_date' => 'required|date',
             'appointment_time' => 'required',
             'verification_token' => 'required|string',
         ]);
+
+        // The public page (unlike staff phone bookings) has always required an age.
+        if (trim((string) $request->patient_age) === '' && trim((string) $request->patient_age_months) === '') {
+            return response()->json([
+                'status' => false,
+                'message' => 'Enter the patient\'s age in years and/or months.',
+            ]);
+        }
 
         $otp = PatientOtp::where('mobile_no', $request->patient_mobile_no)
             ->where('purpose', self::OTP_PURPOSE)
@@ -267,6 +276,7 @@ class PublicAppointmentController extends Controller
             'patient_name' => $request->patient_name,
             'patient_mobile_no' => $request->patient_mobile_no,
             'patient_age' => $request->patient_age,
+            'patient_age_months' => $request->patient_age_months,
             'patient_gender' => $request->patient_gender,
             'appointment_date' => $request->appointment_date,
             'appointment_time' => $request->appointment_time,

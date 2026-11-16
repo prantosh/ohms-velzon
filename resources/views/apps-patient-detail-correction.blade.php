@@ -106,8 +106,11 @@
                     </div>
 
                     <div class="col-md-3 mb-3">
-                        <label class="form-label">Age</label>
-                        <input type="number" id="edit-age" class="form-control" min="0" max="150">
+                        <label class="form-label">Age (Years / Months)</label>
+<div class="input-group">
+<input type="number" min="0" max="150" id="edit-age" class="form-control" placeholder="Years">
+<input type="number" min="0" max="11" id="edit-age_months" class="form-control" placeholder="Months">
+</div>
                     </div>
 
                     <div class="col-md-3 mb-3">
@@ -141,6 +144,6 @@
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/patient-detail-correction.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/patient-detail-correction.init.js') }}?v={{ @filemtime(public_path('build/js/pages/patient-detail-correction.init.js')) ?: 1 }}"></script>
 
 @endsection

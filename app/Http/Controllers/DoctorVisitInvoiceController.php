@@ -146,6 +146,25 @@ class DoctorVisitInvoiceController extends Controller
             );
 
             $appointments->each(function ($row) use ($protectedUsers) {
+                // Appointment carries no age (e.g. booked before age was
+                // mandatory): fall back to the patient's recorded age.
+                if (($row->patient_age === null || $row->patient_age === '') && $row->patient_id) {
+                    $master = Patient::where('patient_id', $row->patient_id)->first();
+                    $cur = $master ? $master->currentAge() : null;
+                    if ($cur && $cur['years'] !== null) {
+                        $row->patient_age = $cur['years'];
+                        $row->patient_age_months = $cur['months'] ?? 0;
+                    }
+                }
+
+                // Raw values feed the separate Age / Months inputs on the form.
+                $row->setAttribute('age_years_raw', $row->patient_age);
+                $row->setAttribute('age_months_raw', $row->patient_age_months);
+                // Show "7 mo" / "3 y 2 mo" instead of the bare year count.
+                $row->setAttribute(
+                    'patient_age',
+                    \App\Support\PatientAge::format($row->patient_age, $row->patient_age_months ?? null)
+                );
                 $row->setAttribute(
                     'can_edit_patient_name',
                     !empty($row->invoice_id)
@@ -351,9 +370,18 @@ class DoctorVisitInvoiceController extends Controller
     public function store(Request $request, AuditService $auditService)
     {
         $request->validate([
-            'patient_age' => 'required',
+            'patient_age' => 'nullable',
+            'patient_age_months' => 'nullable',
             'patient_gender' => 'required',
         ]);
+
+        try {
+            $parsedAge = \App\Support\PatientAge::fromInput($request->patient_age, $request->patient_age_months);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        $ageText = \App\Support\PatientAge::format($parsedAge['years'] ?? null, $parsedAge['months'] ?? null);
 
         $appointment =
             DoctorAppointment::findOrFail(
@@ -379,15 +407,16 @@ class DoctorVisitInvoiceController extends Controller
 
             if ($patient) {
 
-                $oldPatientData = $patient->only(['patient_name', 'age', 'gender']);
+                $oldPatientData = $patient->only(['patient_name', 'age', 'age_months', 'gender']);
 
                 $patient->update([
                     'patient_name' => $request->patient_name,
-                    'age' => $request->patient_age,
+                    'age' => $parsedAge['years'] ?? null,
+                    'age_months' => $parsedAge['months'] ?? null,
                     'gender' => $request->patient_gender,
                 ]);
 
-                $newPatientData = $patient->only(['patient_name', 'age', 'gender']);
+                $newPatientData = $patient->only(['patient_name', 'age', 'age_months', 'gender']);
 
                 if ($oldPatientData !== $newPatientData) {
 
@@ -505,7 +534,7 @@ class DoctorVisitInvoiceController extends Controller
                     $appointment->patient_mobile_no,
 
                 'patient_age' =>
-                    $request->patient_age,
+                    $ageText,
 
                 'patient_gender' =>
                     $request->patient_gender,
@@ -712,9 +741,23 @@ class DoctorVisitInvoiceController extends Controller
             $request->filled('patient_name') &&
             $request->patient_name !== $invoice->patient_name;
 
+        $parsedAge = null;
+
+        if ($request->filled('patient_age') || $request->filled('patient_age_months')) {
+            try {
+                $parsedAge = \App\Support\PatientAge::fromInput($request->patient_age, $request->patient_age_months);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
+            }
+        }
+
+        $ageText = $parsedAge
+            ? \App\Support\PatientAge::format($parsedAge['years'], $parsedAge['months'])
+            : null;
+
         $ageChanged =
-            $request->filled('patient_age') &&
-            (string) $request->patient_age !== (string) $invoice->patient_age;
+            $ageText !== null &&
+            $ageText !== (string) $invoice->patient_age;
 
         $genderChanged =
             $request->filled('patient_gender') &&
@@ -745,15 +788,20 @@ class DoctorVisitInvoiceController extends Controller
 
             if ($patient) {
 
-                $oldPatientData = $patient->only(['patient_name', 'age', 'gender']);
+                $oldPatientData = $patient->only(['patient_name', 'age', 'age_months', 'gender']);
 
                 $patient->update(array_filter([
                     'patient_name' => $nameChanged ? $request->patient_name : null,
-                    'age' => $ageChanged ? $request->patient_age : null,
+                    'age' => $ageChanged ? $parsedAge['years'] : null,
                     'gender' => $genderChanged ? $request->patient_gender : null,
                 ], fn($value) => $value !== null));
 
-                $newPatientData = $patient->only(['patient_name', 'age', 'gender']);
+                if ($ageChanged) {
+                    // months may legitimately become null, so set outside array_filter
+                    $patient->update(['age_months' => $parsedAge['months']]);
+                }
+
+                $newPatientData = $patient->only(['patient_name', 'age', 'age_months', 'gender']);
 
                 if ($oldPatientData !== $newPatientData) {
 
@@ -774,7 +822,7 @@ class DoctorVisitInvoiceController extends Controller
 
             'patient_name' => $nameChanged ? $request->patient_name : null,
 
-            'patient_age' => $ageChanged ? $request->patient_age : null,
+            'patient_age' => $ageChanged ? $ageText : null,
 
             'patient_gender' => $genderChanged ? $request->patient_gender : null,
 

@@ -277,6 +277,8 @@ private function getHistoryData(Request $request): array
 
             'doctor_appointments.patient_age',
 
+            'doctor_appointments.patient_age_months',
+
             'doctor_appointments.patient_mobile_no',
 
             'doctor_appointments.appointment_date',
@@ -324,6 +326,11 @@ private function getHistoryData(Request $request): array
         ->get();
 
             foreach ($rows as $row) {
+
+                $row->patient_age = \App\Support\PatientAge::format(
+                    $row->patient_age,
+                    $row->patient_age_months
+                );
 
                 $row->visit_date = Carbon::parse(
                     $row->appointment_date
