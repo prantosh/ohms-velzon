@@ -633,6 +633,14 @@ function loadAvailableSlots() {
                     '<option value="">Select Slot</option>'
                 );
 
+                // No slots could just mean "fully booked" -- ask whether
+                // the doctor was actually marked unavailable on this date
+                // so the user gets told why, instead of an empty list.
+                if (!response.length) {
+                    alertIfDoctorUnavailable(doctor_id, appointment_date);
+                    return;
+                }
+
                 response.forEach(function (slot) {
 
                     $('#appointment_time').append(
@@ -648,6 +656,89 @@ function loadAvailableSlots() {
             }
         });
     }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Doctor Unavailable (blackout date) Alert
+|--------------------------------------------------------------------------
+*/
+
+function alertIfDoctorUnavailable(doctor_id, appointment_date) {
+
+    $.ajax({
+
+        url: '/doctor-appointments/check-date-availability',
+
+        type: 'POST',
+
+        data: {
+
+            doctor_id: doctor_id,
+
+            appointment_date: appointment_date,
+
+            _token: $('meta[name="csrf-token"]').attr('content')
+        },
+
+        success: function (response) {
+
+            if (!response || !response.unavailable) {
+
+                $('#appointment_time').append(
+                    '<option value="" disabled>No slots available on this date</option>'
+                );
+
+                return;
+            }
+
+            // The user may have picked another doctor/date while this
+            // request was in flight -- only alert for the current pick.
+            if (
+                $('#doctor_id').val() != doctor_id ||
+                convertToMysqlDate($('#appointment_date').val()) !== appointment_date
+            ) {
+                return;
+            }
+
+            let dateLabel = $('#appointment_date').val();
+
+            let reasonHtml = response.reason
+                ? '<div class="mt-2 text-muted"><b>Reason:</b> ' +
+                  $('<div>').text(response.reason).html() +
+                  '</div>'
+                : '';
+
+            Swal.fire({
+
+                icon: 'error',
+
+                title: 'Doctor Not Available',
+
+                html:
+                    '<div class="fs-15">' +
+                    'The doctor\'s schedule has been disabled for <b>' +
+                    $('<div>').text(dateLabel).html() +
+                    '</b> due to non-availability of the doctor. ' +
+                    'Please choose a different date.' +
+                    '</div>' +
+                    reasonHtml,
+
+                confirmButtonColor: '#f06548',
+
+                customClass: {
+
+                    popup: 'shadow-lg rounded-4',
+
+                    title: 'fw-bold text-danger',
+
+                    confirmButton: 'px-4'
+                }
+            });
+
+            $('#appointment_date').val('');
+        }
+    });
 }
 
 /*
@@ -726,6 +817,10 @@ function convertToMysqlDate(dateString) {
 | Save Appointment
 |--------------------------------------------------------------------------
 */
+
+// Set once the operator confirms a near-match name is a genuinely new patient,
+// so the re-submit isn't asked again. Cleared when the booking succeeds/fails.
+let confirmNewPatient = false;
 
 function saveAppointment() {
 
@@ -817,11 +912,67 @@ function saveAppointment() {
 
                 confirm_slot_change:
                     $('#confirm_slot_change').val(),
+
+                confirm_new_patient: confirmNewPatient ? 1 : '',
                 _token:
                     $('meta[name="csrf-token"]').attr('content')
             },
 
             success: function (response) {
+
+                // The typed name is a near miss of someone already on this
+                // mobile number -- usually the same person typed differently.
+                // Let the operator pick that patient (the form then carries
+                // the existing patient's own name and ID) or say it really
+                // is someone new.
+                if (response.status === 'similar_patient') {
+
+                    let options = {};
+
+                    response.patients.forEach(function (p) {
+                        options[p.id] = p.patient_name + ' (' + p.patient_id +
+                            (p.age ? ', ' + p.age : '') + (p.gender ? ', ' + p.gender : '') + ')';
+                    });
+
+                    options['new'] = 'None of these - register "' + $('#patient_name').val().trim() + '" as a new patient';
+
+                    Swal.fire({
+                        icon: 'question',
+                        title: 'Is this an existing patient?',
+                        text: response.message,
+                        input: 'select',
+                        inputOptions: options,
+                        inputValue: String(response.patients[0].id),
+                        showCancelButton: true,
+                        confirmButtonText: 'Continue',
+                        confirmButtonColor: '#405189',
+                        cancelButtonColor: '#f06548'
+                    }).then((result) => {
+
+                        if (!result.isConfirmed) {
+
+                            btn.prop('disabled', false);
+                            return;
+                        }
+
+                        if (result.value === 'new') {
+
+                            confirmNewPatient = true;
+
+                        } else {
+
+                            let chosen = response.patients.find(p => String(p.id) === result.value);
+
+                            $('#patient_db_id').val(chosen.id);
+                            $('#patient_name').val(chosen.patient_name);
+                            $('#display_patient_id').val(chosen.patient_id);
+                        }
+
+                        $('#saveAppointmentBtn').click();
+                    });
+
+                    return;
+                }
 
                 if (response.status === 'confirm_change') {
 
@@ -863,6 +1014,7 @@ function saveAppointment() {
                 if (response.status) {
 
                     $('#confirm_slot_change').val('');
+                    confirmNewPatient = false;
 
                     let modalEl =
                         document.getElementById(
@@ -925,6 +1077,7 @@ function saveAppointment() {
                 } else {
 
                     $('#confirm_slot_change').val('');
+                    confirmNewPatient = false;
 
                     btn.prop('disabled', false);
 

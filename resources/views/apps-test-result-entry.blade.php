@@ -30,6 +30,38 @@
 .result-status-Complete { background:#0ab39c33; color:#03816f; }
 .result-status-NA { background:#74788d33; color:#4a4d5a; }
 
+.pathology-outsourced-marquee {
+    overflow: hidden;
+    white-space: nowrap;
+    color: #b02a37;
+    font-weight: 700;
+}
+
+.pathology-outsourced-marquee-track {
+    display: flex;
+    width: max-content;
+    animation: pathology-outsourced-scroll 24s linear infinite;
+}
+
+.pathology-outsourced-marquee:hover .pathology-outsourced-marquee-track {
+    animation-play-state: paused;
+}
+
+@keyframes pathology-outsourced-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pathology-outsourced-marquee-track {
+        animation: none;
+    }
+
+    .pathology-outsourced-marquee-track [aria-hidden="true"] {
+        display: none;
+    }
+}
+
 </style>
 
 @endsection
@@ -69,11 +101,23 @@
                 <input type="text"
                        id="dashSearchInput"
                        class="form-control"
-                       placeholder="Invoice No / Patient Name / Mobile">
+                       placeholder="Invoice No / Patient Name / Mobile / Test Description">
 
             </div>
 
-            <div class="col-md-8">
+            <div class="col-md-2">
+
+                <label class="form-label fw-semibold">Confirmation</label>
+
+                <select id="dashConfirmedFilter" class="form-select">
+                    <option value="">All</option>
+                    <option value="yes">Confirmed</option>
+                    <option value="no" selected>Not Confirmed</option>
+                </select>
+
+            </div>
+
+            <div class="col-md-6">
 
                 <label class="form-label fw-semibold d-block">Period</label>
 
@@ -88,6 +132,23 @@
                 </div>
 
             </div>
+
+        </div>
+
+        <div class="d-flex align-items-center mb-3">
+
+            <label class="me-2 mb-0 fw-semibold">Show</label>
+
+            <select id="dashPerPage" class="form-select form-select-sm w-auto">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="15" selected>15</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+
+            <span class="ms-2">entries</span>
 
         </div>
 
@@ -122,15 +183,12 @@
 
         <div class="d-flex justify-content-between align-items-center mt-2">
 
-            <span id="dashPaginationInfo" class="text-muted small"></span>
+            <div id="dashPaginationInfo"></div>
 
-            <div class="btn-group">
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dashPrevPage">
-                    <i class="ri-arrow-left-s-line"></i> Prev
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="dashNextPage">
-                    Next <i class="ri-arrow-right-s-line"></i>
-                </button>
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dashPrevPage">Previous</button>
+                <span id="dashPageNumber"></span>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="dashNextPage">Next</button>
             </div>
 
         </div>
@@ -230,6 +288,10 @@
                         <i class="ri-whatsapp-line"></i>
                         Send Now
                     </button>
+                </div>
+
+                <div id="pathologyOutsourcedMarquee" class="pathology-outsourced-marquee alert alert-warning py-2 px-3 mb-3 d-none" aria-label="Tests being performed by an outside laboratory">
+                    <span class="pathology-outsourced-marquee-track"></span>
                 </div>
 
                 <div id="pathologyReportsWrap" style="display:none;"></div>
@@ -489,8 +551,8 @@
 
 <script src="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.umd.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/test-result-entry.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/test-result-entry.init.js') }}?v={{ filemtime(public_path('build/js/pages/test-result-entry.init.js')) }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/test-result-entry-dashboard.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/test-result-entry-dashboard.init.js') }}?v={{ filemtime(public_path('build/js/pages/test-result-entry-dashboard.init.js')) }}"></script>
 
 @endsection

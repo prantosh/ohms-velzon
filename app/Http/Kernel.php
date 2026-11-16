@@ -39,6 +39,7 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\Localization::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\CheckMaintenanceMode::class,
+            \App\Http\Middleware\RequireAuthentication::class,
             \App\Http\Middleware\CheckPageAccess::class,
             \App\Http\Middleware\CheckScreenLock::class,
 

@@ -130,16 +130,13 @@ class DoctorSettlementController extends Controller
                 // first raised, and this screen's whole purpose is "what can
                 // this user settle today", not "what was invoiced today". A
                 // fully-paid invoice's last write is exactly the moment its
-                // final payment was recorded (due_amount/paid_amount/
-                // payment_mode all update then), so updated_at is the
-                // invoice's own true "became collectible" date -- it matches
-                // invoice_date for the common same-day-paid case, and only
-                // diverges for exactly the due-payment case this needs to
-                // catch. Filtering by invoice_date instead silently hid any
-                // payable whose invoice predates the day its due balance was
-                // actually collected -- the collecting user had no reason to
-                // search any date other than today.
-                ->whereDate('invoices.updated_at', $request->invoice_date)
+                // final payment was recorded, i.e. the date of the final
+                // RECEIVED daily_transactions row (see
+                // finalCollectorSubquery()). Not invoices.updated_at: that
+                // moves whenever the invoice is touched again (doctor
+                // correction, report print, etc.) and silently hid payables
+                // from the day they were actually collected.
+                ->whereDate('fc.final_collected_at', $request->invoice_date)
 
                 ->whereRaw(
                     '(doctor_payables.payable_amount - IFNULL(doctor_payables.paid_amount,0)) > 0'
@@ -212,7 +209,7 @@ class DoctorSettlementController extends Controller
     private function finalCollectorSubquery()
     {
         $ranked = DB::table('daily_transactions')
-            ->select('invoice_reference', 'operator_id')
+            ->select('invoice_reference', 'operator_id', 'created_at')
             ->selectRaw('ROW_NUMBER() OVER (PARTITION BY invoice_reference ORDER BY created_at DESC) as rn')
             ->where('transaction_type', 'RECEIVED')
             ->where('status', '!=', 'CANCELLED')
@@ -221,7 +218,7 @@ class DoctorSettlementController extends Controller
         return DB::query()
             ->fromSub($ranked, 'ranked')
             ->where('rn', 1)
-            ->select('invoice_reference', 'operator_id as final_collector_id');
+            ->select('invoice_reference', 'operator_id as final_collector_id', 'created_at as final_collected_at');
     }
 
     /*
@@ -403,6 +400,50 @@ public function store(Request $request, AuditService $auditService)
         $summary = $this->calculateSettlementSummary($request);
 
         $this->validateSettlement($summary);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Cash shortfall warning -- a CASH settlement larger than the paying
+        | user's cash in hand would push their drawer negative (a deficit
+        | carried to the next day). Asks for explicit confirmation instead of
+        | silently allowing it; BANK/UPI/CHEQUE never touch the drawer.
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->payment_mode === 'CASH' && !$request->boolean('confirm_cash_shortfall')) {
+
+            $cashService = app(CashInHandService::class);
+            $cashService->ensureFreshForToday((int) Auth::id());
+
+            $cashInHand = (float) DB::table('users')->where('id', Auth::id())->value('cash_in_hand');
+            $settlementTotal = (float) collect($summary['items'])->sum('settlement_amount');
+
+            if ($cashInHand - $settlementTotal < 0) {
+
+                DB::rollBack();
+
+                $shortBy = $settlementTotal - $cashInHand;
+                $isAdmin = optional(Auth::user())->role === 'Admin';
+
+                // Non-admins cannot pay out cash they do not hold -- use
+                // BANK/UPI, or have an Admin arrange the cash. An Admin may
+                // override after a warning; the resulting deficit then stays
+                // pending until it is cleared on the Cash Adjustments page
+                // (it is never netted against later collections).
+                return response()->json([
+                    'status' => false,
+                    'cash_shortfall' => $isAdmin,
+                    'cash_shortfall_blocked' => !$isAdmin,
+                    'message' => 'Cash in hand is ₹' . number_format($cashInHand, 2)
+                        . ' but this cash settlement is ₹' . number_format($settlementTotal, 2)
+                        . ($isAdmin
+                            ? '. Paying it will leave a cash deficit of ₹' . number_format($shortBy, 2)
+                                . ', which stays pending until you clear it on the Cash Adjustments page.'
+                            : '. You cannot pay more cash than you hold (short by ₹' . number_format($shortBy, 2)
+                                . '). Pay by Bank/UPI/Cheque, or ask an Admin to arrange the cash first.'),
+                ], 422);
+            }
+        }
 
         /*
         |--------------------------------------------------------------------------
@@ -1381,11 +1422,9 @@ private function generateSettlementNo()
                 )
 
                 // See getOutstandingPayables()'s own comment on this same
-                // column choice -- a due/instalment payment is frequently
-                // collected days after the invoice was first raised, and
-                // this screen's whole purpose is "what can this user settle
-                // today", not "what was invoiced today".
-                ->whereDate('invoices.updated_at', $request->invoice_date)
+                // date choice -- the final collection date, not invoice_date
+                // or the (unstable) invoices.updated_at.
+                ->whereDate('fc.final_collected_at', $request->invoice_date)
 
                 ->whereRaw(
                     '(doctor_payables.payable_amount - IFNULL(doctor_payables.paid_amount,0)) > 0'

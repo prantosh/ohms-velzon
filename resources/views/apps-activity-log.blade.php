@@ -90,7 +90,7 @@
                         <option value="25">25</option>
                         <option value="50">50</option>
                     </select>
-                    <span class="ms-2">records</span>
+                    <span class="ms-2">entries</span>
                 </div>
 
             </div>
@@ -152,7 +152,7 @@
                             <option value="25">25</option>
                             <option value="50">50</option>
                         </select>
-                        <span class="ms-2">records</span>
+                        <span class="ms-2">entries</span>
                     </div>
 
                     <select id="module_code-field" class="form-select form-select-sm w-auto">

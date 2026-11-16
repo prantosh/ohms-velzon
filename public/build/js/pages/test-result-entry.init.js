@@ -201,6 +201,8 @@ async function searchInvoice() {
     document.querySelector('#pathologyReportsWrap').innerHTML = '';
     document.querySelector('#pathologyReportsWrap').style.display = 'none';
     document.querySelector('#pathologyWhatsappBanner').classList.add('d-none');
+    document.querySelector('#pathologyOutsourcedMarquee').classList.add('d-none');
+    document.querySelector('#pathologyOutsourcedMarquee .pathology-outsourced-marquee-track').innerHTML = '';
     pathologyState = null;
 
     if (!invoiceNo) {
@@ -254,12 +256,23 @@ async function loadPathologyReports(invoiceNo) {
     renderInvoiceInfo(result.invoice);
 
     pathologyState = result;
+    renderPathologyOutsourcedMarquee(result.outsourced_items || []);
 
     let wrap = document.querySelector('#pathologyReportsWrap');
     wrap.style.display = 'block';
 
     if (result.legacy_confirmed) {
-        renderPathologyLegacyCard(wrap, result.invoice.id);
+        if (result.created_offline) {
+            wrap.insertAdjacentHTML('beforeend', `
+            <div class="alert alert-info mb-0">
+                <i class="ri-file-paper-2-line me-1"></i>
+                This report was <strong>created offline</strong> and is recorded as completed and confirmed.
+                There is nothing to print or send from the system.
+            </div>`);
+            return;
+        }
+
+        renderPathologyLegacyCard(wrap, result.invoice.id, parseFloat(result.invoice.due_amount) || 0);
         return;
     }
 
@@ -391,6 +404,8 @@ function refreshPathologyGroupButtons() {
             printAllBtn.href = `/pathology-report/print-invoice?${params.toString()}`;
             printAllBtn.style.display = 'inline-block';
             sendWhatsappBtn.style.display = 'inline-block';
+            sendWhatsappBtn.disabled = pathologyDue() > 0;
+            sendWhatsappBtn.title = pathologyDue() > 0 ? 'Payment is due - collect it before sending on WhatsApp' : '';
 
         } else {
 
@@ -539,8 +554,12 @@ function renderPathologyWhatsappBanner() {
     } else if (complete) {
 
         banner.classList.add('alert-warning');
-        textEl.innerText = `All ${total} Pathology test(s) on this invoice are confirmed -- WhatsApp not sent yet.`;
-        sendBtn.style.display = 'inline-block';
+        let reason = wa.reason
+            ? ` Reason: ${wa.reason}`
+            : ' The automatic send has not run yet -- use Send Now.';
+        textEl.innerText = `All ${total} Pathology test(s) on this invoice are confirmed -- WhatsApp not sent yet.${reason}`;
+        // Nothing can be sent while a payment is due -- it goes out automatically once cleared.
+        sendBtn.style.display = wa.held_due ? 'none' : 'inline-block';
 
     } else {
 
@@ -550,13 +569,38 @@ function renderPathologyWhatsappBanner() {
     }
 }
 
-function renderPathologyLegacyCard(wrap, invoiceId) {
+function renderPathologyOutsourcedMarquee(items) {
+
+    let marquee = document.querySelector('#pathologyOutsourcedMarquee');
+    let track = marquee.querySelector('.pathology-outsourced-marquee-track');
+
+    if (!items.length) {
+        marquee.classList.add('d-none');
+        track.innerHTML = '';
+        return;
+    }
+
+    let message = `Reports cannot be created here for ${items.map(escapeHtml).join('  •  ')}, as these are being tested through outsourced agencies.&nbsp;&nbsp;&nbsp;`;
+    track.innerHTML = `<span>${message}</span><span aria-hidden="true">${message}</span>`;
+    marquee.classList.remove('d-none');
+}
+
+// Outstanding amount on the open invoice -- WhatsApp stays disabled while > 0.
+function pathologyDue() {
+    return parseFloat(pathologyState && pathologyState.invoice ? pathologyState.invoice.due_amount : 0) || 0;
+}
+
+function renderPathologyLegacyCard(wrap, invoiceId, due = 0) {
 
     let template = document.getElementById('pathologyLegacyCardTemplate');
     let frag = template.content.cloneNode(true);
 
     let printBtn = frag.querySelector('.pathology-legacy-print-btn');
     let whatsappBtn = frag.querySelector('.pathology-legacy-whatsapp-btn');
+    if (due > 0) {
+        whatsappBtn.disabled = true;
+        whatsappBtn.title = 'Payment is due - collect it before sending on WhatsApp';
+    }
 
     printBtn.addEventListener('click', function () {
         window.open(`/test-result-entry/print/${invoiceId}`, '_blank');
@@ -759,7 +803,13 @@ function buildKeyParametersHtml(finding) {
 
     let itemCodeSubs = pathologyFindingItemCodeSubs(finding);
 
-    let applicable = allParams.filter(p => (p.triggers || []).some(t => itemCodeSubs.includes(t)));
+    // One input per item -- the same item can be tracked under several
+    // groups (HB under CBC and Blood RE), and a report covering both would
+    // otherwise get two boxes writing the same value.
+    let seenCodes = {};
+    let applicable = allParams
+        .filter(p => (p.triggers || []).some(t => itemCodeSubs.includes(t)))
+        .filter(p => !seenCodes[p.item_code_sub] && (seenCodes[p.item_code_sub] = true));
 
     if (!applicable.length) return '';
 
@@ -770,36 +820,74 @@ function buildKeyParametersHtml(finding) {
         byGroup[key].push(p);
     });
 
+    // Total Bilirubin package report: staff enter Direct and Indirect only,
+    // Total is always their sum (mirrors KeyParameterService::
+    // withDerivedTotalBilirubin(), which is what actually prints). Not for
+    // LFT, nor a Bilirubin (Total) billed on its own -- those type it.
+    let totalIsDerived = !itemCodeSubs.includes('PAT176')
+        && ['PAT142', 'PAT387', 'PAT388'].every(code => applicable.some(p => p.item_code_sub === code));
+
     let groupsHtml = Object.keys(byGroup).map(groupLabel => {
 
-        let fieldsHtml = byGroup[groupLabel].map(p => {
+        // Consecutive parameters sharing a section_label (e.g. Urine RE's
+        // PHYSICAL / CHEMICAL / MICROSCOPIC) go under their own sub-heading,
+        // same as the printed table (KeyParameterService::buildAutoTable()).
+        let sections = [];
+        byGroup[groupLabel].forEach(p => {
+            let section = p.section_label || '';
+            let last = sections[sections.length - 1];
+            if (last && (last.label === section || !section)) {
+                last.params.push(p);
+            } else {
+                sections.push({ label: section, params: [p] });
+            }
+        });
+
+        let fieldHtml = p => {
 
             let past = history[p.item_code_sub] || [];
             let pastText = past.length
                 ? 'Past: ' + past.map(h => `${escapeHtml(h.result_value)} (${escapeHtml(h.test_date_fmt)})`).join(', ')
                 : '';
 
-            let val = draft[p.item_code_sub] || '';
+            // Only a report never saved yet starts at the configured
+            // default. Blank values aren't stored on save, so a saved report
+            // missing one was either cleared on purpose or saved before this
+            // parameter existed (its old hand-typed table already holds the
+            // value) -- either way it must stay blank.
+            let val = draft[p.item_code_sub] || (finding.id ? '' : (p.default_value || ''));
             let uomText = p.uom ? ` (${escapeHtml(p.uom)})` : '';
+
+            let derived = totalIsDerived && p.item_code_sub === 'PAT142';
+            if (derived) {
+                val = sumBilirubin(draft['PAT387'], draft['PAT388']);
+            }
 
             return `
             <div style="min-width:170px;" class="mb-1">
-                <label class="small mb-0">${escapeHtml(p.parameter_name)}${uomText}</label>
+                <label class="small mb-0">${escapeHtml(p.parameter_name)}${uomText}${derived ? ' <span class="text-muted">(auto: Direct + Indirect)</span>' : ''}</label>
                 <input type="text" class="form-control form-control-sm pathology-key-param-input"
+                       ${derived ? 'readonly data-derived-total="1"' : ''}
                        data-item-code-sub="${escapeHtml(p.item_code_sub)}"
                        data-param-label="${escapeHtml(p.parameter_name)}"
                        data-param-uom="${escapeHtml(p.uom || '')}"
                        data-param-range="${escapeHtml(p.reference_range || '')}"
+                       data-param-section="${escapeHtml(p.section_label || '')}"
                        value="${escapeHtml(val)}">
                 ${pastText ? `<div class="small text-muted">${pastText}</div>` : ''}
             </div>
             `;
-        }).join('');
+        };
+
+        let sectionsHtml = sections.map(section => `
+            ${section.label ? `<div class="small fw-semibold text-decoration-underline mt-1">${escapeHtml(section.label)}</div>` : ''}
+            <div class="d-flex flex-wrap gap-3">${section.params.map(fieldHtml).join('')}</div>
+        `).join('');
 
         return `
         <div class="mb-2">
             <div class="text-muted small fw-semibold">${escapeHtml(groupLabel)}</div>
-            <div class="d-flex flex-wrap gap-3">${fieldsHtml}</div>
+            ${sectionsHtml}
         </div>
         `;
     }).join('');
@@ -878,11 +966,43 @@ async function fetchTablePreview(cardEl) {
     }
 }
 
+// Direct + Indirect Bilirubin as printed text ('' unless both are numbers),
+// same formatting as the server (1.5, 2.0, 0.85).
+function sumBilirubin(direct, indirect) {
+
+    let d = String(direct ?? '').trim();
+    let i = String(indirect ?? '').trim();
+
+    if (d === '' || i === '' || isNaN(d) || isNaN(i)) return '';
+
+    let sum = String(parseFloat((parseFloat(d) + parseFloat(i)).toFixed(2)));
+
+    return sum.includes('.') ? sum : sum + '.0';
+}
+
+// Keeps the read-only Total Bilirubin box (data-derived-total, set only on
+// a Total Bilirubin package report) equal to Direct + Indirect as either is typed.
+function autoSumTotalBilirubin(target, cardEl) {
+
+    let code = target.dataset.itemCodeSub;
+    if (!cardEl || !['PAT387', 'PAT388'].includes(code)) return;
+
+    let field = c => cardEl.querySelector(`.pathology-key-param-input[data-item-code-sub="${c}"]`);
+    let total = cardEl.querySelector('.pathology-key-param-input[data-derived-total]');
+
+    if (!total) return;
+
+    total.value = sumBilirubin(field('PAT387').value, field('PAT388').value);
+}
+
 document.addEventListener('input', function (e) {
 
     if (!e.target.classList || !e.target.classList.contains('pathology-key-param-input')) return;
 
     let cardEl = e.target.closest('.pathology-finding-card');
+
+    autoSumTotalBilirubin(e.target, cardEl);
+
     if (cardEl) debouncedFetchTablePreview(cardEl);
 });
 
@@ -984,6 +1104,18 @@ function hasAdminAuthoredTable(contentHtml) {
     return Array.from(root.querySelectorAll('table')).some(table => !table.closest('[data-key-param-block]'));
 }
 
+// Whether a locked editor would have anything staff can actually use: a
+// blank result cell that becomes a typing exception, or a Key Parameter
+// marker / auto-table that the separate Key Parameters inputs feed.
+function hasFillableRegion(contentHtml) {
+
+    let parser = new DOMParser();
+    let doc = parser.parseFromString(`<div id="root">${applyTemplateContentLock(contentHtml)}</div>`, 'text/html');
+    let root = doc.getElementById('root');
+
+    return !!root.querySelector('.restricted-editing-exception, [data-key-param-result], [data-auto-key-param-table]');
+}
+
 function mergeKeyParametersIntoContent(card, contentHtml) {
 
     let inputs = card.querySelectorAll('.pathology-key-param-input');
@@ -1004,6 +1136,7 @@ function mergeKeyParametersIntoContent(card, contentHtml) {
                 label: input.dataset.paramLabel || input.dataset.itemCodeSub,
                 uom: input.dataset.paramUom || '',
                 range: input.dataset.paramRange || '',
+                section: input.dataset.paramSection || '',
                 value: val
             });
         }
@@ -1082,22 +1215,6 @@ function mergeKeyParametersIntoContent(card, contentHtml) {
         heading.textContent = 'Key Parameters';
         block.appendChild(heading);
 
-        let table = doc.createElement('table');
-        table.style.width = '100%';
-        table.style.borderCollapse = 'collapse';
-        table.innerHTML = `
-            <thead>
-                <tr>
-                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;">INVESTIGATION</td>
-                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;text-align:center;">UNIT</td>
-                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;text-align:center;">RESULT</td>
-                    <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;font-weight:bold;">REFERENCE RANGE</td>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        `;
-        block.appendChild(table);
-
         // At the TOP, not appended at the end -- the result table reads
         // first, with any supplementary free text (instrument notes,
         // method, etc.) printing below it, same ordering the stripped-
@@ -1110,52 +1227,51 @@ function mergeKeyParametersIntoContent(card, contentHtml) {
     // self-heals a block found only via the text fallback above.
     block.setAttribute('data-key-param-block', '1');
 
-    let tbody = block.querySelector('tbody');
+    // The table itself is rebuilt from the inputs on every save (every cell
+    // is derived from them anyway), so it always has the same shape as the
+    // printed table (KeyParameterService::buildAutoTable()): only
+    // Investigation | Result, 2pt larger, when no row has a unit or range,
+    // and a heading row wherever the section changes.
+    block.querySelectorAll('table').forEach(t => t.remove());
 
-    // Every row, tagged or not -- an untagged one (same attribute-loss
-    // risk as the block itself) is matched by its own first cell's text,
-    // scoped to just these few rows this code owns, not the whole report,
-    // so an exact match here is reliable.
-    let rowFor = (itemCodeSub, label) => {
+    let twoColumn = entries.every(e => !e.uom && !e.range);
+    let fontSize = twoColumn ? '9.5pt' : '10px';
+    let cell = (extra = '') => `padding:3px 6px;border:1px solid #B8C8D4;font-size:${fontSize};${extra}`;
 
-        let tr = tbody.querySelector(`tr[data-key-param="${itemCodeSub}"]`);
-        if (tr) return tr;
+    let table = doc.createElement('table');
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
 
-        return Array.from(tbody.querySelectorAll('tr')).find(row => {
-            let firstCellText = (row.querySelector('td')?.textContent || '').trim();
-            return firstCellText.indexOf(label) === 0;
-        }) || null;
-    };
+    let headerHtml = `<td style="${cell('font-weight:bold;')}">INVESTIGATION</td>`
+        + `<td style="${cell('font-weight:bold;text-align:center;')}">RESULT</td>`;
+    if (!twoColumn) {
+        headerHtml += `<td style="${cell('font-weight:bold;text-align:center;')}">UNIT</td>`
+            + `<td style="${cell('font-weight:bold;')}">REFERENCE RANGE</td>`;
+    }
 
-    // drop rows for fields that were cleared since the last save
-    Array.from(tbody.querySelectorAll('tr')).forEach(tr => {
-        let stillWanted = entries.some(e => tr === rowFor(e.itemCodeSub, e.label));
-        if (!stillWanted) tr.remove();
-    });
+    let currentSection = '';
+    let rowsHtml = entries.map(e => {
 
-    entries.forEach(e => {
+        let sectionRow = '';
+        if (e.section && e.section !== currentSection) {
+            // Extra space above every heading but the first, same as the print.
+            let gap = currentSection ? 'padding-top:14px;' : '';
+            sectionRow = `<tr><td colspan="${twoColumn ? 2 : 4}" style="${cell('font-weight:bold;text-decoration:underline;' + gap)}">${escapeHtml(e.section)}</td></tr>`;
+        }
+        currentSection = e.section || currentSection;
 
-        let tr = rowFor(e.itemCodeSub, e.label);
-
-        if (!tr) {
-            tr = doc.createElement('tr');
-            tr.innerHTML = `
-                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;"></td>
-                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;text-align:center;"></td>
-                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;text-align:center;"></td>
-                <td style="padding:3px 6px;border:1px solid #B8C8D4;font-size:10px;"></td>
-            `;
-            tbody.appendChild(tr);
+        let row = `<td style="${cell()}">${escapeHtml(e.label)}</td>`
+            + `<td style="${cell('text-align:center;')}">${escapeHtml(e.value)}</td>`;
+        if (!twoColumn) {
+            row += `<td style="${cell('text-align:center;')}">${escapeHtml(e.uom || '-')}</td>`
+                + `<td style="${cell()}">${escapeHtml(e.range || '')}</td>`;
         }
 
-        tr.setAttribute('data-key-param', e.itemCodeSub);
+        return `${sectionRow}<tr data-key-param="${escapeHtml(e.itemCodeSub)}">${row}</tr>`;
+    }).join('');
 
-        let cells = tr.querySelectorAll('td');
-        cells[0].textContent = e.label;
-        cells[1].textContent = e.uom || '-';
-        cells[2].textContent = e.value;
-        cells[3].textContent = e.range || '';
-    });
+    table.innerHTML = `<thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody>`;
+    block.appendChild(table);
 
     applyRestrictedEditingExceptions(root);
 
@@ -1225,7 +1341,13 @@ function renderPathologyFindingCard(container, finding, invoiceNo) {
     // nothing to except, so forcing it on would leave staff unable to
     // type anywhere at all. See hasAdminAuthoredTable()'s doc comment for
     // why the self-managed Key Parameters summary table doesn't count.
-    let editorConfig = hasAdminAuthoredTable(finding.content || '') ? LOCKED_EDITOR_CONFIG : RICH_EDITOR_CONFIG;
+    // A table with NO fillable cell (no #F7FAFC blank result cell) and no
+    // Key Parameter field feeding it (e.g. URINE FOR PREGNANCY, whose
+    // result cells are plain) would lock the whole report with nowhere to
+    // type, so it stays unrestricted too.
+    let editorConfig = hasAdminAuthoredTable(finding.content || '') && hasFillableRegion(finding.content || '')
+        ? LOCKED_EDITOR_CONFIG
+        : RICH_EDITOR_CONFIG;
 
     // Returned so loadPathologyReports() can wait for every card's editor
     // (and, with it, lockPathologyCard()'s confirmed-badge display) before
@@ -1919,4 +2041,3 @@ document.addEventListener('click', function (e) {
         sendPathologyWhatsappNow(btn);
     }
 });
-

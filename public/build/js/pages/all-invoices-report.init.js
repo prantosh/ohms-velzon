@@ -81,8 +81,13 @@ async function loadTab(tabKey, page = 1) {
 
     state.lastPage = result.pagination.last_page;
 
-    document.getElementById(`pageNumber-${tabKey}`).innerText = `Page ${result.pagination.current_page}`;
-    document.getElementById(`pagination-info-${tabKey}`).innerText = `Total Records : ${result.pagination.total}`;
+    renderPager(result.pagination, function (p) { loadTab(tabKey, p); }, {
+        number: `pageNumber-${tabKey}`,
+        info: `pagination-info-${tabKey}`,
+        prev: document.querySelector(`.prevPage-btn[data-tab="${tabKey}"]`),
+        next: document.querySelector(`.nextPage-btn[data-tab="${tabKey}"]`),
+        perPage: state.perPage
+    });
 
     let startSl = (result.pagination.current_page - 1) * state.perPage;
 

@@ -39,6 +39,10 @@ Create Diagnostic Invoice
         vertical-align: middle;
     }
 
+    #testTable thead th {
+        font-size: 11px;
+    }
+
 
 
 
@@ -60,9 +64,15 @@ Create Diagnostic Invoice
         transition: all .2s;
     }
 
-        .patientRow:hover {
+        .patientRow:hover,
+        .patientRow:focus {
             background-color: #cfe2ff !important;
             transform: scale(1.01);
+        }
+
+        .patientRow:focus {
+            outline: 2px solid #0d6efd;
+            outline-offset: -2px;
         }
 </style>
 
@@ -330,19 +340,6 @@ Create Diagnostic Invoice
                         </div>
 
                     </div>
-                    <div class="d-flex justify-content-end mb-2">
-
-                        <button
-                            type="button"
-                            id="addRow"
-                            class="btn btn-primary btn-sm">
-
-                            <i class="ri-add-line"></i>
-                            Add Test
-
-                        </button>
-
-                    </div>
                     <!-- Test Grid -->
 
                     <div class="table-responsive">
@@ -393,6 +390,26 @@ Create Diagnostic Invoice
 
                             <tbody>
                             </tbody>
+
+                            {{-- tfoot always renders after the item rows, so the button
+                                 sits just under the last Category drop down and moves
+                                 down as items are added. --}}
+                            <tfoot>
+                                <tr>
+                                    <td colspan="8">
+                                        <button
+                                            type="button"
+                                            id="addRow"
+                                            class="btn btn-danger"
+                                            style="font-size: 1.1rem; font-weight: 600;">
+
+                                            <i class="ri-add-line"></i>
+                                            Add Test
+
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tfoot>
 
                         </table>
 
@@ -570,7 +587,7 @@ Create Diagnostic Invoice
             </a>
 
             <button type="submit" id="saveInvoiceBtn"
-                    class="btn btn-success">
+                    class="btn btn-success d-none">
 
                 Save Invoice
 
@@ -740,6 +757,6 @@ Select
 <script src="{{ URL::asset('build/libs/flatpickr/flatpickr.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/pages/flatpickr-dmy.init.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}?v={{ @filemtime(public_path('build/js/pages/apps-diagnostic-invoice.init.js')) ?: 1 }}"></script>
+<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}?v={{ filemtime(public_path('build/js/pages/apps-diagnostic-invoice.init.js')) }}"></script>
 
 @endsection

@@ -280,7 +280,7 @@ table {
 
             <td width="35%">
                 <span class="pdt-label">Ref. Doctor :</span>
-                <span class="pdt-value">{{ strlen(trim((string) $invoice->referred_doctor)) < 8 ? 'Not Mentioned' : trim($invoice->referred_doctor) }}</span>
+                <span class="pdt-value">{{ \App\Support\ReferredDoctor::display($invoice->referred_doctor) }}</span>
             </td>
 
             <td width="30%" style="text-align:right;">

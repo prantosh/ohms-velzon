@@ -197,11 +197,21 @@ document.getElementById('generatePatientIdBtn').addEventListener('click', async 
         return;
     }
 
-    const idResponse = await fetch(`/patient/generate-id?mobile_no=${encodeURIComponent(mobile)}`);
+    const idResponse = await fetch(`/patient/generate-id?mobile_no=${encodeURIComponent(mobile)}&patient_name=${encodeURIComponent(name)}`);
 
     const idResult = await idResponse.json();
 
     document.querySelector('#patient_id-field').value = idResult.patient_id;
+
+    // Same mobile + name already has an ID -- it is reused, and the age and
+    // gender entered here are saved onto it below.
+    if (idResult.existing) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Existing patient',
+            text: `${name} is already registered on this mobile number as ${idResult.patient_id}. That ID will be used and the age/gender updated.`
+        });
+    }
 
     await fetch('/diagnostic-invoice/save-patient', {
         method: 'POST',
@@ -338,11 +348,8 @@ async function loadRentals(page = 1) {
 
     lastPage = result.pagination.last_page;
 
-    document.querySelector('#pageNumber').innerText =
-        `Page ${result.pagination.current_page}`;
+    renderPager(result.pagination, loadRentals);
 
-    document.querySelector('#pagination-info').innerText =
-        `Total Records : ${result.pagination.total}`;
 
     result.data.forEach(raw => {
 

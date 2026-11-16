@@ -36,6 +36,7 @@ return [
     'wati' => [
         'url' => env('WATI_API_URL'),
         'token' => env('WATI_API_TOKEN'),
+        'webhook_secret' => env('WATI_WEBHOOK_SECRET'),
         'otp_template_name' => env('WATI_OTP_TEMPLATE_NAME'),
         'otp_broadcast_name' => env('WATI_OTP_BROADCAST_NAME'),
         'oxygen_template_name' => env('WATI_OXYGEN_TEMPLATE_NAME', 'oxygen_rent'),

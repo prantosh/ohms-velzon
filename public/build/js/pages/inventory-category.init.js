@@ -23,8 +23,7 @@ async function loadCategories(page = 1) {
 
     lastPage = result.pagination.last_page;
 
-    document.querySelector('#pageNumber').innerText = `Page ${result.pagination.current_page}`;
-    document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
+    renderPager(result.pagination, loadCategories);
 
     let startSl = (result.pagination.current_page - 1) * perPage;
 

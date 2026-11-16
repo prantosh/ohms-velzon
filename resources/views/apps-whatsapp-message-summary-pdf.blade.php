@@ -136,6 +136,22 @@ function whatsappTypeCell($stats)
 </tr>
 
 <tr>
+    <td class="label-blue">Delivered to Phone</td>
+    <td>{{ $grandTotal['delivered_count'] ?? 0 }}</td>
+
+    <td class="label-blue">Read by Patient</td>
+    <td>{{ $grandTotal['read_count'] ?? 0 }}</td>
+</tr>
+
+<tr>
+    <td class="label-blue">Not Delivered</td>
+    <td>{{ $grandTotal['not_delivered_count'] ?? 0 }}</td>
+
+    <td class="label-blue">Awaiting Receipt</td>
+    <td>{{ max(0, $grandTotal['sent_count'] - ($grandTotal['delivered_count'] ?? 0) - ($grandTotal['not_delivered_count'] ?? 0)) }}</td>
+</tr>
+
+<tr>
     <td class="label-blue">Success Rate</td>
     <td><b>{{ whatsappSuccessRate($grandTotal['sent_count'], $grandTotal['failed_count']) }}</b></td>
 
@@ -148,6 +164,7 @@ function whatsappTypeCell($stats)
 <p style="font-size:7.5px; color:#555; margin-top:4px;">
     <b>How to read the table below:</b> Total = Sent + Failed + Skipped on every row. Each category
     column shows that category's own Sent count, so those always add up to the row's Sent total.
+    Delivered / Read / Not Delivered are receipts reported back by WhatsApp afterwards -- a breakdown of Sent.
 </p>
 
 <!-- =======================================================
@@ -156,7 +173,7 @@ function whatsappTypeCell($stats)
 
 <table>
 
-@php $colCount = 5 + count($typeColumns); @endphp
+@php $colCount = 8 + count($typeColumns); @endphp
 
 <thead>
 <tr>
@@ -170,6 +187,9 @@ function whatsappTypeCell($stats)
     <th width="9%">Sent</th>
     <th width="9%">Failed</th>
     <th width="9%">Skipped</th>
+    <th width="8%">Delivered</th>
+    <th width="8%">Read</th>
+    <th width="8%">Not Delivered</th>
     @foreach($typeColumns as $col)
     <th>{{ $col['label'] }}</th>
     @endforeach
@@ -185,6 +205,9 @@ function whatsappTypeCell($stats)
     <td class="text-end">{{ $row['sent_count'] }}</td>
     <td class="text-end">{{ $row['failed_count'] }}</td>
     <td class="text-end">{{ $row['skipped_count'] }}</td>
+    <td class="text-end">{{ $row['delivered_count'] ?? 0 }}</td>
+    <td class="text-end">{{ $row['read_count'] ?? 0 }}</td>
+    <td class="text-end">{{ $row['not_delivered_count'] ?? 0 }}</td>
     @foreach($typeColumns as $col)
     <td class="text-end">{!! whatsappTypeCell($row['types'][$col['key']] ?? null) !!}</td>
     @endforeach
@@ -201,6 +224,9 @@ function whatsappTypeCell($stats)
     <td class="text-end">{{ $grandTotal['sent_count'] }}</td>
     <td class="text-end">{{ $grandTotal['failed_count'] }}</td>
     <td class="text-end">{{ $grandTotal['skipped_count'] }}</td>
+    <td class="text-end">{{ $grandTotal['delivered_count'] ?? 0 }}</td>
+    <td class="text-end">{{ $grandTotal['read_count'] ?? 0 }}</td>
+    <td class="text-end">{{ $grandTotal['not_delivered_count'] ?? 0 }}</td>
     @foreach($typeColumns as $col)
     <td class="text-end">{!! whatsappTypeCell($grandTotal['types'][$col['key']] ?? null) !!}</td>
     @endforeach

@@ -122,7 +122,7 @@
 
             <span class="ms-2">
 
-                records
+                entries
 
             </span>
 
@@ -622,5 +622,5 @@
 
 
 
-<script src="{{ URL::asset('build/js/pages/ecommerce-doctor-schedule-list.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/ecommerce-doctor-schedule-list.init.js') }}?v={{ filemtime(public_path('build/js/pages/ecommerce-doctor-schedule-list.init.js')) }}"></script>
 @endsection

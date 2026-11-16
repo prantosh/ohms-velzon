@@ -124,6 +124,22 @@ function whatsappSuccessRate2($sent, $failed)
 </tr>
 
 <tr>
+    <td class="label-blue">Delivered to Phone</td>
+    <td>{{ $summary['delivered_count'] ?? 0 }}</td>
+
+    <td class="label-blue">Read by Patient</td>
+    <td>{{ $summary['read_count'] ?? 0 }}</td>
+</tr>
+
+<tr>
+    <td class="label-blue">Not Delivered</td>
+    <td>{{ $summary['not_delivered_count'] ?? 0 }}</td>
+
+    <td class="label-blue">Awaiting Receipt</td>
+    <td>{{ max(0, $summary['sent_count'] - ($summary['delivered_count'] ?? 0) - ($summary['not_delivered_count'] ?? 0)) }}</td>
+</tr>
+
+<tr>
     <td class="label-blue">Printed By</td>
     <td colspan="3">{{ $printedBy }}</td>
 </tr>
@@ -138,7 +154,7 @@ function whatsappSuccessRate2($sent, $failed)
 
 <thead>
 <tr>
-    <th colspan="7" style="text-align:left; background-color:#e6e6e6;">
+    <th colspan="8" style="text-align:left; background-color:#e6e6e6;">
         Messages Sent On {{ $date->format('d-m-Y') }}
     </th>
 </tr>
@@ -149,6 +165,7 @@ function whatsappSuccessRate2($sent, $failed)
     <th width="11%">Mobile No</th>
     <th width="11%">Type</th>
     <th width="7%">Status</th>
+    <th width="14%">Delivery</th>
     <th>Message ID / Error</th>
 </tr>
 </thead>
@@ -163,11 +180,18 @@ function whatsappSuccessRate2($sent, $failed)
     <td>{{ $row['mobile_no'] }}</td>
     <td>{{ $row['type_label'] }}</td>
     <td class="text-center">{{ $row['status'] }}</td>
+    <td>
+        {{ $row['delivery_label'] ?? '-' }}
+        @if(!empty($row['read_at_fmt']))<br><small>Read {{ $row['read_at_fmt'] }}</small>
+        @elseif(!empty($row['delivered_at_fmt']))<br><small>Delivered {{ $row['delivered_at_fmt'] }}</small>
+        @elseif(($row['delivery_status'] ?? null) === 'FAILED' && !empty($row['delivery_failure_reason']))<br><small>{{ $row['delivery_failure_reason'] }}</small>
+        @endif
+    </td>
     <td>{{ $row['status'] === 'SENT' ? ($row['message_id'] ?? '-') : ($row['response_preview'] ?? '-') }}</td>
 </tr>
 @empty
 <tr>
-    <td colspan="7" class="text-center">No WhatsApp messages found for this date.</td>
+    <td colspan="8" class="text-center">No WhatsApp messages found for this date.</td>
 </tr>
 @endforelse
 

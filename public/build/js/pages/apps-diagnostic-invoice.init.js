@@ -59,6 +59,8 @@ $(document).ready(function () {
 
     if ($("#invoiceTable").length) {
 
+        applyInvoicePaymentMode();
+
         loadInvoices();
     }
 
@@ -72,6 +74,23 @@ $(document).ready(function () {
             $(this).addClass("active");
 
             currentInvoiceCategory = $(this).data("category");
+
+            loadInvoices();
+        }
+    );
+
+    $(document).on(
+        "click",
+        "#invoicePaymentTabs .nav-link",
+        function () {
+
+            $("#invoicePaymentTabs .nav-link").removeClass("active");
+
+            $(this).addClass("active");
+
+            currentInvoicePayment = $(this).data("payment");
+
+            applyInvoicePaymentMode();
 
             loadInvoices();
         }
@@ -125,7 +144,19 @@ $(document).ready(function () {
 */
 
 let currentInvoiceCategory = 'PATHOLOGY';
+// Matches the sub-tab that is active on load (Payment Due).
+let currentInvoicePayment = 'due';
 let currentInvoiceDays = 3;
+
+// Payment Due ignores the day range (it lists every due record), so the day
+// buttons are disabled and the day-range caption is hidden while it is selected.
+function applyInvoicePaymentMode() {
+
+    const allRecords = currentInvoicePayment === 'due';
+
+    $("#invoiceDaysFilter button").prop("disabled", allRecords);
+    $("#invoiceDaysText").toggleClass("d-none", allRecords);
+}
 
 function loadInvoices() {
 
@@ -157,6 +188,7 @@ function loadInvoices() {
 
         data: {
             category: currentInvoiceCategory,
+            payment: currentInvoicePayment,
             days: currentInvoiceDays
         },
 
@@ -283,7 +315,7 @@ function loadInvoices() {
                         }
                         </td>
 
-                        <td>${action}</td>
+                        <td class="invoice-action-cell">${action}</td>
 
                     </tr>
                     `);
@@ -291,7 +323,8 @@ function loadInvoices() {
 
             $('#invoiceTable')
                 .DataTable({
-                    responsive: true
+                    responsive: true,
+                    ordering: false
                 });
         },
 
@@ -946,6 +979,26 @@ function addTestRow(applyAutoCategory = true) {
 
     </div>
 
+    <div class="col-md-3 applyDiscountToAllWrap" style="display:none;">
+
+        <label>&nbsp;</label>
+
+        <div class="form-check mt-2">
+
+            <input
+                type="checkbox"
+                class="form-check-input applyDiscountToAll"
+                id="applyAll_${rowIndex}"
+                disabled>
+
+            <label class="form-check-label small" for="applyAll_${rowIndex}">
+                Same Disc % for all items
+            </label>
+
+        </div>
+
+    </div>
+
 </div>
 
 </td>
@@ -968,6 +1021,8 @@ function addTestRow(applyAutoCategory = true) {
         .append(html);
 
     setRowTestDate($('#testTable tbody tr.mainRow:last .rowTestDate')[0], invoiceTestDateValue());
+
+    refreshApplyDiscountToAll();
 
     $('#addRow').prop('disabled', true);
     $('#testTable tbody tr.mainRow .category')
@@ -1094,6 +1149,15 @@ $(document).on(
         let mainRow =
             $(this).closest('tr');
 
+        // The first row owns the "same discount for all" source values.
+        if (mainRow.is($('#testTable tbody tr.mainRow').first())) {
+
+            mainRow.next('.detailRow')
+                .find('.applyDiscountToAll').prop('checked', false);
+
+            releaseApplyDiscountToAll();
+        }
+
         // If this row is itself a package (its component rows are hidden,
         // not gone -- see the package-expansion loop), removing it must
         // take its components with it, or they'd linger in the DOM and
@@ -1127,6 +1191,8 @@ $(document).on(
             .removeClass('locked-category');
 
         calculateTotal();
+
+        refreshApplyDiscountToAll();
 
         checkLastRowCompletion();
     }
@@ -1209,6 +1275,8 @@ $(document).on(
             mainRow.find('.amount')
                 .prop('readonly', true);
         }
+
+        refreshApplyDiscountToAll();
 
         let category = $(this).val();
 
@@ -1528,7 +1596,174 @@ function populateTestRow(mainRow, testData, forceZeroAmount = false) {
     applyStandardDiscount(mainRow, d1, d2, d3, d4, d5);
 
     mainRow.find('.standardDiscount').trigger('change');
+
+    refreshApplyDiscountToAll();
 }
+
+/*
+|--------------------------------------------------------------------------
+| SAME ADDITIONAL DISCOUNT % FOR ALL ITEMS
+|--------------------------------------------------------------------------
+| The checkbox lives only in the first item's detail row. It is enabled
+| once that row has an Addl Disc % and an Approved By; checking it copies
+| both onto every other item (and locks them there). Manual-category rows
+| and hidden package-component rows are left out.
+*/
+
+function isManualRow(mainRow) {
+    return (
+        mainRow.find('.category option:selected').data('category-name') || ''
+    ).toUpperCase().includes('MANUAL');
+}
+
+function releaseApplyDiscountToAll() {
+
+    $('#testTable tbody tr.mainRow').each(function () {
+
+        let detailRow = $(this).next('.detailRow');
+
+        let percent = detailRow.find('.additionalDiscountPercent');
+
+        if (!percent.hasClass('appliedFromFirst')) {
+            return;
+        }
+
+        percent
+            .removeClass('appliedFromFirst')
+            .prop('readonly', false)
+            .val(0)
+            .trigger('change');
+
+        detailRow.find('.discountApprovedBy')
+            .removeClass('appliedFromFirst')
+            .css('pointer-events', '')
+            .removeAttr('tabindex')
+            .val('')
+            .trigger('change');
+    });
+}
+
+// Addl Disc % and Addl Amt are mutually exclusive per item: whichever one
+// has a value locks the other.
+function syncAddlDiscountExclusivity() {
+
+    $('#testTable tbody tr.mainRow').each(function () {
+
+        let detailRow = $(this).next('.detailRow');
+
+        if (isManualRow($(this)) || detailRow.find('.locked-discount').length) {
+            return;
+        }
+
+        let percent = detailRow.find('.additionalDiscountPercent');
+        let amount = detailRow.find('.additionalDiscountAmount');
+
+        let hasPercent = (parseFloat(percent.val()) || 0) > 0;
+        let hasAmount = (parseFloat(amount.val()) || 0) > 0;
+
+        percent.prop('readonly', hasAmount || percent.hasClass('appliedFromFirst'));
+        amount.prop('readonly', hasPercent);
+    });
+}
+
+$(document).on(
+    'input change',
+    '.additionalDiscountPercent, .additionalDiscountAmount',
+    syncAddlDiscountExclusivity
+);
+
+function refreshApplyDiscountToAll() {
+
+    applyDiscountToAllCore();
+
+    syncAddlDiscountExclusivity();
+}
+
+function applyDiscountToAllCore() {
+
+    let rows = $('#testTable tbody tr.mainRow');
+
+    if (rows.length === 0) {
+        return;
+    }
+
+    let first = rows.first();
+    let firstDetail = first.next('.detailRow');
+
+    $('#testTable .applyDiscountToAllWrap').hide();
+    firstDetail.find('.applyDiscountToAllWrap').show();
+
+    let checkbox = firstDetail.find('.applyDiscountToAll');
+
+    let percent =
+        parseFloat(firstDetail.find('.additionalDiscountPercent').val()) || 0;
+
+    let approver = firstDetail.find('.discountApprovedBy').val();
+
+    let eligible = percent > 0 && !!approver && !isManualRow(first);
+
+    checkbox.prop('disabled', !eligible);
+
+    if (!eligible && checkbox.is(':checked')) {
+
+        checkbox.prop('checked', false);
+        releaseApplyDiscountToAll();
+
+        return;
+    }
+
+    if (!checkbox.is(':checked')) {
+        return;
+    }
+
+    rows.not(first).each(function () {
+
+        let row = $(this);
+
+        let detailRow = row.next('.detailRow');
+
+        if (isManualRow(row) || detailRow.find('.locked-discount').length) {
+            return;
+        }
+
+        detailRow.find('.additionalDiscountAmount').val(0);
+
+        detailRow.find('.additionalDiscountPercent')
+            .addClass('appliedFromFirst')
+            .prop('readonly', true)
+            .val(percent)
+            .trigger('change');
+
+        detailRow.find('.discountApprovedBy')
+            .addClass('appliedFromFirst')
+            .css('pointer-events', 'none')
+            .attr('tabindex', -1)
+            .val(approver)
+            .trigger('change');
+    });
+}
+
+$(document).on('change', '.applyDiscountToAll', function () {
+
+    if (!$(this).is(':checked')) {
+        releaseApplyDiscountToAll();
+    }
+
+    refreshApplyDiscountToAll();
+});
+
+$(document).on(
+    'input change',
+    '.additionalDiscountPercent, .discountApprovedBy',
+    function () {
+
+        let mainRow = $(this).closest('tr').prev('.mainRow');
+
+        if (mainRow.is($('#testTable tbody tr.mainRow').first())) {
+            refreshApplyDiscountToAll();
+        }
+    }
+);
 
 /*
 |--------------------------------------------------------------------------
@@ -1751,6 +1986,16 @@ function removePackageComponentRows(mainRow) {
     checkLastRowCompletion();
 }
 
+function isItemAlreadyOnInvoice(itemCodeSub, exceptRow) {
+
+    return $('#testTable tbody tr.mainRow')
+        .not(exceptRow)
+        .not('[data-package-owner]')
+        .filter(function () {
+            return $(this).find('.test').val() === itemCodeSub;
+        }).length > 0;
+}
+
 $(document).on(
     "change",
     ".test",
@@ -1762,6 +2007,40 @@ $(document).on(
         let mainRow =
             $(this)
                 .closest('tr');
+
+        /*
+        |--------------------------------------------------------------------------
+        | ONE LINE PER ITEM -- an item already billed on another row of this
+        | invoice can't be selected again. Package component rows (hidden,
+        | zero-rated, tagged data-package-owner) aren't billed lines and are
+        | ignored. On a duplicate the row reverts to its previous selection
+        | without re-running this handler, so its state stays as it was.
+        |--------------------------------------------------------------------------
+        */
+
+        let pickedCode = $(this).val();
+
+        if (pickedCode && isItemAlreadyOnInvoice(pickedCode, mainRow)) {
+
+            let previousCode = $(this).data('prevTest') || '';
+
+            $(this).val(previousCode);
+
+            if ($(this).val() !== previousCode) {
+                $(this).val('');
+            }
+
+            Swal.fire({
+                icon: 'warning',
+                title: 'Item Already Added',
+                text: '"' + (selected.data('name') || selected.text().trim()) +
+                    '" is already on this invoice. An item can be invoiced only once per invoice.'
+            });
+
+            return;
+        }
+
+        $(this).data('prevTest', pickedCode);
 
         // Whatever this row was previously (a package with auto-added
         // components), it no longer applies now that the selection is
@@ -1904,7 +2183,21 @@ $(document).on(
 
                 buildTestDropdown(newRow.find('.test'), categoryTests);
 
-                newRow.find('.test').val(testData.components[i].item_code_sub);
+                let componentTest =
+                    newRow.find('.test');
+
+                if (componentTest.find('option').filter(function () {
+                    return $(this).val() === testData.components[i].item_code_sub;
+                }).length === 0) {
+                    componentTest.append(
+                        $('<option>', {
+                            value: testData.components[i].item_code_sub,
+                            text: testData.components[i].item_description_sub
+                        })
+                    );
+                }
+
+                componentTest.val(testData.components[i].item_code_sub);
 
                 populateTestRow(newRow, testData.components[i], true);
 
@@ -2275,7 +2568,22 @@ $(document).on(
 |--------------------------------------------------------------------------
 */
 
+// Save Invoice stays hidden until at least one row has a test picked --
+// an invoice with no test items can't be saved anyway.
+function toggleSaveInvoiceBtn() {
+
+    let hasTest = $('#testTable tbody tr.mainRow .test').filter(function () {
+        return $(this).val();
+    }).length > 0;
+
+    $('#saveInvoiceBtn').toggleClass('d-none', !hasTest);
+}
+
+$(document).on('change', '#testTable .test', toggleSaveInvoiceBtn);
+
 function calculateTotal() {
+    toggleSaveInvoiceBtn();
+
     let total = 0;
 
     let totalDiscount = 0;
@@ -2618,9 +2926,9 @@ $('#btnBackToEditDuePayment').on('click', function () {
 
 /*
 |--------------------------------------------------------------------------
-| USG DOCTOR REPLACEMENT (EDIT MODE - DUE PAYMENT SCREEN)
+| DOCTOR REPLACEMENT (EDIT MODE - DUE PAYMENT SCREEN)
 |--------------------------------------------------------------------------
-| Lets the operator swap the doctor originally selected for a USG line at
+| Lets the operator swap the doctor originally selected for a test line at
 | the point the remaining due amount is collected -- see
 | DiagnosticInvoiceController::update()'s matching comment for why this
 | exists and how the payable is recalculated. Reuses the exact same
@@ -2630,7 +2938,7 @@ $('#btnBackToEditDuePayment').on('click', function () {
 |--------------------------------------------------------------------------
 */
 
-function loadUsgDoctorReplacementOptions(select) {
+function loadDoctorReplacementOptions(select) {
 
     let itemCodeSub = select.data('item-code-sub');
     let currentDoctorId = String(select.data('current-doctor-id'));
@@ -2668,7 +2976,7 @@ $(document).on('change', '.changeDoctorSelect', function () {
 if (window.editMode) {
 
     $('.changeDoctorSelect').each(function () {
-        loadUsgDoctorReplacementOptions($(this));
+        loadDoctorReplacementOptions($(this));
     });
 }
 
@@ -3474,6 +3782,7 @@ $(document).on('click', '#searchPatient', function () {
 
                         <tr
                             class="patientRow ${i % 2 === 0 ? 'table-light' : 'table-info'}"
+                            tabindex="0"
                             data-patient-id="${row.patient_id}">
 
                             <td class="text-center">
@@ -3543,9 +3852,11 @@ $(document).on('click', '#searchPatient', function () {
 
                 $('#patientSearchResult').show();
 
-               
+
 
                 $('#patientSearchResult').show();
+
+                $('#search_mobile_no').data('searched-mobile', mobile);
             }
             else {
 
@@ -3623,9 +3934,26 @@ $(document).on('input', '#search_mobile_no', function () {
 
 $(document).on('keydown', '#search_mobile_no', function (e) {
 
-    if (e.key === 'Tab') {
+    if (e.key === 'Tab' || e.key === 'Enter') {
 
         let mobile = $(this).val().trim();
+
+        // Patient list already showing for this same number (e.g. searched
+        // with Enter) -- Tab moves into the list instead of searching again,
+        // so the patient can be picked with Up/Down + Enter.
+        let firstRow = $('#patientListBody .patientRow:first');
+
+        if (
+            e.key === 'Tab'
+            && !e.shiftKey
+            && firstRow.length
+            && $('#patientSearchResult').is(':visible')
+            && $(this).data('searched-mobile') === mobile
+        ) {
+            e.preventDefault();
+            firstRow.trigger('focus');
+            return;
+        }
 
         if (!/^[1-9][0-9]{9}$/.test(mobile)) {
 
@@ -3680,6 +4008,30 @@ $(document).on(
         $('#patient_name').focus();
     }
 );
+// Keyboard selection in the patient list: Up/Down moves between patients,
+// Enter picks the focused one (same as clicking it). Keys pressed on the
+// row's own checkboxes are left alone.
+$(document).on('keydown', '.patientRow', function (e) {
+
+    if (e.target !== this) return;
+
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+
+        e.preventDefault();
+
+        let target = e.key === 'ArrowDown'
+            ? $(this).nextAll('.patientRow:first')
+            : $(this).prevAll('.patientRow:first');
+
+        if (target.length) target.trigger('focus');
+
+    } else if (e.key === 'Enter') {
+
+        e.preventDefault();
+        $(this).trigger('click');
+    }
+});
+
 $(document).on(
     'click',
     '.patientRow',
@@ -4060,12 +4412,26 @@ $(document).on(
             '/patient/generate-id',
             {
                 mobile_no:
-                    $('#patient_mobile_no').val()
+                    $('#patient_mobile_no').val(),
+
+                patient_name:
+                    $('#patient_name').val()
             },
             function (response) {
 
                 $('#patient_id')
                     .val(response.patient_id);
+
+                // Same mobile + name already has an ID -- it is reused, and
+                // the age/gender typed here are saved onto it below.
+                if (response.existing) {
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Existing patient',
+                        text: $('#patient_name').val() + ' is already registered on this mobile number as ' +
+                            response.patient_id + '. That ID will be used and the age/gender updated.'
+                    });
+                }
 
                 enableInvoiceSection();
 
@@ -4198,6 +4564,57 @@ $(document).on(
         );
     }
 );
+
+/*
+|--------------------------------------------------------------------------
+| AGE EDITED ON AN EXISTING PATIENT -- an existing patient's Age box stays
+| editable (the typed value is saved back to the patient with the invoice),
+| so a patient with no age on file can have one entered here. Re-derive
+| Senior Citizen eligibility from the typed age and recalculate every test
+| row, instead of keeping the flag fixed from the stored age. New patients
+| are handled by the Generate Patient ID flow, which reads the age itself.
+|--------------------------------------------------------------------------
+*/
+
+let ageEligibilityTimer = null;
+let ageEligibilityRequest = 0;
+
+$(document).on('input change', '#patient_age', function () {
+
+    if (!$('#patient_id').val() || $('#generatePatientIdBtn').is(':visible')) {
+        return;
+    }
+
+    clearTimeout(ageEligibilityTimer);
+
+    ageEligibilityTimer = setTimeout(function () {
+
+        let requestId = ++ageEligibilityRequest;
+
+        $.post('/diagnostic-invoice/new-patient-discount', {
+            _token: $('meta[name="csrf-token"]').attr('content'),
+            age: $('#patient_age').val(),
+            mobile_no: $('#patient_mobile_no').val(),
+            patient_name: $('#patient_name').val()
+        }, function (d) {
+
+            // A later keystroke's response supersedes this one.
+            if (requestId !== ageEligibilityRequest) return;
+
+            $('#discountMessage').text(
+                d.messages && d.messages.length > 0
+                    ? d.messages.join(' | ')
+                    : 'Patient is not eligible for any standard discount.'
+            );
+
+            window.isEmployeeMember = d.is_member;
+            window.isSeniorCitizen = parseInt($('#patient_age').val()) >= 60;
+
+            recalculateStandardDiscountsForAllRows();
+        });
+
+    }, 400);
+});
 
 /*
 |--------------------------------------------------------------------------

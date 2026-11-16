@@ -146,10 +146,47 @@
 
                 </div>
 
+                <div class="row" id="summaryDeliveryRow" style="display:none;">
+
+                    <div class="col mb-3">
+                        <div class="card h-100"><div class="card-body text-center">
+                            <h5 class="mb-0 text-success" id="grand-delivered_count">0</h5>
+                            <small class="text-muted">Delivered to Phone</small>
+                        </div></div>
+                    </div>
+
+                    <div class="col mb-3">
+                        <div class="card h-100"><div class="card-body text-center">
+                            <h5 class="mb-0 text-primary" id="grand-read_count">0</h5>
+                            <small class="text-muted">Read by Patient</small>
+                        </div></div>
+                    </div>
+
+                    <div class="col mb-3">
+                        <div class="card h-100"><div class="card-body text-center">
+                            <h5 class="mb-0 text-danger" id="grand-not_delivered_count">0</h5>
+                            <small class="text-muted">Not Delivered</small>
+                        </div></div>
+                    </div>
+
+                    <div class="col mb-3">
+                        <div class="card h-100"><div class="card-body text-center">
+                            <h5 class="mb-0 text-warning" id="grand-awaiting_count">0</h5>
+                            <small class="text-muted">Awaiting Receipt</small>
+                        </div></div>
+                    </div>
+
+                </div>
+
                 <div class="alert alert-light border small mb-3">
                     <b>How to read this table:</b> <code>Total = Sent + Failed + Skipped</code> on every row.
                     Each category column below shows that category's own <b>Sent</b> count, so those always add up
                     to the row's Sent total.
+                    <br>
+                    <b>Sent</b> means WhatsApp's provider (WATI) accepted the message. <b>Delivered</b> and
+                    <b>Read</b> are receipts WhatsApp reports back afterwards -- a breakdown of Sent, not extra
+                    messages. <b>Not Delivered</b> = accepted but WhatsApp could not deliver it (e.g. number not
+                    on WhatsApp). Messages sent before delivery tracking was switched on stay "Awaiting".
                 </div>
 
                 <div class="card" id="summaryCard" style="display:none;">
@@ -171,6 +208,9 @@
                                         <th width="90" class="text-end">Sent</th>
                                         <th width="90" class="text-end">Failed</th>
                                         <th width="90" class="text-end">Skipped</th>
+                                        <th width="90" class="text-end">Delivered</th>
+                                        <th width="90" class="text-end">Read</th>
+                                        <th width="90" class="text-end">Not Delivered</th>
                                         <!-- category columns injected dynamically by JS, one per distinct
                                              message_type found in whatsapp_message_logs -- each shows that
                                              category's own Sent count (see alert above) -->
@@ -237,38 +277,70 @@
 
                 <div class="row" id="detailTotalsRow" style="display:none;">
 
-                    <div class="col mb-3">
+                    <div class="col-4 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0" id="detail-total_count">0</h5>
                             <small class="text-muted">Total Messages</small>
                         </div></div>
                     </div>
 
-                    <div class="col mb-3">
+                    <div class="col-4 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-success" id="detail-sent_count">0</h5>
                             <small class="text-muted">Sent</small>
                         </div></div>
                     </div>
 
-                    <div class="col mb-3">
+                    <div class="col-4 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-danger" id="detail-failed_count">0</h5>
                             <small class="text-muted">Failed</small>
                         </div></div>
                     </div>
 
-                    <div class="col mb-3">
+                    <div class="col-4 col-md mb-3">
                         <div class="card h-100"><div class="card-body text-center">
                             <h5 class="mb-0 text-secondary" id="detail-skipped_count">0</h5>
                             <small class="text-muted">Skipped (Auto-Send Off)</small>
                         </div></div>
                     </div>
 
-                    <div class="col mb-3">
+                    <div class="col-4 col-md mb-3">
                         <div class="card h-100 border border-success"><div class="card-body text-center">
                             <h5 class="mb-0 text-success" id="detail-success_rate">0%</h5>
                             <small class="text-muted fw-semibold">Success Rate</small>
+                        </div></div>
+                    </div>
+
+                </div>
+
+                <div class="row" id="detailDeliveryRow" style="display:none;">
+
+                    <div class="col-6 col-md mb-3">
+                        <div class="card h-100"><div class="card-body text-center">
+                            <h5 class="mb-0 text-success" id="detail-delivered_count">0</h5>
+                            <small class="text-muted">Delivered to Phone</small>
+                        </div></div>
+                    </div>
+
+                    <div class="col-6 col-md mb-3">
+                        <div class="card h-100"><div class="card-body text-center">
+                            <h5 class="mb-0 text-primary" id="detail-read_count">0</h5>
+                            <small class="text-muted">Read by Patient</small>
+                        </div></div>
+                    </div>
+
+                    <div class="col-6 col-md mb-3">
+                        <div class="card h-100"><div class="card-body text-center">
+                            <h5 class="mb-0 text-danger" id="detail-not_delivered_count">0</h5>
+                            <small class="text-muted">Not Delivered</small>
+                        </div></div>
+                    </div>
+
+                    <div class="col-6 col-md mb-3">
+                        <div class="card h-100"><div class="card-body text-center">
+                            <h5 class="mb-0 text-warning" id="detail-awaiting_count">0</h5>
+                            <small class="text-muted">Awaiting Receipt</small>
                         </div></div>
                     </div>
 
@@ -284,7 +356,7 @@
 
                         <div class="table-responsive">
 
-                            <table class="table table-bordered align-middle">
+                            <table class="table table-bordered align-middle table-mobile-cards">
 
                                 <thead class="table-light">
                                     <tr>
@@ -294,6 +366,7 @@
                                         <th width="120">Mobile No</th>
                                         <th width="110">Type</th>
                                         <th width="90">Status</th>
+                                        <th width="170">Delivery</th>
                                         <th>Message ID / Error</th>
                                     </tr>
                                 </thead>
@@ -465,6 +538,6 @@
 <script src="{{ URL::asset('build/libs/flatpickr/flatpickr.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/pages/flatpickr-dmy.init.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/whatsapp-message-report.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/whatsapp-message-report.init.js') }}?v={{ @filemtime(public_path('build/js/pages/whatsapp-message-report.init.js')) }}"></script>
 
 @endsection

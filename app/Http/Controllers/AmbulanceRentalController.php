@@ -128,6 +128,7 @@ class AmbulanceRentalController extends Controller
 
             'patient_id' => 'required',
             'patient_name' => 'required',
+            'patient_age' => 'nullable|digits_between:1,2',
 
             'from_destination' => 'nullable|max:255',
             'address' => 'nullable',
@@ -199,7 +200,26 @@ class AmbulanceRentalController extends Controller
                 return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
             }
 
-            if (!DB::table('patients')->where('patient_id', $request->patient_id)->exists()) {
+            if (DB::table('patients')->where('patient_id', $request->patient_id)->exists()) {
+
+                // Existing patient: the latest age/gender entered wins (a
+                // blank never wipes what's on file).
+                $latest = array_filter([
+                    'age' => $parsedAge['years'] ?? null,
+                    'age_months' => $parsedAge['months'] ?? null,
+                    'age_recorded_on' => $parsedAge ? now()->toDateString() : null,
+                    'gender' => $request->patient_gender,
+                ], fn ($v) => $v !== null && $v !== '');
+
+                // months may legitimately be 0 -- array_filter keeps 0 (not
+                // null/''), so a years-only entry correctly resets months.
+                if ($latest) {
+                    DB::table('patients')
+                        ->where('patient_id', $request->patient_id)
+                        ->update($latest + ['updated_at' => now()]);
+                }
+
+            } else {
 
                 DB::table('patients')->insert([
                     'patient_id' => $request->patient_id,

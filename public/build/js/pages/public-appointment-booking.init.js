@@ -358,6 +358,10 @@ $(document).on('change', '#appointment_date', function () {
 
             if (!slots.length) {
                 select.append('<option value="" disabled>No slots available on this date</option>');
+
+                // Empty could just mean fully booked -- check whether the
+                // doctor was marked unavailable on this date and say so.
+                alertIfDoctorUnavailable(doctorId, mysqlDate, dateStr, thisRequestSeq);
                 return;
             }
 
@@ -367,6 +371,39 @@ $(document).on('change', '#appointment_date', function () {
         }
     });
 });
+
+function alertIfDoctorUnavailable(doctorId, mysqlDate, dateStr, requestSeq) {
+
+    $.ajax({
+        url: '/book-appointment/check-date-availability',
+        type: 'POST',
+        data: {
+            doctor_id: doctorId,
+            appointment_date: mysqlDate,
+            _token: $('meta[name="csrf-token"]').attr('content')
+        },
+        success: function (response) {
+
+            // Same stale-response guard as the slots request.
+            if (requestSeq !== slotsRequestSeq || $('#appointment_date').val() !== dateStr) {
+                return;
+            }
+
+            if (!response || !response.unavailable) {
+                return;
+            }
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Doctor Not Available',
+                text: `The doctor is not available on ${dateStr}. Please choose a different date.`
+            });
+
+            $('#appointment_date').val('');
+            $('#appointment_time').html('<option value="">Select Slot</option>');
+        }
+    });
+}
 
 /*
 |--------------------------------------------------------------------------

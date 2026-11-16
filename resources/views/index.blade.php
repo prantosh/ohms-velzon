@@ -58,6 +58,14 @@
     0%{ transform:translateX(0); }
     100%{ transform:translateX(-50%); }
 }
+.live-users-bar .leave-dot{
+    background:#f06548;
+    animation:none;
+}
+.live-user-chip.leave-chip{
+    padding:3px 14px;
+    background:#fdeeea;
+}
 .live-user-chip{
     display:inline-flex;
     align-items:center;
@@ -83,7 +91,7 @@
 <div class="container-fluid">
 
 <div class="row mb-4 align-items-center dash-page-header">
-    <div class="col-md-9">
+    <div class="col-md-6">
         <h4 class="fw-bold mb-1">
             Clinic & Diagnostic Dashboard
         </h4>
@@ -91,6 +99,17 @@
             <i class="ri-calendar-event-line align-middle me-1"></i>
             {{ \Carbon\Carbon::today()->format('l, d F Y') }} &mdash; here's what's happening today.
         </p>
+    </div>
+    <div class="col-md-3">
+        <div id="leaveBar" class="live-users-bar" style="display:none;">
+            <div class="live-users-label">
+                <span class="live-dot leave-dot"></span>
+                On Leave Today
+            </div>
+            <div class="live-users-track-wrap">
+                <div id="leaveTrack" class="live-users-track"></div>
+            </div>
+        </div>
     </div>
     <div class="col-md-3">
         <div id="liveUsersBar" class="live-users-bar" style="display:none;">
@@ -118,17 +137,30 @@
                 <i class="ri-file-list-3-line"></i>
             </span>
             <h5>Today's Invoices By {{ $userSummary['user_name'] }}</h5>
+            @if($canViewCashSubmission)
+            <a href="{{ url('/cash-submission-report/print') . '?' . http_build_query(['user_id' => $userSummary['user_id'], 'date' => now()->toDateString()]) }}"
+               target="_blank" rel="noopener" class="ms-2 small fw-bold">
+                <i class="ri-file-pdf-line align-middle"></i> Show Cash Deposit Detail Statement
+            </a>
+            @endif
 
             <div class="ms-auto text-end">
-                <div class="fw-bold text-success">
+                <div class="fw-bold text-danger">
+                    ₹ {{ number_format($userSummary['doctor_payable_pending'], 0) }}
+                </div>
+                <small class="text-muted">Pending Payable To Doctor</small>
+            </div>
+
+            <div class="ms-4 text-end">
+                <div class="fw-bold {{ $userSummary['cash_in_hand'] < 0 ? 'text-danger' : 'text-success' }}">
                     ₹ {{ number_format($userSummary['cash_in_hand'], 0) }}
                 </div>
-                <small class="text-muted">Cash In Hand</small>
+                <small class="text-muted">{{ $userSummary['cash_in_hand'] < 0 ? 'Cash Deficit (pending Admin adjustment)' : 'Cash In Hand' }}</small>
             </div>
         </div>
 
         <div class="card-body">
-            @include('partials.dashboard-invoice-tiles', ['tiles' => $userSummary['tiles']])
+            @include('partials.dashboard-invoice-tiles', ['tiles' => $userSummary['tiles'], 'tileUserId' => $userSummary['user_id']])
         </div>
     </div>
 
@@ -151,12 +183,25 @@
             <i class="ri-file-list-3-line"></i>
         </span>
         <h5>Today's Invoices By Me</h5>
+        @if($canViewCashSubmission)
+        <a href="{{ url('/cash-submission-report/print') . '?' . http_build_query(['user_id' => Auth::id(), 'date' => now()->toDateString()]) }}"
+           target="_blank" rel="noopener" class="ms-2 small fw-bold">
+            <i class="ri-file-pdf-line align-middle"></i> Show Cash Deposit Detail Statement
+        </a>
+        @endif
 
         <div class="ms-auto text-end">
-            <div class="fw-bold text-success">
+            <div class="fw-bold text-danger">
+                ₹ {{ number_format($doctorPayablePending, 0) }}
+            </div>
+            <small class="text-muted">Pending Payable To Doctor</small>
+        </div>
+
+        <div class="ms-4 text-end">
+            <div class="fw-bold {{ $cashInHand < 0 ? 'text-danger' : 'text-success' }}">
                 ₹ {{ number_format($cashInHand, 0) }}
             </div>
-            <small class="text-muted">Cash In Hand</small>
+            <small class="text-muted">{{ $cashInHand < 0 ? 'Cash Deficit (pending Admin adjustment)' : 'Cash In Hand' }}</small>
         </div>
     </div>
 
@@ -630,7 +675,9 @@
 
 <th>Patient</th>
 
-<th>Amount</th>
+<th class="text-end">Amount</th>
+
+<th>Type</th>
 
 <th>Mode</th>
 
@@ -650,9 +697,23 @@
 
 <td>{{ $row->patient_name }}</td>
 
-<td class="text-end">
-₹ {{ number_format($row->received_amount,2) }}
+@php
+    // RECEIVED rows carry the money in received_amount, REFUND rows in
+    // refund_amount and doctor-settlement PAYMENT rows in
+    // doctor_payment_amount -- received_amount is 0 for the last two.
+    if ($row->transaction_type === 'REFUND') {
+        $txnAmount = $row->refund_amount; $txnLabel = 'Refund'; $txnClass = 'text-danger';
+    } elseif ($row->transaction_type === 'PAYMENT') {
+        $txnAmount = $row->doctor_payment_amount; $txnLabel = 'Doctor Payment'; $txnClass = 'text-danger';
+    } else {
+        $txnAmount = $row->received_amount; $txnLabel = 'Received'; $txnClass = 'text-success';
+    }
+@endphp
+<td class="text-end {{ $txnClass }}">
+₹ {{ number_format($txnAmount ?? 0,2) }}
 </td>
+
+<td>{{ $txnLabel }}</td>
 
 <td>{{ $row->payment_mode }}</td>
 
@@ -690,6 +751,44 @@
 
 
 
+{{-- Drill-down modal for the "Today's Invoices By ..." tiles --}}
+<div class="modal fade" id="tileDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tileDetailTitle"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Time</th>
+                                <th>Invoice No</th>
+                                <th>Patient</th>
+                                <th>Mobile</th>
+                                <th>Doctor</th>
+                                <th>Mode</th>
+                                <th>Reference / Remarks</th>
+                                <th class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tileDetailBody"></tbody>
+                        <tfoot>
+                            <tr class="fw-bold">
+                                <td colspan="8" class="text-end">Total</td>
+                                <td class="text-end" id="tileDetailTotal"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 
@@ -697,6 +796,54 @@
 
 <script src="{{ URL::asset('build/libs/apexcharts/apexcharts.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/app.js') }}"></script>
+<script>
+(function () {
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const money = n => '₹ ' + Number(n || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+    function openTile(el) {
+        const body = document.getElementById('tileDetailBody');
+        document.getElementById('tileDetailTitle').textContent = el.dataset.title + ' - Today';
+        document.getElementById('tileDetailTotal').textContent = '';
+        body.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Loading...</td></tr>';
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('tileDetailModal')).show();
+
+        const url = @json(route('dashboard.tileDetails')) + '?type=' + encodeURIComponent(el.dataset.type) + '&user_id=' + encodeURIComponent(el.dataset.userId);
+
+        fetch(url, {headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}})
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(d => {
+                if (!d.rows.length) {
+                    body.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No transactions.</td></tr>';
+                    return;
+                }
+                body.innerHTML = d.rows.map((r, i) => `<tr>
+                    <td>${i + 1}</td>
+                    <td>${esc(r.time)}</td>
+                    <td>${esc(r.invoice_reference)}</td>
+                    <td>${esc(r.patient_name)}<br><small class="text-muted">${esc(r.patient_id)}</small></td>
+                    <td>${esc(r.patient_mobile_no)}</td>
+                    <td>${esc(r.doctor_name)}</td>
+                    <td>${esc(r.payment_mode)}</td>
+                    <td>${esc(r.reference_no || r.remarks)}</td>
+                    <td class="text-end">${money(r.amount)}</td>
+                </tr>`).join('');
+                document.getElementById('tileDetailTotal').textContent = money(d.total);
+            })
+            .catch(() => {
+                body.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-4">Could not load details.</td></tr>';
+            });
+    }
+
+    document.addEventListener('click', e => {
+        const t = e.target.closest('.tile-detail-trigger');
+        if (t) openTile(t);
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('tile-detail-trigger')) openTile(e.target);
+    });
+})();
+</script>
 
 <script>
 
@@ -756,45 +903,50 @@ new ApexCharts(
             .replace(/"/g, '&quot;');
     }
 
+    // Only duplicate (for the seamless CSS scroll loop) once the chips
+    // actually overflow the container and need to scroll -- measured
+    // directly, since these bars are narrow 1/4-width columns.
+    function renderMarquee(barId, trackId, chips) {
+
+        var bar = document.getElementById(barId);
+        var track = document.getElementById(trackId);
+        var wrap = track.parentElement;
+
+        if (!chips) {
+            bar.style.display = 'none';
+            return;
+        }
+
+        track.style.animation = 'none';
+        track.innerHTML = chips;
+        bar.style.display = 'flex';
+
+        if (track.scrollWidth > wrap.clientWidth) {
+            track.innerHTML = chips + chips;
+            track.style.animation = '';
+        }
+    }
+
     function loadLiveUsers() {
 
         fetch('{{ route('liveUsers') }}')
             .then(res => res.json())
             .then(data => {
 
-                var bar = document.getElementById('liveUsersBar');
-                var track = document.getElementById('liveUsersTrack');
-                var wrap = track.parentElement;
+                var users = (data.status && data.users) ? data.users : [];
+                var leave = (data.status && data.doctors_on_leave) ? data.doctors_on_leave : [];
 
-                if (!data.status || !data.users || !data.users.length) {
-                    bar.style.display = 'none';
-                    return;
-                }
-
-                var chips = data.users.map(function (user) {
+                renderMarquee('liveUsersBar', 'liveUsersTrack', users.map(function (user) {
                     return '<span class="live-user-chip">' +
                         '<img src="' + escapeHtml(user.avatar_url) + '" alt="' + escapeHtml(user.name) + '">' +
                         '<span>' + escapeHtml(user.name) + '</span>' +
                         '</span>';
-                }).join('');
+                }).join(''));
 
-                // Only duplicate (for the seamless CSS scroll loop) once the
-                // chips actually overflow this container and need to
-                // scroll -- measured directly rather than a fixed user
-                // count, since this bar is a narrow 1/4-width column (not
-                // the full-width bar it originally was), so the same
-                // number of users can overflow here when it wouldn't have
-                // before.
-                track.style.animation = 'none';
-                track.innerHTML = chips;
-                bar.style.display = 'flex';
-
-                var needsScroll = track.scrollWidth > wrap.clientWidth;
-
-                if (needsScroll) {
-                    track.innerHTML = chips + chips;
-                    track.style.animation = '';
-                }
+                // Nothing on leave today => the bar stays hidden.
+                renderMarquee('leaveBar', 'leaveTrack', leave.map(function (name) {
+                    return '<span class="live-user-chip leave-chip"><span>' + escapeHtml(name) + '</span></span>';
+                }).join(''));
             })
             .catch(function () {});
     }

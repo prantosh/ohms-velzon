@@ -18,12 +18,23 @@ Diagnostic Invoice
     /* Invoice table */
     #invoiceTable {
         font-size: 11px;
+        table-layout: fixed;
+        min-width: 1320px;
     }
 
     #invoiceTable th,
     #invoiceTable td {
         padding: 6px 8px !important;
         vertical-align: middle;
+    }
+
+    #invoiceTable th:nth-child(-n+2),
+    #invoiceTable td:nth-child(-n+2) {
+        white-space: nowrap;
+    }
+
+    #invoiceTable .invoice-action-cell {
+        white-space: nowrap;
     }
 
     /* DataTables controls */
@@ -58,6 +69,19 @@ Diagnostic Invoice
     /* Pathology/Non-Pathology tabs -- solid filled like the "Create
        Diagnostic Invoice" button above them, instead of Bootstrap's
        default muted-background active-tab look. */
+    #invoicePaymentTabs .nav-link {
+        padding: 0.25rem 0.9rem;
+        font-size: 12px;
+        border: 1px solid var(--vz-primary);
+        margin-right: 6px;
+        color: var(--vz-primary);
+    }
+
+    #invoicePaymentTabs .nav-link.active {
+        background-color: var(--vz-primary);
+        color: #fff;
+    }
+
     #invoiceCategoryTabs .nav-link.active {
         background-color: var(--vz-primary);
         border-color: var(--vz-primary);
@@ -126,8 +150,25 @@ Diagnostic Invoice
 
             </div>
 
+            {{-- Payment sub-tabs for whichever main tab is selected. --}}
+            <ul class="nav nav-pills mb-3" id="invoicePaymentTabs">
+
+                <li class="nav-item">
+                    <a class="nav-link" href="javascript:void(0)" data-payment="all">All</a>
+                </li>
+
+                <li class="nav-item">
+                    <a class="nav-link" href="javascript:void(0)" data-payment="complete">Payment Complete</a>
+                </li>
+
+                <li class="nav-item">
+                    <a class="nav-link active" href="javascript:void(0)" data-payment="due">Payment Due (All)</a>
+                </li>
+
+            </ul>
+
             <div class="text-muted mb-2" style="font-size:11px;">
-                Showing invoices from the last <span id="invoiceDaysLabel">3</span> day(s), including today.
+                <span id="invoiceDaysText">Showing invoices from the last <span id="invoiceDaysLabel">3</span> day(s), including today.</span>
             </div>
 
             <div class="table-responsive">
@@ -135,20 +176,36 @@ Diagnostic Invoice
                 <table class="table table-bordered align-middle"
                        id="invoiceTable">
 
+                    <colgroup>
+                        <col style="width: 115px;">
+                        <col style="width: 110px;">
+                        <col style="width: 180px;">
+                        <col style="width: 85px;">
+                        <col style="width: 85px;">
+                        <col style="width: 75px;">
+                        <col style="width: 75px;">
+                        <col style="width: 75px;">
+                        <col style="width: 75px;">
+                        <col style="width: 75px;">
+                        <col style="width: 85px;">
+                        <col style="width: 80px;">
+                        <col style="width: 205px;">
+                    </colgroup>
+
                     <thead class="table-light">
 
                         <tr>
 
-                            <th>Inv No</th>
+                            <th>Invoice No.</th>
 
-                            <th>PID</th>
+                            <th>Patient ID</th>
 
-                            <th>Patient</th>
+                            <th>Patient Name</th>
 
                            
 
-                           <th>Inv Dt</th>
-                            <th>Test Dt</th>
+                           <th>Invoice Date</th>
+                            <th>Test Date</th>
 
                             <th>Total</th>
 
@@ -156,7 +213,7 @@ Diagnostic Invoice
 
                             <th>Paid</th>
                             <th>Due</th>
-                            <th>Dr Pay</th>
+                            <th>Paid to Doctor</th>
                            
                             <th>Status</th>
                             <th>WA</th>
@@ -192,6 +249,6 @@ Diagnostic Invoice
 
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
-<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}?v={{ @filemtime(public_path('build/js/pages/apps-diagnostic-invoice.init.js')) ?: 1 }}"></script>
+<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}?v={{ filemtime(public_path('build/js/pages/apps-diagnostic-invoice.init.js')) }}"></script>
 
 @endsection

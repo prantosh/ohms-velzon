@@ -109,7 +109,14 @@ class NonPathologyReportController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_no', 'like', "%{$search}%")
                     ->orWhere('patient_name', 'like', "%{$search}%")
-                    ->orWhere('patient_mobile_no', 'like', "%{$search}%");
+                    ->orWhere('patient_mobile_no', 'like', "%{$search}%")
+                    // Full or part of any billed test's description.
+                    ->orWhereExists(function ($sub) use ($search) {
+                        $sub->selectRaw('1')
+                            ->from('invoice_details as sd')
+                            ->whereColumn('sd.invoice_no', 'invoices.invoice_no')
+                            ->where('sd.item_description', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -255,6 +262,7 @@ class NonPathologyReportController extends Controller
             'invoice' => [
                 'id' => $invoice->id,
                 'invoice_no' => $invoice->invoice_no,
+                'due_amount' => (float) $invoice->due_amount,
                 'invoice_date' => $invoice->invoice_date
                     ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y')
                     : null,
@@ -683,9 +691,11 @@ class NonPathologyReportController extends Controller
 
             return $sent;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
 
             \Log::error('Non-Pathology Report WhatsApp Send Failed: ' . $e->getMessage());
+
+            ReportWhatsappDueGate::logSendFailure('NON_PATHOLOGY_REPORT', $finding->invoice_no, $e);
 
             return false;
         }

@@ -101,7 +101,14 @@ class TestReportDashboardController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_no', 'like', "%{$search}%")
                     ->orWhere('patient_name', 'like', "%{$search}%")
-                    ->orWhere('patient_mobile_no', 'like', "%{$search}%");
+                    ->orWhere('patient_mobile_no', 'like', "%{$search}%")
+                    // Full or part of any billed test's description.
+                    ->orWhereExists(function ($sub) use ($search) {
+                        $sub->selectRaw('1')
+                            ->from('invoice_details as sd')
+                            ->whereColumn('sd.invoice_no', 'invoices.invoice_no')
+                            ->where('sd.item_description', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -159,8 +166,9 @@ class TestReportDashboardController extends Controller
 
         $printRoutes = $this->statusService->printRoutesFor($pageInvoices);
         $xrayUrls = XrayReportUpload::viewUrlsFor($pageInvoices);
+        // invoice_no => created_offline (0/1); isset() still means "has the legacy confirmation".
         $legacyConfirmed = TestReportConfirmation::whereIn('invoice_no', $pageInvoices->pluck('invoice_no'))
-            ->pluck('invoice_no')->flip()->all();
+            ->pluck('created_offline', 'invoice_no')->all();
 
         $rows = $pageInvoices->map(function ($invoice) use ($printRoutes, $xrayUrls, $legacyConfirmed) {
             return $this->toRow($invoice, $printRoutes, $xrayUrls, $legacyConfirmed);
@@ -261,6 +269,8 @@ class TestReportDashboardController extends Controller
             'Selected reports printed: ' . $items->pluck('item_description')->implode(', ')
         );
 
+        \App\Services\ReportPrintDueLogger::record($invoice, $items->pluck('item_description'), 'SELECTED');
+
         $fileName = str_replace(['/', '\\'], '-', $invoice->invoice_no) . '-selected-reports.pdf';
 
         return response($pdf, 200, [
@@ -302,6 +312,8 @@ class TestReportDashboardController extends Controller
             'PRINT',
             'All reports printed as one combined PDF'
         );
+
+        \App\Services\ReportPrintDueLogger::record($invoice, $items->pluck('item_description'), 'ALL');
 
         $fileName = str_replace(['/', '\\'], '-', $invoice->invoice_no) . '-all-reports.pdf';
 
@@ -559,6 +571,10 @@ class TestReportDashboardController extends Controller
         $confirmed = ($totalTests > 0 && $confirmedCount >= $totalTests)
             || ($totalTests === 0 && isset($legacyConfirmed[$invoice->invoice_no]));
 
+        [$completedAt] = $resultStatus === 'Complete'
+            ? $this->statusService->completedAtFor($invoice)
+            : [null];
+
         $paymentStatus = $invoice->due_amount <= 0
             ? 'Paid'
             : ($invoice->paid_amount <= 0 ? 'Due' : 'Partial');
@@ -576,7 +592,25 @@ class TestReportDashboardController extends Controller
             'total_tests' => $totalTests,
             'results_entered' => $resultsEntered,
             'result_status' => $resultStatus,
+            // statusFor() has just stored/refreshed report_outsourced_tests,
+            // so this needs no query of its own. The status itself is only
+            // a function of the invoice's own received/delivered stamps.
+            'outsourced_total' => (int) $invoice->report_outsourced_tests,
+            'outsourced_status' => (int) $invoice->report_outsourced_tests === 0
+                ? 'N/A'
+                : ($invoice->outsourced_report_delivered_at
+                    ? 'Delivered'
+                    : ($invoice->outsourced_report_received_at ? 'Received' : 'Pending')),
+            // In-house: when the last report was confirmed (for an offline
+            // report, when it was marked Created Offline). Outsourced: when
+            // it was marked received in the Report Delivery Log.
+            'inhouse_completed_on' => $completedAt ? $completedAt->format('d-m-Y H:i') : null,
+            'outsourced_received_on' => $invoice->outsourced_report_received_at
+                ? Carbon::parse($invoice->outsourced_report_received_at)->format('d-m-Y H:i')
+                : null,
             'confirmed' => $confirmed,
+            'created_offline' => !empty($legacyConfirmed[$invoice->invoice_no]),
+            'offline_lines' => DB::table('report_created_offline')->where('invoice_no', $invoice->invoice_no)->count(),
             'confirmed_count' => $confirmedCount,
             'payment_status' => $paymentStatus,
             'total_amount' => (float) $invoice->total_amount,

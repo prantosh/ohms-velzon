@@ -69,6 +69,11 @@ const RESULT_STATUS_LABELS = {
 
 function resultStatusBadge(row) {
 
+    // No in-house tests on the invoice (e.g. outsourced only): nothing to show.
+    if (row.result_status === 'N/A') {
+        return '';
+    }
+
     let cls = {
         'Pending': 'bg-warning text-dark',
         'Partial': 'bg-info text-dark',
@@ -78,10 +83,29 @@ function resultStatusBadge(row) {
     }[row.result_status] ?? 'bg-secondary';
 
     let confirmedBadge = row.confirmed
-        ? ' <span class="badge bg-success-subtle text-success">Confirmed</span>'
+        ? ` <span class="badge bg-success-subtle text-success">Confirmed${row.created_offline ? ' (Offline)' : ''}</span>`
         : '';
 
     return `<span class="badge ${cls}">${RESULT_STATUS_LABELS[row.result_status] ?? row.result_status} (${row.results_entered}/${row.total_tests})</span>${confirmedBadge}`;
+}
+
+// Outsourced lines have no result-entry step -- just the outside lab's
+// report coming back (Received) and being handed over (Delivered).
+function outsourcedStatusBadge(row) {
+
+    if (row.outsourced_status === 'N/A') {
+        return '';
+    }
+
+    let cls = {
+        'Pending': 'bg-warning text-dark',
+        'Received': 'bg-info text-dark',
+        'Delivered': 'bg-success'
+    }[row.outsourced_status] ?? 'bg-secondary';
+
+    let label = row.outsourced_status === 'Pending' ? 'Not Received' : row.outsourced_status;
+
+    return `<span class="badge ${cls}">${label} (${row.outsourced_total})</span>`;
 }
 
 function paymentStatusBadge(status) {
@@ -132,7 +156,7 @@ async function loadReports(page = 1) {
 
     tbody.innerHTML = `
         <tr>
-            <td colspan="10" class="text-center py-5">
+            <td colspan="13" class="text-center py-5">
                 <div class="spinner-border text-primary" role="status" style="width: 2rem; height: 2rem;"></div>
                 <div class="mt-2 fw-semibold">Loading reports, please wait...</div>
                 <small class="text-muted">This can take a few seconds.</small>
@@ -162,7 +186,7 @@ async function loadReports(page = 1) {
 
         tbody.innerHTML = `
             <tr>
-                <td colspan="10" class="text-center text-danger py-4">
+                <td colspan="13" class="text-center text-danger py-4">
                     Could not load the reports. Please check your connection and
                     <a href="#" id="retryLoadReports">try again</a>.
                 </td>
@@ -189,11 +213,10 @@ async function loadReports(page = 1) {
 
     lastPage = result.pagination.last_page;
 
-    document.querySelector('#pageNumber').innerText = `Page ${result.pagination.current_page}`;
-    document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
+    renderPager(result.pagination, loadReports);
 
     if (!result.data.length) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No diagnostic test report invoices found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted py-4">No diagnostic test report invoices found.</td></tr>';
         return;
     }
 
@@ -207,17 +230,22 @@ async function loadReports(page = 1) {
         // WhatsApp needs the whole report confirmed AND the invoice fully paid
         // (the server enforces the same rule; once the due is collected the
         // held report is also sent automatically).
-        let canSendWhatsapp = canPrintOrSend && row.due_amount <= 0;
-        let whatsappTitle = !canPrintOrSend
-            ? 'Confirm the report before sending'
-            : (row.due_amount > 0 ? 'Payment is due - collect it before sending on WhatsApp' : 'Send Report via WhatsApp');
+        // A report created offline has nothing in the system to print or send.
+        let canSendWhatsapp = canPrintOrSend && !row.created_offline && row.due_amount <= 0;
+        let whatsappTitle = row.created_offline
+            ? 'Report created offline - nothing to send'
+            : (!canPrintOrSend
+                ? 'Confirm the report before sending'
+                : (row.due_amount > 0 ? 'Payment is due - collect it before sending on WhatsApp' : 'Send Report via WhatsApp'));
 
         let actions = `
             <button class="btn btn-sm btn-soft-info print-report-btn me-1"
                     data-id="${row.id}"
                     data-invoice-no="${escapeHtml(row.invoice_no)}"
                     data-print-route="${row.print_route ?? ''}"
-                    title="Report status / Print reports"
+                    title="${row.created_offline ? 'Report created offline - nothing to print' : 'Report status / Print reports'}"
+                    data-due="${row.due_amount ?? 0}"
+                    ${row.created_offline ? 'disabled' : ''}
                     data-confirmed="${row.confirmed ? 1 : 0}">
                 <i class="ri-printer-line"></i>
             </button>
@@ -270,8 +298,11 @@ async function loadReports(page = 1) {
                 <td>${row.patient_name ?? '-'}<br><small class="text-muted">${row.patient_mobile_no ?? ''}</small></td>
                 <td>${categoryLabel(row.invoice_category)}</td>
                 <td>${row.invoice_date ?? '-'}</td>
-                <td>${row.total_tests}</td>
+                <td>${(Number(row.total_tests) || 0) + (Number(row.outsourced_total) || 0)}</td>
                 <td>${resultStatusBadge(row)}</td>
+                <td class="text-nowrap">${row.inhouse_completed_on ? escapeHtml(row.inhouse_completed_on) + ((row.created_offline || row.offline_lines > 0) ? " <span class=\"badge bg-warning-subtle text-warning\">Offline</span>" : "") : "-"}</td>
+                <td>${outsourcedStatusBadge(row)}</td>
+                <td class="text-nowrap">${row.outsourced_received_on ? escapeHtml(row.outsourced_received_on) : "-"}</td>
                 <td>${paymentStatusBadge(row.payment_status)}</td>
                 <td class="text-end">${row.paid_amount.toFixed(2)}</td>
                 <td class="text-end">${row.due_amount.toFixed(2)}</td>
@@ -326,8 +357,13 @@ document.getElementById('reportTableBody').addEventListener('click', async funct
         // which confirmed ones to print. Only an invoice with no qualifying
         // lines at all (nothing to list) falls back to the legacy
         // single-PDF route.
+        printItemsDue = parseFloat(printBtn.dataset.due) || 0;
+
         if (printBtn.dataset.printRoute === 'legacy' && printBtn.dataset.confirmed === '1') {
-            window.open(`/test-result-entry/print/${printBtn.dataset.id}`, '_blank');
+
+            if (await confirmPrintWithDue(printItemsDue)) {
+                window.open(`/test-result-entry/print/${printBtn.dataset.id}`, '_blank');
+            }
             return;
         }
 
@@ -437,6 +473,26 @@ document.addEventListener('DOMContentLoaded', function () {
 */
 
 let printItemsInvoiceId = null;
+let printItemsDue = 0;
+
+// Printing a finished report while payment is still pending is allowed
+// (e.g. staff handing it over on a promise to pay) but must be a deliberate
+// choice, so ask first. Resolves true when there is no due or staff proceed.
+async function confirmPrintWithDue(due) {
+
+    if (!(due > 0)) return true;
+
+    const result = await Swal.fire({
+        icon: 'warning',
+        title: 'Payment is pending',
+        html: `A payment of <b>${due.toFixed(2)}</b> is still due on this invoice.<br>Do you still want to print the report?`,
+        showCancelButton: true,
+        confirmButtonText: 'Print anyway',
+        cancelButtonText: 'Cancel'
+    });
+
+    return result.isConfirmed;
+}
 
 function itemStatusBadge(item) {
 
@@ -544,11 +600,13 @@ document.getElementById('printItemsBody').addEventListener('change', function (e
     if (e.target.classList.contains('print-item-check')) refreshPrintSelection();
 });
 
-document.getElementById('printItemsPrintBtn').addEventListener('click', function () {
+document.getElementById('printItemsPrintBtn').addEventListener('click', async function () {
 
     let ids = [...document.querySelectorAll('#printItemsBody .print-item-check:checked')].map(b => b.value);
 
     if (!ids.length || !printItemsInvoiceId) return;
+
+    if (!(await confirmPrintWithDue(printItemsDue))) return;
 
     // A real form POST into a new tab, so the PDF opens like any other
     // print (a fetch+blob would need the browser's popup handling too).

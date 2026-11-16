@@ -140,6 +140,7 @@ class EquipmentRentalController extends Controller
             'quantity' => 'required|integer|min:1',
             'patient_id' => 'required',
             'patient_name' => 'required',
+            'patient_age' => 'nullable|digits_between:1,2',
             'advance_amount' => 'required|numeric|min:0',
             'payment_mode' => 'required',
             'payment_reference' => 'nullable|required_if:payment_mode,Card,UPI|digits:4',

@@ -42,8 +42,7 @@ async function loadGroups(page = 1) {
 
     lastPage = result.pagination.last_page;
 
-    document.querySelector('#pageNumber').innerText = `Page ${result.pagination.current_page}`;
-    document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
+    renderPager(result.pagination, loadGroups);
 
     let startSl = (result.pagination.current_page - 1) * perPage;
 

@@ -75,8 +75,8 @@ function selectUser() {
 
     // Default to the last 7 days -- one row per day, so an unbounded
     // range would be impractical (the backend also caps this at 62 days).
-    document.querySelector('#fromDateInput').value = daysAgoStr(6);
-    document.querySelector('#toDateInput').value = todayStr();
+    setFlatpickrValue('fromDateInput', daysAgoStr(6));
+    setFlatpickrValue('toDateInput', todayStr());
 
     document.querySelector('#historyWrap').style.display = 'block';
 

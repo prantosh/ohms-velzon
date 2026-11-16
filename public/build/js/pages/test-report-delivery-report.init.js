@@ -80,8 +80,7 @@ async function loadReports(page = 1) {
 
     lastPage = result.pagination.last_page;
 
-    document.querySelector('#pageNumber').innerText = `Page ${result.pagination.current_page}`;
-    document.querySelector('#pagination-info').innerText = `Total Records : ${result.pagination.total}`;
+    renderPager(result.pagination, loadReports);
 
     if (!result.data.length) {
         tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted py-4">No delivery records found.</td></tr>';
@@ -241,8 +240,11 @@ async function loadUndeliveredReports(page = 1) {
 
     undeliveredLastPage = result.pagination.last_page;
 
-    document.querySelector('#undeliveredPageNumber').innerText = `Page ${result.pagination.current_page}`;
-    document.querySelector('#undelivered-pagination-info').innerText = `Total Records : ${result.pagination.total}`;
+    renderPager(result.pagination, loadUndeliveredReports, {
+        number: 'undeliveredPageNumber', info: 'undelivered-pagination-info',
+        prev: 'undeliveredPrevPage', next: 'undeliveredNextPage',
+        perPage: document.querySelector('#undeliveredPerPage').value
+    });
     document.querySelector('#undeliveredCount').innerText = result.pagination.total;
 
     if (!result.data.length) {

@@ -22,15 +22,8 @@ async function loadEquipmentCategories(page = 1) {
     lastPage =
         result.pagination.last_page;
 
-    document.querySelector(
-        "#pageNumber"
-    ).innerText =
-        `Page ${result.pagination.current_page}`;
+    renderPager(result.pagination, loadEquipmentCategories);
 
-    document.querySelector(
-        "#pagination-info"
-    ).innerText =
-        `Total Records : ${result.pagination.total}`;
 
     let startSl =
         (result.pagination.current_page - 1) * perPage;

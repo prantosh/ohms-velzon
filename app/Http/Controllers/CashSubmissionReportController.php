@@ -52,6 +52,7 @@ class CashSubmissionReportController extends Controller
             'doctor_payments' => $result['doctor_payments'],
             'group_breakdown' => $result['group_breakdown'],
             'summary' => $result['summary'],
+            'adjustments' => $result['adjustments'],
         ]);
     }
 
@@ -137,6 +138,7 @@ class CashSubmissionReportController extends Controller
                 'ledger' => $result['ledger'],
                 'groupBreakdown' => $result['group_breakdown'],
                 'summary' => $result['summary'],
+                'adjustments' => $result['adjustments'],
                 'date' => $date,
             ]
         );

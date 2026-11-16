@@ -56,7 +56,7 @@
             </select>
 
             <span class="ms-2">
-                records
+                entries
             </span>
 
         </div>

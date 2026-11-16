@@ -56,6 +56,18 @@ class CashLedgerService
         'OTHER_INCOME' => 'DON001',
     ];
 
+    // The Dental/Eye grouping below applies only to transactions dated on or
+    // after this day, so slips for earlier dates still print as they did.
+    private const DOCTOR_VISIT_SPECIALISATION_GROUPING_FROM = '2026-11-01';
+
+    // doctors.specialisation_code (specialisations.id) -> the item_code whose
+    // reporting group should receive that doctor's visit invoices.
+    private const DOCTOR_VISIT_ITEM_CODE_BY_SPECIALISATION = [
+        4 => 'DEN001',  // DENTAL
+        15 => 'EYE001', // EYE
+        16 => 'EYE001', // OPTOMETRY -- reported with Eye
+    ];
+
     /**
      * Aggregate-only totals for one user over a date range -- no per-line
      * ledger, no group breakdown. Used where many users are summarized at
@@ -179,7 +191,7 @@ class CashLedgerService
             ->where('status', 'ACTIVE')
             ->where('created_by', $userId)
             ->whereBetween('transaction_date', [$fromDate, $toDate])
-            ->get(['invoice_reference', 'received_amount', 'payment_mode']);
+            ->get(['invoice_reference', 'received_amount', 'payment_mode', 'transaction_date']);
 
         // Every refund, regardless of payment_mode -- see buildSummary()'s
         // own comment on $cashRefunded for why.
@@ -187,7 +199,7 @@ class CashLedgerService
             ->where('transaction_type', 'REFUND')
             ->where('created_by', $userId)
             ->whereBetween('transaction_date', [$fromDate, $toDate])
-            ->get(['invoice_reference', 'refund_amount']);
+            ->get(['invoice_reference', 'refund_amount', 'transaction_date']);
 
         // Both sets of transactions can reference invoices created by, or
         // dated, outside this user/range -- fetch every invoice actually
@@ -208,10 +220,29 @@ class CashLedgerService
             $invoices->where('invoice_type', '!=', 'DOCTOR_VISIT')->pluck('invoice_no')->values()
         );
 
-        $weightsForInvoice = function ($invoice) use ($weightMaps) {
+        // Dental/Eye doctors' visit invoices are reported under Dental/Eye
+        // (same rule as the Detail Transaction group breakdown).
+        $doctorSpecialisationByInvoice = DB::table('invoices as i')
+            ->join('doctors as d', 'd.id', '=', 'i.doctor_id')
+            ->where('i.invoice_type', 'DOCTOR_VISIT')
+            ->whereIn('i.invoice_no', $referencedInvoiceNos)
+            ->pluck('d.specialisation_code', 'i.invoice_no');
+
+        $doctorVisitItemCode = function ($invoiceNo, $date) use (&$doctorSpecialisationByInvoice) {
+
+            if ($date && Carbon::parse($date)->toDateString() >= self::DOCTOR_VISIT_SPECIALISATION_GROUPING_FROM) {
+                return self::DOCTOR_VISIT_ITEM_CODE_BY_SPECIALISATION[
+                    (int) ($doctorSpecialisationByInvoice[$invoiceNo] ?? 0)
+                ] ?? self::DOCTOR_VISIT_ITEM_CODE;
+            }
+
+            return self::DOCTOR_VISIT_ITEM_CODE;
+        };
+
+        $weightsForInvoice = function ($invoice, $date) use ($weightMaps, $doctorVisitItemCode) {
 
             if ($invoice->invoice_type === 'DOCTOR_VISIT') {
-                return [self::DOCTOR_VISIT_ITEM_CODE => 1.0];
+                return [$doctorVisitItemCode($invoice->invoice_no, $date) => 1.0];
             }
 
             return $weightMaps[$invoice->invoice_no] ?? [self::UNCATEGORIZED_ITEM => 1.0];
@@ -227,7 +258,7 @@ class CashLedgerService
 
             $column = $txn->payment_mode === 'Cash' ? 'cash_collected' : 'non_cash_collected';
 
-            foreach ($weightsForInvoice($invoice) as $itemCode => $share) {
+            foreach ($weightsForInvoice($invoice, $txn->transaction_date) as $itemCode => $share) {
                 $this->addCategoryAmount($totals, $itemCode, $column, (float) $txn->received_amount * $share);
             }
         }
@@ -247,7 +278,7 @@ class CashLedgerService
                 continue;
             }
 
-            foreach ($weightsForInvoice($invoice) as $itemCode => $share) {
+            foreach ($weightsForInvoice($invoice, $refund->transaction_date) as $itemCode => $share) {
                 $this->addCategoryAmount($totals, $itemCode, 'refund', (float) $refund->refund_amount * $share);
             }
         }
@@ -279,15 +310,26 @@ class CashLedgerService
             ->select(
                 'dsi.item_code',
                 'dsi.invoice_type',
+                'dsi.invoice_no',
                 'dsi.settlement_amount',
+                'ds.settlement_date',
                 DB::raw("COALESCE(inv.payment_mode, 'Cash') as source_payment_mode")
             )
             ->get();
 
+        // Settlements may reference invoices outside the collection set above.
+        $doctorSpecialisationByInvoice = $doctorSpecialisationByInvoice->union(
+            DB::table('invoices as i')
+                ->join('doctors as d', 'd.id', '=', 'i.doctor_id')
+                ->where('i.invoice_type', 'DOCTOR_VISIT')
+                ->whereIn('i.invoice_no', $doctorPayments->pluck('invoice_no')->filter()->unique())
+                ->pluck('d.specialisation_code', 'i.invoice_no')
+        );
+
         foreach ($doctorPayments as $payment) {
 
             $itemCode = $payment->invoice_type === 'DOCTOR_VISIT'
-                ? self::DOCTOR_VISIT_ITEM_CODE
+                ? $doctorVisitItemCode($payment->invoice_no, $payment->settlement_date)
                 : ($payment->item_code ?: self::UNCATEGORIZED_ITEM);
 
             $column = $payment->source_payment_mode === 'Cash' ? 'doctor_payment_cash_source' : 'doctor_payment_non_cash_source';
@@ -317,8 +359,11 @@ class CashLedgerService
         $cashCollectedByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'cash_collected')));
         $nonCashCollectedByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'non_cash_collected')));
         $refundByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'refund')));
-        $doctorPaymentCashSourceByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'doctor_payment_cash_source')));
-        $doctorPaymentNonCashSourceByItem = $this->apportionToNearestTen(array_combine(array_keys($totals), array_column($totals, 'doctor_payment_non_cash_source')));
+        // Doctor payments are exact settlement amounts (never a proportional
+        // split of one patient payment), so they must NOT be rounded to 10 --
+        // doing so made this summary disagree with the Detail Transaction view.
+        $doctorPaymentCashSourceByItem = array_map(fn($v) => round((float) $v, 2), array_combine(array_keys($totals), array_column($totals, 'doctor_payment_cash_source')));
+        $doctorPaymentNonCashSourceByItem = array_map(fn($v) => round((float) $v, 2), array_combine(array_keys($totals), array_column($totals, 'doctor_payment_non_cash_source')));
 
         $rows = collect($totals)
             ->map(function ($cols, $itemCode) use ($itemCodeToName, $cashCollectedByItem, $nonCashCollectedByItem, $refundByItem, $doctorPaymentCashSourceByItem, $doctorPaymentNonCashSourceByItem) {
@@ -693,11 +738,18 @@ class CashLedgerService
         | Collected -- see the loop above), but this breakdown's Total row
         | is printed directly against net_cash_to_deposit, so it must stay
         | cash-only or it would silently inflate past that figure.
+        |
+        | Refund rows are always kept: a refund is handed back in cash
+        | whatever the ORIGINAL payment_mode was (that mode is only shown as
+        | context), and $cashRefunded already deducts it from
+        | net_cash_to_deposit. Filtering a refund of a UPI/Card collection
+        | out here made the groups sum to more than the printed total.
         */
 
         $cashOnlyLedger = array_values(array_filter(
             $ledger,
-            fn($row) => strtoupper((string) $row['payment_mode']) === 'CASH'
+            fn($row) => $row['type'] === 'Refund'
+                || strtoupper((string) $row['payment_mode']) === 'CASH'
         ));
 
         $groupBreakdown = $this->allocateLedgerToReportingGroups($cashOnlyLedger);
@@ -756,6 +808,36 @@ class CashLedgerService
 
         $doctorPayable = $this->doctorPayableCreatedBy($userId, $fromDate, $toDate);
 
+        // Approved Admin adjustments (cash handed back by accounts to clear
+        // a deficit) dated within the range -- added to the day's position,
+        // listed on the slip, and NOT part of the ledger above so they never
+        // reach the reporting-group allocation or any revenue figure.
+        $adjustments = DB::table('cash_adjustments')
+            ->where('user_id', $userId)
+            ->where('status', 'ACTIVE')
+            ->whereBetween('adjustment_date', [$fromDate, $toDate])
+            ->orderBy('id')
+            ->get(['adjustment_no', 'adjustment_date', 'amount', 'source', 'reference_date', 'reference_note', 'remarks', 'created_by_name'])
+            ->map(fn($a) => [
+                'adjustment_no' => $a->adjustment_no,
+                'adjustment_date' => $a->adjustment_date,
+                'amount' => round((float) $a->amount, 2),
+                'source' => $a->source,
+                'reference_date' => $a->reference_date,
+                'reference_note' => $a->reference_note,
+                'remarks' => $a->remarks,
+                'approved_by' => $a->created_by_name,
+            ])
+            ->all();
+
+        $adjustmentTotal = round(array_sum(array_column($adjustments, 'amount')), 2);
+
+        // Deficits from EARLIER days still unresolved (0 or negative).
+        // Information only -- never reduces this day's deposit.
+        $pendingPriorDeficit = app(CashInHandService::class)->pendingDeficitBefore((int) $userId, $fromDate);
+
+        $netCash = round($cashCollected - $cashRefunded - $cashPaidToDoctors, 2);
+
         return [
             'ledger' => $ledger,
             'doctor_payments' => $doctorPaymentDetail,
@@ -767,8 +849,12 @@ class CashLedgerService
                 'cash_refunded' => $cashRefunded,
                 'doctor_payable' => $doctorPayable,
                 'cash_paid_to_doctors' => $cashPaidToDoctors,
-                'net_cash_to_deposit' => round($cashCollected - $cashRefunded - $cashPaidToDoctors, 2),
+                'net_cash_to_deposit' => $netCash,
+                'adjustment_total' => $adjustmentTotal,
+                'pending_prior_deficit' => $pendingPriorDeficit,
+                'closing_position' => round($netCash + $adjustmentTotal, 2),
             ],
+            'adjustments' => $adjustments,
         ];
     }
 
@@ -815,6 +901,15 @@ class CashLedgerService
 
         $groupNames = DB::table('reporting_groups')->pluck('group_name', 'id');
 
+        // Doctor-visit invoices of a Dental/Eye doctor are reported under
+        // that Dental/Eye group (with its diagnostic tests), not under the
+        // generic Doctor Visit group.
+        $doctorSpecialisationByInvoice = DB::table('invoices as i')
+            ->join('doctors as d', 'd.id', '=', 'i.doctor_id')
+            ->where('i.invoice_type', 'DOCTOR_VISIT')
+            ->whereIn('i.invoice_no', $invoiceNos)
+            ->pluck('d.specialisation_code', 'i.invoice_no');
+
         $totals = [];
 
         // Tracks which specific items/invoices actually fell into the
@@ -834,6 +929,16 @@ class CashLedgerService
             if ($items->isEmpty() || $totalLineAmount <= 0) {
 
                 $fallbackCode = self::FALLBACK_ITEM_CODE_BY_INVOICE_TYPE[$row['invoice_type'] ?? null] ?? null;
+
+                $rowTime = $row['receive_time'] ?? $row['refund_time'] ?? $row['doctor_settlement_time'] ?? null;
+
+                if (($row['invoice_type'] ?? null) === 'DOCTOR_VISIT'
+                    && $rowTime
+                    && Carbon::parse($rowTime)->toDateString() >= self::DOCTOR_VISIT_SPECIALISATION_GROUPING_FROM) {
+                    $fallbackCode = self::DOCTOR_VISIT_ITEM_CODE_BY_SPECIALISATION[
+                        (int) ($doctorSpecialisationByInvoice[$row['invoice_no']] ?? 0)
+                    ] ?? $fallbackCode;
+                }
 
                 $groupId = $fallbackCode ? ($itemToGroupId[$fallbackCode] ?? null) : null;
 

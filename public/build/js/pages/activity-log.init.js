@@ -50,8 +50,10 @@ async function loadLoginActivity(page = 1) {
 
     loginLastPage = result.pagination.last_page;
 
-    document.getElementById('loginPageNumber').innerText = `Page ${result.pagination.current_page}`;
-    document.getElementById('login-pagination-info').innerText = `Total Records : ${result.pagination.total}`;
+    renderPager(result.pagination, loadLoginActivity, {
+        number: 'loginPageNumber', info: 'login-pagination-info',
+        prev: 'loginPrevPage', next: 'loginNextPage', perPage: loginPerPage
+    });
 
     let startSl = (result.pagination.current_page - 1) * loginPerPage;
 
@@ -122,8 +124,10 @@ async function loadAuditActivity(page = 1) {
 
     auditLastPage = result.pagination.last_page;
 
-    document.getElementById('auditPageNumber').innerText = `Page ${result.pagination.current_page}`;
-    document.getElementById('audit-pagination-info').innerText = `Total Records : ${result.pagination.total}`;
+    renderPager(result.pagination, loadAuditActivity, {
+        number: 'auditPageNumber', info: 'audit-pagination-info',
+        prev: 'auditPrevPage', next: 'auditNextPage', perPage: auditPerPage
+    });
 
     let startSl = (result.pagination.current_page - 1) * auditPerPage;
 

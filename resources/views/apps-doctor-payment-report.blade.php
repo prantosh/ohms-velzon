@@ -37,6 +37,8 @@
             Select a user, doctor and date to see every invoice that user billed for that doctor on that day &mdash;
             with doctor fees and clinic charge (amount received from the patient minus the amount payable to the doctor)
             broken down per item.
+            Use <strong>Date Basis: Settlement Date</strong> to see what was paid out to the doctor on that day
+            (including older invoices whose dues were collected later) &mdash; this matches Daily Cash Settlement.
         </div>
 
         <div class="card">
@@ -77,13 +79,22 @@
                     </div>
 
                     <div class="col-md-2 mb-3">
+                        <label class="form-label">Date Basis</label>
+                        <select id="date_basis-field" class="form-select"
+                                title="Invoice Date: invoices raised on that day. Settlement Date: invoices whose doctor payment was settled on that day (matches Daily Cash Settlement).">
+                            <option value="invoice">Invoice Date</option>
+                            <option value="settlement">Settlement Date</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-1 mb-3">
                         <button type="button" class="btn btn-primary" id="loadReportBtn">
                             <i class="ri-search-line"></i>
                             Load Report
                         </button>
                     </div>
 
-                    <div class="col-md-2 mb-3">
+                    <div class="col-md-1 mb-3">
                         <a href="javascript:void(0)" id="printReportBtn" class="btn btn-success" style="display:none;" target="_blank">
                             <i class="ri-printer-line"></i>
                             Print PDF
@@ -184,6 +195,6 @@
 <script src="{{ URL::asset('build/libs/flatpickr/flatpickr.min.js') }}"></script>
 <script src="{{ URL::asset('build/js/pages/flatpickr-dmy.init.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/doctor-payment-report.init.js') }}"></script>
+<script src="{{ URL::asset('build/js/pages/doctor-payment-report.init.js') }}?v={{ filemtime(public_path('build/js/pages/doctor-payment-report.init.js')) }}"></script>
 
 @endsection

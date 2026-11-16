@@ -54,7 +54,10 @@ class WhatsappMessageReportController extends Controller
                 COUNT(*) as cnt,
                 SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) as sent,
                 SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed,
-                SUM(CASE WHEN status = 'SKIPPED' THEN 1 ELSE 0 END) as skipped
+                SUM(CASE WHEN status = 'SKIPPED' THEN 1 ELSE 0 END) as skipped,
+                SUM(CASE WHEN status = 'SENT' AND delivery_status IN ('DELIVERED', 'READ') THEN 1 ELSE 0 END) as delivered,
+                SUM(CASE WHEN status = 'SENT' AND delivery_status = 'READ' THEN 1 ELSE 0 END) as is_read,
+                SUM(CASE WHEN status = 'SENT' AND delivery_status = 'FAILED' THEN 1 ELSE 0 END) as not_delivered
             ")
             ->groupBy('log_date', 'message_type')
             ->orderBy('log_date')
@@ -116,7 +119,7 @@ class WhatsappMessageReportController extends Controller
             ->whereDate('created_at', $request->date)
             ->whereNotIn('status', ['HELD_DUE', 'RELEASED'])
             ->orderBy('created_at')
-            ->get(['id', 'invoice_no', 'patient_name', 'mobile_no', 'message_type', 'message_id', 'status', 'response', 'created_at'])
+            ->get(['id', 'invoice_no', 'patient_name', 'mobile_no', 'message_type', 'message_id', 'status', 'delivery_status', 'delivered_at', 'read_at', 'delivery_failed_at', 'delivery_failure_reason', 'response', 'created_at'])
             ->map(function ($row) {
                 return $this->decorateDetailRow($row);
             });
@@ -188,6 +191,11 @@ class WhatsappMessageReportController extends Controller
             'sent_count' => (int) $dayRows->sum('sent'),
             'failed_count' => (int) $dayRows->sum('failed'),
             'skipped_count' => (int) $dayRows->sum('skipped'),
+            // Delivery receipts (from WATI's webhook) -- a breakdown of Sent,
+            // not part of the Total = Sent + Failed + Skipped reconciliation.
+            'delivered_count' => (int) $dayRows->sum('delivered'),
+            'read_count' => (int) $dayRows->sum('is_read'),
+            'not_delivered_count' => (int) $dayRows->sum('not_delivered'),
             'types' => $types,
         ];
     }
@@ -199,6 +207,9 @@ class WhatsappMessageReportController extends Controller
             'sent_count' => (int) $rows->sum('sent_count'),
             'failed_count' => (int) $rows->sum('failed_count'),
             'skipped_count' => (int) $rows->sum('skipped_count'),
+            'delivered_count' => (int) $rows->sum('delivered_count'),
+            'read_count' => (int) $rows->sum('read_count'),
+            'not_delivered_count' => (int) $rows->sum('not_delivered_count'),
         ];
 
         $types = [];
@@ -228,6 +239,26 @@ class WhatsappMessageReportController extends Controller
 
         unset($row->response);
 
+        // Delivery receipt, only meaningful for messages WATI accepted.
+        // NULL delivery_status on a SENT row = no receipt received (yet),
+        // which is also every message sent before the webhook went live.
+        if ($row->status === 'SENT') {
+            $row->delivery_label = match ($row->delivery_status) {
+                'READ' => 'Read',
+                'DELIVERED' => 'Delivered',
+                'FAILED' => 'Not Delivered',
+                'SENT' => 'Sent (not yet on phone)',
+                default => 'Awaiting receipt',
+            };
+        } else {
+            $row->delivery_label = null;
+        }
+
+        $fmt = fn($value) => $value ? Carbon::parse($value)->format('d-m-Y h:i A') : null;
+        $row->delivered_at_fmt = $fmt($row->delivered_at);
+        $row->read_at_fmt = $fmt($row->read_at);
+        $row->delivery_failed_at_fmt = $fmt($row->delivery_failed_at);
+
         return $row;
     }
 
@@ -238,6 +269,9 @@ class WhatsappMessageReportController extends Controller
             'sent_count' => $rows->where('status', 'SENT')->count(),
             'failed_count' => $rows->where('status', 'FAILED')->count(),
             'skipped_count' => $rows->where('status', 'SKIPPED')->count(),
+            'delivered_count' => $rows->where('status', 'SENT')->whereIn('delivery_status', ['DELIVERED', 'READ'])->count(),
+            'read_count' => $rows->where('status', 'SENT')->where('delivery_status', 'READ')->count(),
+            'not_delivered_count' => $rows->where('status', 'SENT')->where('delivery_status', 'FAILED')->count(),
         ];
     }
 

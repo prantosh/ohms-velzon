@@ -69,4 +69,45 @@ class Patient extends Model
 
         return PatientAge::format($a['years'], $a['months']);
     }
+
+    /**
+     * The active patient already on this mobile number with this name (case
+     * and spacing ignored; the oldest if several). A patient is identified
+     * by mobile + name, so anywhere that would mint a new patient ID for a
+     * mobile/name pair must reuse this one instead.
+     */
+    /**
+     * Next free patient ID for a mobile number: highest existing "-NN"
+     * suffix + 1. Counting rows instead collides as soon as a patient has
+     * been moved off the mobile (correction/merge) or the counts drift, e.g.
+     * 22 rows but P...-23 already taken.
+     */
+    public static function nextPatientId(string $mobileNo): string
+    {
+        $prefix = \App\Support\OfflineMode::prefix('P') . $mobileNo . '-';
+
+        $max = static::where('patient_id', 'like', $prefix . '%')
+            ->pluck('patient_id')
+            ->map(fn ($id) => (int) substr($id, strlen($prefix)))
+            ->max() ?? 0;
+
+        return $prefix . str_pad($max + 1, 2, '0', STR_PAD_LEFT);
+    }
+
+    public static function findActiveByMobileAndName(?string $mobileNo, ?string $name): ?self
+    {
+        $normalise = fn (?string $s) => strtoupper(preg_replace('/\s+/', ' ', trim((string) $s)));
+
+        $wanted = $normalise($name);
+
+        if ($mobileNo === null || $mobileNo === '' || $wanted === '') {
+            return null;
+        }
+
+        return static::where('mobile_no', $mobileNo)
+            ->where('status', 'A')
+            ->orderBy('id')
+            ->get()
+            ->first(fn ($p) => $normalise($p->patient_name) === $wanted);
+    }
 }

@@ -49,6 +49,7 @@ use App\Http\Controllers\NonPathologyReportController;
 use App\Http\Controllers\NonPathologyReportTemplateController;
 use App\Http\Controllers\PathologyReportTemplateController;
 use App\Http\Controllers\PathologyReportController;
+use App\Http\Controllers\KeyParameterController;
 use App\Http\Controllers\TestReportDashboardController;
 use App\Http\Controllers\DiagnosticTestReportController;
 use App\Http\Controllers\AmbulanceDestinationController;
@@ -109,6 +110,18 @@ Route::middleware(['auth'])->prefix('user-messages')->group(function () {
     Route::post('/read', [\App\Http\Controllers\UserMessageController::class, 'markRead']);
 });
 
+Route::middleware(['auth'])
+    ->prefix('pathology-key-parameters')
+    ->name('pathology-key-parameters.')
+    ->controller(KeyParameterController::class)
+    ->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::get('/list', 'list')->name('list');
+        Route::get('/options', 'options')->name('options');
+        Route::post('/save', 'save')->name('save');
+        Route::post('/reorder', 'reorder')->name('reorder');
+    });
+
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -146,6 +159,16 @@ Route::post('/password/verify-otp', [App\Http\Controllers\Auth\ForgotPasswordCon
 Route::post('/password/reset', [App\Http\Controllers\Auth\ResetPasswordController::class, 'reset'])
     ->middleware('guest')
     ->name('password.update');
+
+/*
+|--------------------------------------------------------------------------
+| WATI WEBHOOK -- WhatsApp delivery / read receipts (server-to-server)
+|--------------------------------------------------------------------------
+*/
+
+Route::post('/webhooks/wati/{secret}', [App\Http\Controllers\WatiWebhookController::class, 'handle'])
+    ->middleware('throttle:600,1')
+    ->name('webhooks.wati');
 
 //Language Translation
 
@@ -214,6 +237,7 @@ Route::post('/update-password/{id}', [App\Http\Controllers\HomeController::class
 Route::post('/unlock-screen', [App\Http\Controllers\HomeController::class, 'unlockScreen'])->name('unlockScreen');
 Route::post('/lock-screen', [App\Http\Controllers\HomeController::class, 'lockScreen'])->name('lockScreen');
 Route::get('/live-users', [App\Http\Controllers\HomeController::class, 'liveUsers'])->name('liveUsers');
+Route::get('/dashboard/tile-details', [App\Http\Controllers\HomeController::class, 'tileDetails'])->name('dashboard.tileDetails');
 
 
 
@@ -263,6 +287,10 @@ Route::middleware(['auth'])->group(function () {
         [DoctorAppointmentController::class, 'getAvailableSlots']
     )->name('doctor-appointments.get-slots');
     Route::post(
+        '/doctor-appointments/check-date-availability',
+        [DoctorAppointmentController::class, 'checkDateAvailability']
+    );
+    Route::post(
         '/doctor-appointments/bulk-reassign',
         [DoctorAppointmentController::class, 'bulkReassign']
     )->name('doctor-appointments.bulk-reassign');
@@ -287,6 +315,11 @@ Route::middleware(['auth'])->group(function () {
             'getPatientAppointments'
         ]
     );
+
+    Route::get(
+        '/doctor-unavailable-dates',
+        [DoctorScheduleExceptionController::class, 'report']
+    )->name('doctor-unavailable-dates.index');
 
     Route::get(
         '/doctor-schedule-exceptions',
@@ -314,6 +347,7 @@ Route::prefix('book-appointment')->controller(PublicAppointmentController::class
     Route::post('/doctors-by-specialisation', 'getDoctorsBySpecialisation')->middleware('throttle:60,1');
     Route::post('/available-days', 'getAvailableDays')->middleware('throttle:60,1');
     Route::post('/available-slots', 'getAvailableSlots')->middleware('throttle:60,1');
+    Route::post('/check-date-availability', 'checkDateAvailability')->middleware('throttle:60,1');
 
     Route::post('/send-otp', 'sendOtp')->middleware('throttle:5,1')->name('public-appointment.send-otp');
     Route::post('/verify-otp', 'verifyOtp')->middleware('throttle:10,1')->name('public-appointment.verify-otp');
@@ -366,6 +400,11 @@ Route::post(
     '/doctor-visit-invoice/{id}/mark-payment-failed',
     [DoctorVisitInvoiceController::class, 'markPaymentFailed']
 )->name('doctor-visit-invoice.mark-payment-failed');
+
+Route::post(
+    '/doctor-visit-invoice/{id}/waive-fee',
+    [DoctorVisitInvoiceController::class, 'waiveFee']
+)->name('doctor-visit-invoice.waive-fee');
 
 Route::get(
     '/doctor-visit-invoice/print/{id}',
@@ -1458,6 +1497,16 @@ Route::prefix('goods-receipt-report')->group(function () {
 
 });
 
+Route::prefix('doctor-fee-waiver-report')->group(function () {
+
+    Route::get('/', [\App\Http\Controllers\DoctorFeeWaiverReportController::class, 'index'])
+        ->name('doctor-fee-waiver-report.index');
+
+    Route::get('/list', [\App\Http\Controllers\DoctorFeeWaiverReportController::class, 'list']);
+    Route::get('/print', [\App\Http\Controllers\DoctorFeeWaiverReportController::class, 'print']);
+
+});
+
 Route::prefix('goods-issue-report')->group(function () {
 
     Route::get('/', [GoodsIssueReportController::class, 'index'])
@@ -1654,6 +1703,12 @@ Route::middleware(['auth'])->prefix('patient-detail-correction')->group(function
     Route::post('/update', [PatientDetailCorrectionController::class, 'update'])
         ->name('patient-detail-correction.update');
 
+    Route::get('/invoice-lookup', [PatientDetailCorrectionController::class, 'invoiceLookup'])
+        ->name('patient-detail-correction.invoice-lookup');
+
+    Route::post('/referred-doctor', [PatientDetailCorrectionController::class, 'updateReferredDoctor'])
+        ->name('patient-detail-correction.referred-doctor');
+
 });
 
 Route::prefix('system-log')->group(function () {
@@ -1668,6 +1723,16 @@ Route::prefix('system-log')->group(function () {
         ->name('system-log.clear');
 
 });
+
+Route::middleware(['auth'])
+    ->prefix('system/migrations')
+    ->name('system-migration.')
+    ->controller(App\Http\Controllers\SystemMigrationController::class)
+    ->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('/mark-applied', 'markApplied')->name('mark-applied');
+        Route::post('/run', 'run')->name('run');
+    });
 
 Route::prefix('maintenance-mode')->group(function () {
 
@@ -1885,6 +1950,16 @@ Route::middleware(['auth'])->prefix('reporting-group-summary-report')->group(fun
     Route::get('/report', [ReportingGroupSummaryReportController::class, 'report']);
     Route::get('/print', [ReportingGroupSummaryReportController::class, 'print']);
     Route::get('/mismatch-detail', [ReportingGroupSummaryReportController::class, 'mismatchDetail']);
+
+});
+
+Route::middleware(['auth'])->prefix('day-wise-group-summary-report')->group(function () {
+
+    Route::get('/', [\App\Http\Controllers\DayWiseGroupSummaryReportController::class, 'index'])
+        ->name('day-wise-group-summary-report.index');
+
+    Route::get('/report', [\App\Http\Controllers\DayWiseGroupSummaryReportController::class, 'report']);
+    Route::get('/print', [\App\Http\Controllers\DayWiseGroupSummaryReportController::class, 'print']);
 
 });
 
@@ -2738,6 +2813,11 @@ Route::middleware(['auth'])->prefix('test-result-entry')->group(function () {
     )->name('test-result-entry.confirm');
 
     Route::post(
+        '/created-offline',
+        [TestResultEntryController::class, 'markCreatedOffline']
+    )->name('test-result-entry.created-offline');
+
+    Route::post(
         '/save-extra',
         [TestResultEntryController::class, 'saveExtraValue']
     )->name('test-result-entry.save-extra');
@@ -3188,6 +3268,33 @@ Route::get('/__deploy_check_whatsapp_sent_breakdown', function () {
         'total_all_statuses' => $totalAll,
         'by_type_and_status' => $byTypeAndStatus,
     ]);
+});
+
+Route::middleware(['auth'])
+    ->get('/report-print-due-log', [\App\Http\Controllers\ReportPrintDueLogController::class, 'index'])
+    ->name('report-print-due-log.index');
+
+// Admin-only (enforced in the controller; deliberately not in config/access_pages)
+Route::middleware(['auth'])->prefix('invoice-doctor-correction')->group(function () {
+    Route::get('/', [\App\Http\Controllers\InvoiceDoctorCorrectionController::class, 'index'])
+        ->name('invoice-doctor-correction.index');
+    Route::get('/search', [\App\Http\Controllers\InvoiceDoctorCorrectionController::class, 'search'])
+        ->name('invoice-doctor-correction.search');
+    Route::post('/update', [\App\Http\Controllers\InvoiceDoctorCorrectionController::class, 'update'])
+        ->name('invoice-doctor-correction.update');
+});
+
+// Admin-only (enforced in the controller; deliberately not in config/access_pages)
+Route::middleware(['auth'])->prefix('cash-adjustment')->group(function () {
+    Route::get('/', [\App\Http\Controllers\CashAdjustmentController::class, 'index'])
+        ->name('cash-adjustment.index');
+    Route::get('/data', [\App\Http\Controllers\CashAdjustmentController::class, 'data'])
+        ->name('cash-adjustment.data');
+    Route::post('/store', [\App\Http\Controllers\CashAdjustmentController::class, 'store'])
+        ->name('cash-adjustment.store');
+    Route::post('/{id}/cancel', [\App\Http\Controllers\CashAdjustmentController::class, 'cancel'])
+        ->whereNumber('id')
+        ->name('cash-adjustment.cancel');
 });
 
 Route::get('{any}', [App\Http\Controllers\HomeController::class, 'index'])

@@ -101,6 +101,11 @@ class DiagnosticResultStatusService
         // USG/Cardiology/everything-else each keep exactly one finding row
         // per billed line (unlike Pathology's bundling) -- "entered" is
         // just "a row exists for this line", "confirmed" adds confirmed_at.
+        // Tests whose report was written offline count as entered AND confirmed.
+        $offlineIds = DB::table('report_created_offline')
+            ->where('invoice_no', $invoice->invoice_no)
+            ->pluck('invoice_detail_id');
+
         foreach ([
             'usg_report_findings' => $lines->where('item_code', 'USG001')->pluck('invoice_detail_id'),
             'cardiology_report_findings' => $lines->where('item_code', 'CRD001')->pluck('invoice_detail_id'),
@@ -111,8 +116,13 @@ class DiagnosticResultStatusService
                 continue;
             }
 
-            $resultsEntered += DB::table($table)->whereIn('invoice_detail_id', $ids)->count();
-            $confirmedCount += DB::table($table)->whereIn('invoice_detail_id', $ids)->whereNotNull('confirmed_at')->count();
+            $offlineHere = $offlineIds->intersect($ids);
+
+            $resultsEntered += DB::table($table)->whereIn('invoice_detail_id', $ids)->pluck('invoice_detail_id')
+                ->merge($offlineHere)->unique()->count();
+
+            $confirmedCount += DB::table($table)->whereIn('invoice_detail_id', $ids)->whereNotNull('confirmed_at')->pluck('invoice_detail_id')
+                ->merge($offlineHere)->unique()->count();
         }
 
         // X-Ray reports are generated outside this system and attached as a
@@ -147,6 +157,61 @@ class DiagnosticResultStatusService
                 : ($confirmedCount >= $totalTests ? 'Complete' : 'Confirmation Pending'));
 
         return [$resultStatus, $totalTests, $resultsEntered, $confirmedCount];
+    }
+
+    /**
+     * When the invoice's in-house reports were all completed: the latest
+     * confirmation across every qualifying line (or the whole-invoice
+     * confirmation -- which is also what "Created Offline" stores, flagged
+     * created_offline). Only meaningful once resultStatusFor() says Complete.
+     *
+     * @return array{0: ?\Illuminate\Support\Carbon, 1: bool} [completed_at, created_offline]
+     */
+    public function completedAtFor(Invoice $invoice): array
+    {
+        $legacy = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->first();
+
+        if ($legacy) {
+            return [$legacy->confirmed_at, (bool) $legacy->created_offline];
+        }
+
+        $lines = $this->qualifyingLinesQuery($invoice)->get(['d.id as invoice_detail_id', 'd.item_code']);
+
+        $latest = [];
+
+        $pathologyIds = $lines->where('item_code', 'PAT001')->pluck('invoice_detail_id');
+
+        if ($pathologyIds->isNotEmpty()) {
+            $latest[] = DB::table('pathology_report_finding_items as pfi')
+                ->join('pathology_report_findings as pf', 'pf.id', '=', 'pfi.pathology_report_finding_id')
+                ->whereIn('pfi.invoice_detail_id', $pathologyIds)
+                ->max('pf.confirmed_at');
+        }
+
+        foreach ([
+            'usg_report_findings' => $lines->where('item_code', 'USG001')->pluck('invoice_detail_id'),
+            'cardiology_report_findings' => $lines->where('item_code', 'CRD001')->pluck('invoice_detail_id'),
+            'non_pathology_report_findings' => $lines->whereNotIn('item_code', ['PAT001', 'USG001', 'CRD001'])->pluck('invoice_detail_id'),
+        ] as $table => $ids) {
+
+            if ($ids->isNotEmpty()) {
+                $latest[] = DB::table($table)->whereIn('invoice_detail_id', $ids)->max('confirmed_at');
+            }
+        }
+
+        // An uploaded X-Ray PDF is the sign-off for X-Ray lines.
+        if ($lines->where('item_code', 'XRY001')->isNotEmpty()) {
+            $latest[] = DB::table('xray_report_uploads')->where('invoice_no', $invoice->invoice_no)->max('created_at');
+        }
+
+        // Tests created offline: the day they were marked counts as their completion.
+        $offline = DB::table('report_created_offline')->where('invoice_no', $invoice->invoice_no);
+
+        $latest[] = (clone $offline)->max('confirmed_at');
+
+        $latest = array_filter($latest);
+
+        return [$latest ? \Illuminate\Support\Carbon::parse(max($latest)) : null, $offline->exists()];
     }
 
     /**

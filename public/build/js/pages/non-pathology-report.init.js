@@ -115,6 +115,7 @@ function toEditorHtml(text) {
 }
 
 let nonPathEditors = new Map();
+let invoiceDue = 0;
 
 function destroyAllNonPathEditors() {
     nonPathEditors.forEach(fields => {
@@ -153,7 +154,8 @@ async function loadDashboard(page = 1) {
 
     let params = new URLSearchParams({
         range: dashRange,
-        page: dashPage
+        page: dashPage,
+        per_page: document.getElementById('dashPerPage').value
     });
 
     if (dashSearch) {
@@ -169,6 +171,9 @@ async function loadDashboard(page = 1) {
 
         document.getElementById('dashNoDataWrap').style.display = 'block';
         document.getElementById('dashPaginationInfo').innerText = '';
+        document.getElementById('dashPageNumber').innerHTML = '';
+        document.getElementById('dashPrevPage').disabled = true;
+        document.getElementById('dashNextPage').disabled = true;
         dashLastPage = 1;
         return;
     }
@@ -199,9 +204,16 @@ async function loadDashboard(page = 1) {
 
     dashLastPage = result.pagination.last_page;
 
-    document.getElementById('dashPaginationInfo').innerText =
-        `Page ${result.pagination.current_page} of ${result.pagination.last_page} (${result.pagination.total} total)`;
+    renderPager(result.pagination, loadDashboard, {
+        number: 'dashPageNumber', info: 'dashPaginationInfo',
+        prev: 'dashPrevPage', next: 'dashNextPage',
+        perPage: document.getElementById('dashPerPage').value
+    });
 }
+
+document.getElementById('dashPerPage').addEventListener('change', function () {
+    loadDashboard(1);
+});
 
 document.querySelectorAll('#rangeButtons [data-range]').forEach(function (btn) {
 
@@ -270,6 +282,7 @@ async function searchInvoice(invoiceNo) {
     }
 
     let inv = result.invoice;
+    invoiceDue = parseFloat(inv.due_amount) || 0;
 
     canDeleteReports = !!result.can_delete_reports;
 
@@ -357,7 +370,11 @@ function lockNonPathCard(root, findingId) {
     printBtn.href = `/non-pathology-report/print/${findingId}`;
     printBtn.style.display = 'inline-block';
 
-    root.querySelector('.nonpath-whatsapp-btn').style.display = 'inline-block';
+    let whatsappBtn = root.querySelector('.nonpath-whatsapp-btn');
+    whatsappBtn.style.display = 'inline-block';
+    // Nothing is WhatsApp'd while a payment is due (sent automatically once cleared).
+    whatsappBtn.disabled = invoiceDue > 0;
+    whatsappBtn.title = invoiceDue > 0 ? 'Payment is due - collect it before sending on WhatsApp' : '';
 }
 
 /*

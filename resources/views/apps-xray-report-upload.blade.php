@@ -39,7 +39,7 @@
                     <div class="col-md-4">
                         <label class="form-label mb-1">Search</label>
                         <input type="text" id="searchInput" class="form-control form-control-sm"
-                               placeholder="Invoice no / patient / mobile">
+                               placeholder="Invoice no / patient / mobile / test description">
                     </div>
 
                     <div class="col-md-2">

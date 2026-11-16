@@ -19,6 +19,8 @@ use App\Models\TestResultExtraValue;
 use App\Models\WhatsappAutoSendSetting;
 use App\Services\AuditService;
 use App\Services\ReportWhatsappDueGate;
+use App\Services\DiagnosticResultStatusService;
+use App\Services\InvoiceReportStatusRecorder;
 use App\Support\PdfPageNumbers;
 use App\Services\PdfPasswordProtectionService;
 use App\Services\TestReportRowBuilder;
@@ -117,25 +119,48 @@ class TestResultEntryController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_no', 'like', "%{$search}%")
                     ->orWhere('patient_name', 'like', "%{$search}%")
-                    ->orWhere('patient_mobile_no', 'like', "%{$search}%");
+                    ->orWhere('patient_mobile_no', 'like', "%{$search}%")
+                    // Full or part of any billed test's description.
+                    ->orWhereExists(function ($sub) use ($search) {
+                        $sub->selectRaw('1')
+                            ->from('invoice_details as sd')
+                            ->whereColumn('sd.invoice_no', 'invoices.invoice_no')
+                            ->where('sd.item_description', 'like', "%{$search}%");
+                    });
             });
         }
 
-        $invoices = $query->orderByDesc('invoice_date')
-            ->orderByDesc('id')
-            ->paginate($perPage);
+        $query->orderByDesc('invoice_date')->orderByDesc('id');
 
-        $qualifyingItemCodes = InvoiceItemMaster::where('test_parameter_required', 'YES')
-            ->pluck('item_code')
-            ->toArray();
+        // "Confirmed" is the stored invoices.report_status = 'Complete'
+        // (every qualifying report confirmed, or the legacy whole-invoice
+        // confirmation), kept current by InvoiceReportStatusRecorder -- so
+        // the filter and pagination run in SQL, not over every row.
+        $confirmedFilter = $request->get('confirmed');
 
-        $rows = $invoices->getCollection()->map(function ($invoice) use ($qualifyingItemCodes) {
-            return $this->toRow($invoice, $qualifyingItemCodes);
-        });
+        if (in_array($confirmedFilter, ['yes', 'no'], true)) {
+
+            // Invoices never recorded yet have no stored status; fill those
+            // in first so they land on the right side of the filter.
+            $recorder = app(InvoiceReportStatusRecorder::class);
+
+            (clone $query)
+                ->where(function ($q) {
+                    $q->whereNull('report_status')->orWhereNull('report_outsourced_tests');
+                })
+                ->get()
+                ->each(fn ($invoice) => $recorder->refreshInvoice($invoice));
+
+            $confirmedFilter === 'yes'
+                ? $query->where('report_status', 'Complete')
+                : $query->where('report_status', '!=', 'Complete');
+        }
+
+        $invoices = $query->paginate($perPage);
 
         return response()->json([
             'status' => true,
-            'data' => $rows,
+            'data' => $this->toRows($invoices->getCollection()),
             'pagination' => [
                 'current_page' => $invoices->currentPage(),
                 'last_page' => $invoices->lastPage(),
@@ -145,157 +170,78 @@ class TestResultEntryController extends Controller
     }
 
     /**
-     * The result-status algorithm (N/A/Pending/Partial/Complete) mirrors
-     * TestReportDashboardController's definition exactly, so a given
-     * invoice shows the same status on both dashboards. It stays scoped to
-     * $qualifyingItemCodes (today: only Pathology's PAT001, the only
-     * item_code with test_parameter_required=YES) since that's the only
-     * category with tracked report completion -- Non-Pathology invoices
-     * (X-Ray, USG, Dental, etc.) have no such tracking here and correctly
-     * stay 'N/A' (see NonPathologyReportController for their own per-line
-     * completion, shown inside the modal instead).
-     *
-     * Pathology moved from a structured analyte grid (test_result_entries,
-     * one legacy per-invoice TestReportConfirmation) to per-line-bundle
-     * narrative reports (pathology_report_findings / pathology_report_finding_items,
-     * one confirmation per report -- see PathologyReportController). An
-     * invoice confirmed under the OLD system before this rollout still
-     * reads as fully Complete here (no data migration) since its
-     * TestReportConfirmation row still exists; everything else is computed
-     * from the new tables.
-     *
-     * The displayed test count/description, however, is NOT scoped to
-     * $qualifyingItemCodes -- it lists every billed line on the invoice
-     * regardless of category, since Non-Pathology invoices still have real
-     * billed tests worth showing even though none of them feed the
-     * qualifying-based completion status above.
-     *
-     * @return array{0: string, 1: int, 2: int, 3: string, 4: string} [result_status, total_tests, results_entered, test_description, test_category]
+     * Dashboard rows for one page of invoices. Result status/counts come
+     * from the stored invoices.report_* columns (same source as the Test
+     * Report Dashboard, so both always agree); the description and category
+     * text -- every billed line regardless of category -- plus the legacy
+     * Created Offline flag are fetched for the whole page in 3 queries
+     * instead of several per invoice.
      */
-
-    /**
-     * A package's own billed line (e.g. "LIPID PROFILE", is_package=1) is a
-     * pricing label, not a measurable test -- it's never claimable on the
-     * report screen (PathologyReportController excludes it the same way),
-     * so counting it toward the qualifying/completion total left every
-     * package invoice permanently one short and stuck on "Partial" even
-     * once fully confirmed (mirrors TestReportDashboardController's
-     * identical helper). is_outsourced=1 lines are likewise excluded.
-     * $lineDetails/total_tests above stays unfiltered on purpose -- that's
-     * the human-readable "every billed line" description/count, not the
-     * completion denominator.
-     */
-    private function qualifyingLinesQuery(Invoice $invoice, array $qualifyingItemCodes)
+    private function toRows($invoices)
     {
-        return DB::table('invoice_details as d')
-            ->join('invoice_item_details as iid', function ($join) {
-                $join->on('iid.item_code', '=', 'd.item_code')
-                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
-            })
-            ->where('d.invoice_no', $invoice->invoice_no)
-            ->whereIn('d.item_code', $qualifyingItemCodes)
-            // Same rule as every other screen (packages are reported at
-            // package level; old component-level reports keep counting).
-            ->whereRaw(\App\Support\ReportableLines::sql())
-            ->where('iid.is_outsourced', 0)
-            ->where('iid.is_report_not_required', 0);
-    }
+        if ($invoices->isEmpty()) {
+            return collect();
+        }
 
-    private function resultStatusFor(Invoice $invoice, array $qualifyingItemCodes): array
-    {
-        $lineDetails = DB::table('invoice_details')
-            ->where('invoice_no', $invoice->invoice_no)
-            // Excludes stray blank placeholder lines (no item_code at all)
-            // that aren't real billed tests -- see e.g. invoice_details id
-            // 1031 on LAB/0826/082/0004.
+        $recorder = app(InvoiceReportStatusRecorder::class);
+        $invoiceNos = $invoices->pluck('invoice_no');
+
+        // A package is billed as ONE line; its hidden component lines
+        // (package_parent_item_code_sub set) and blank placeholder lines
+        // are not real billed tests.
+        $linesByInvoice = DB::table('invoice_details')
+            ->whereIn('invoice_no', $invoiceNos)
             ->whereNotNull('item_code')
             ->where('item_code', '!=', '')
-            // A package is billed as ONE line (e.g. LIPID PROFILE); its hidden
-            // zero-rate component lines exist only to hold results for old-style
-            // reporting and must not inflate the description or the count.
             ->whereNull('package_parent_item_code_sub')
-            ->get(['item_code', 'item_description']);
+            ->orderBy('id')
+            ->get(['invoice_no', 'item_code', 'item_description'])
+            ->groupBy('invoice_no');
 
-        // Non-Pathology mixes several categories (X-Ray, Cardiology, USG,
-        // etc.) on the same invoice/table, unlike Pathology's single
-        // category -- resolved from invoice_item_masters.item_name, same
-        // lookup used for the diagnostic invoice PDF's Test Category column.
-        $testCategoryNames = InvoiceItemMaster::whereIn('item_code', $lineDetails->pluck('item_code')->unique())
-            ->pluck('item_name', 'item_code');
+        $categoryNames = InvoiceItemMaster::whereIn(
+            'item_code',
+            $linesByInvoice->flatten(1)->pluck('item_code')->unique()
+        )->pluck('item_name', 'item_code');
 
-        $testCategory = $lineDetails->pluck('item_code')->unique()
-            ->map(fn ($code) => $testCategoryNames->get($code, $code))
-            ->implode(', ');
+        $offlineByInvoice = TestReportConfirmation::whereIn('invoice_no', $invoiceNos)
+            ->pluck('created_offline', 'invoice_no');
 
-        $qualifyingTotal = $this->qualifyingLinesQuery($invoice, $qualifyingItemCodes)->count();
+        return $invoices->map(function ($invoice) use ($recorder, $linesByInvoice, $categoryNames, $offlineByInvoice) {
 
-        if ($qualifyingTotal === 0) {
+            [$resultStatus, , $resultsEntered] = $recorder->statusFor($invoice);
 
-            return ['N/A', $lineDetails->count(), 0, $lineDetails->pluck('item_description')->implode(', '), $testCategory];
-        }
+            $lines = $linesByInvoice->get($invoice->invoice_no, collect());
 
-        if (TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+            $confirmed = $resultStatus === 'Complete';
 
-            return ['Complete', $lineDetails->count(), $qualifyingTotal, $lineDetails->pluck('item_description')->implode(', '), $testCategory];
-        }
+            // Fully entered but not yet signed off reads as Complete in
+            // this list, with the Confirmed flag still false.
+            if ($resultStatus === 'Confirmation Pending') {
+                $resultStatus = 'Complete';
+            }
 
-        $qualifyingLineIds = $this->qualifyingLinesQuery($invoice, $qualifyingItemCodes)->pluck('d.id');
-
-        $resultsEntered = DB::table('pathology_report_finding_items')
-            ->whereIn('invoice_detail_id', $qualifyingLineIds)
-            ->count();
-
-        $resultStatus = $resultsEntered <= 0
-            ? 'Pending'
-            : ($resultsEntered >= $qualifyingTotal ? 'Complete' : 'Partial');
-
-        return [
-            $resultStatus,
-            $lineDetails->count(),
-            $resultsEntered,
-            $lineDetails->pluck('item_description')->implode(', '),
-            $testCategory,
-        ];
-    }
-
-    private function toRow(Invoice $invoice, array $qualifyingItemCodes): array
-    {
-        [$resultStatus, $totalTests, $resultsEntered, $testDescription, $testCategory] =
-            $this->resultStatusFor($invoice, $qualifyingItemCodes);
-
-        $confirmed = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists();
-
-        if (!$confirmed && $resultStatus === 'Complete') {
-
-            $qualifyingLineIds = $this->qualifyingLinesQuery($invoice, $qualifyingItemCodes)->pluck('d.id');
-
-            $confirmedCount = DB::table('pathology_report_finding_items as pfi')
-                ->join('pathology_report_findings as pf', 'pf.id', '=', 'pfi.pathology_report_finding_id')
-                ->whereIn('pfi.invoice_detail_id', $qualifyingLineIds)
-                ->whereNotNull('pf.confirmed_at')
-                ->count();
-
-            $confirmed = $qualifyingLineIds->count() > 0 && $confirmedCount >= $qualifyingLineIds->count();
-        }
-
-        return [
-            'id' => $invoice->id,
-            'invoice_no' => $invoice->invoice_no,
-            'invoice_date' => $invoice->invoice_date
-                ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y')
-                : null,
-            'patient_name' => $invoice->patient_name,
-            'patient_age' => $invoice->patient_age,
-            'patient_gender' => $invoice->patient_gender,
-            'patient_mobile_no' => $invoice->patient_mobile_no,
-            'referred_doctor' => $invoice->referred_doctor,
-            'test_category' => $testCategory,
-            'test_description' => $testDescription,
-            'total_tests' => $totalTests,
-            'results_entered' => $resultsEntered,
-            'result_status' => $resultStatus,
-            'confirmed' => $confirmed,
-        ];
+            return [
+                'id' => $invoice->id,
+                'invoice_no' => $invoice->invoice_no,
+                'invoice_date' => $invoice->invoice_date
+                    ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y')
+                    : null,
+                'patient_name' => $invoice->patient_name,
+                'patient_age' => $invoice->patient_age,
+                'patient_gender' => $invoice->patient_gender,
+                'patient_mobile_no' => $invoice->patient_mobile_no,
+                'referred_doctor' => $invoice->referred_doctor,
+                'test_category' => $lines->pluck('item_code')->unique()
+                    ->map(fn ($code) => $categoryNames->get($code, $code))
+                    ->implode(', '),
+                'test_description' => $lines->pluck('item_description')->implode(', '),
+                'total_tests' => $lines->count(),
+                'results_entered' => $resultsEntered,
+                'result_status' => $resultStatus,
+                'confirmed' => $confirmed,
+                'created_offline' => (bool) $offlineByInvoice->get($invoice->invoice_no),
+            ];
+        })->values();
     }
 
     /*
@@ -358,6 +304,178 @@ class TestResultEntryController extends Controller
                 'confirmed_at' => optional($confirmation?->confirmed_at)->format('d-m-Y H:i'),
             ],
             'data' => $rows
+        ]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | CREATED OFFLINE
+    |--------------------------------------------------------------------------
+    | The report was written outside the system (system/internet trouble).
+    | Stores the same invoice-level confirmation the old grid used, flagged
+    | created_offline, so every screen reads the invoice as Complete and
+    | Confirmed. There is nothing to print or WhatsApp from here.
+    */
+
+    public function markCreatedOffline(Request $request, AuditService $auditService, DiagnosticResultStatusService $statusService, InvoiceReportStatusRecorder $statusRecorder)
+    {
+        // Shared by the Pathology, USG and Cardiology dashboards.
+        $invoice = Invoice::where('invoice_no', trim((string) $request->invoice_no))
+            ->where('invoice_type', 'DIAGNOSTIC')
+            ->first();
+
+        if (!$invoice || $invoice->cancelled === 'Y') {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Invoice not found.'
+            ]);
+        }
+
+        // USG / Cardiology are marked per test, so the other tests on the
+        // invoice (e.g. an X-Ray) keep their own status.
+        $scope = $request->input('scope');
+
+        if (in_array($scope, ['usg', 'cardiology'], true)) {
+
+            return $this->markLinesCreatedOffline($invoice, $scope, $auditService, $statusService, $statusRecorder);
+        }
+
+        // Pathology: whole invoice (Pathology and Non-Pathology can't share an invoice).
+        if ($invoice->invoice_category !== 'PATHOLOGY') {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Invoice not found.'
+            ]);
+        }
+
+        if ($statusService->qualifyingLinesQuery($invoice)->count() === 0) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This invoice has no in-house tests to report.'
+            ]);
+        }
+
+        if (TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This report is already confirmed.'
+            ]);
+        }
+
+        TestReportConfirmation::create([
+            'invoice_no' => $invoice->invoice_no,
+            'confirmed_by' => Auth::id(),
+            'confirmed_at' => now(),
+            'created_offline' => true,
+        ]);
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $invoice,
+            'CONFIRM',
+            'Test report marked as Created Offline (completed and confirmed without in-system entry)'
+        );
+
+        // Dashboards read the stored status; refresh it now.
+        $statusRecorder->refreshInvoice($invoice);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Report marked as Created Offline.'
+        ]);
+    }
+
+    /**
+     * Created Offline for the USG or Cardiology tests of one invoice: each
+     * such test not yet confirmed in the system gets a report_created_offline
+     * row. Everything else on the invoice is left as it is, and the reply
+     * names the tests still pending.
+     */
+    private function markLinesCreatedOffline(
+        Invoice $invoice,
+        string $scope,
+        AuditService $auditService,
+        DiagnosticResultStatusService $statusService,
+        InvoiceReportStatusRecorder $statusRecorder
+    ) {
+        $lines = $statusService->qualifyingLinesQuery($invoice);
+
+        $scope === 'usg'
+            ? $lines->where('d.item_code', 'USG001')
+            : $lines->whereIn('d.item_code_sub', \App\Support\CardiologyReportFields::ITEM_CODE_SUBS);
+
+        $findingsTable = $scope === 'usg' ? 'usg_report_findings' : 'cardiology_report_findings';
+
+        $lines = $lines->get(['d.id as invoice_detail_id', 'd.item_description']);
+
+        if ($lines->isEmpty()) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This invoice has no ' . ($scope === 'usg' ? 'USG' : 'Cardiology') . ' tests to report.'
+            ]);
+        }
+
+        $ids = $lines->pluck('invoice_detail_id');
+
+        $done = DB::table($findingsTable)
+            ->whereIn('invoice_detail_id', $ids)
+            ->whereNotNull('confirmed_at')
+            ->pluck('invoice_detail_id')
+            ->merge(DB::table('report_created_offline')->whereIn('invoice_detail_id', $ids)->pluck('invoice_detail_id'));
+
+        $open = $lines->whereNotIn('invoice_detail_id', $done->all());
+
+        if ($open->isEmpty()) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'These tests are already confirmed.'
+            ]);
+        }
+
+        foreach ($open as $line) {
+
+            DB::table('report_created_offline')->insert([
+                'invoice_no' => $invoice->invoice_no,
+                'invoice_detail_id' => $line->invoice_detail_id,
+                'report_type' => strtoupper($scope),
+                'confirmed_by' => Auth::id(),
+                'confirmed_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $auditService->logAction(
+            self::MODULE_CODE,
+            $invoice,
+            'CONFIRM',
+            strtoupper($scope) . ' report marked as Created Offline: ' . $open->pluck('item_description')->implode(', ')
+        );
+
+        $statusRecorder->refreshInvoice($invoice);
+
+        // Other in-house tests on this invoice that are still not confirmed.
+        $stillPending = collect(app(\App\Services\InvoiceReportItemsService::class)->forInvoice($invoice))
+            ->where('confirmed', false)
+            ->pluck('item_description')
+            ->values();
+
+        $message = strtoupper($scope) . ' report marked as Created Offline.';
+
+        if ($stillPending->isNotEmpty()) {
+            $message .= ' Still pending on this invoice: ' . $stillPending->implode(', ') . '.';
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => $message,
+            'still_pending' => $stillPending,
         ]);
     }
 
@@ -768,9 +886,16 @@ class TestResultEntryController extends Controller
     {
         $invoice = Invoice::findOrFail($id);
 
-        if (!TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+        $confirmation = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->first();
+
+        if (!$confirmation) {
 
             abort(403, 'Test report must be confirmed before printing.');
+        }
+
+        if ($confirmation->created_offline) {
+
+            abort(403, 'This report was created offline -- there is nothing to print from the system.');
         }
 
         $pdf = $this->buildInvoicePdf($invoice, $rowBuilder);
@@ -780,6 +905,17 @@ class TestResultEntryController extends Controller
             $invoice,
             'PRINT',
             'Test report printed'
+        );
+
+        \App\Services\ReportPrintDueLogger::record(
+            $invoice,
+            DB::table('invoice_details')
+                ->where('invoice_no', $invoice->invoice_no)
+                ->whereNotNull('item_code')
+                ->where('item_code', '!=', '')
+                ->whereNull('package_parent_item_code_sub')
+                ->pluck('item_description'),
+            'LEGACY'
         );
 
         $safeFileName = str_replace(
@@ -820,11 +956,21 @@ class TestResultEntryController extends Controller
     {
         $invoice = Invoice::findOrFail($id);
 
-        if (!TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+        $confirmation = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->first();
+
+        if (!$confirmation) {
 
             return response()->json([
                 'status' => false,
                 'message' => 'Test report must be confirmed before sending.'
+            ]);
+        }
+
+        if ($confirmation->created_offline) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'This report was created offline -- there is nothing to send from the system.'
             ]);
         }
 
@@ -929,9 +1075,11 @@ class TestResultEntryController extends Controller
 
             return $sent;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
 
             \Log::error('Test Report WhatsApp Send Failed: ' . $e->getMessage());
+
+            ReportWhatsappDueGate::logSendFailure('TEST_REPORT', $invoice->invoice_no, $e);
 
             return false;
         }

@@ -28,11 +28,13 @@ class Kernel extends ConsoleKernel
         // available for manual use.
         $schedule->command('invoices:archive')->dailyAt('02:00');
 
-        // See CashInHandService -- cash_in_hand is a running balance that
-        // only moves via actual transactions during the day; this is the
-        // one place it gets reset, back to 0 for every user at the start of
-        // each new day.
-        $schedule->command('cash-in-hand:reset')->dailyAt('00:01');
+        // See CashInHandService::closeDay() -- at 23:00 every positive
+        // cash_in_hand is assumed handed over to the accountant; a negative
+        // one is recorded as a pending deficit that an Admin clears with a
+        // Cash Adjustment (never netted against the next day's cash).
+        // ensureFreshForToday() does the same lazily, so a missed run loses
+        // nothing. cash-in-hand:reset remains for manual use.
+        $schedule->command('cash-in-hand:close-day')->dailyAt('23:00');
 
         // Saves each user's reconciliation summary of the month that just ended (see
         // UserReconciliationService). The dashboard also fills any missing month when it
@@ -44,6 +46,11 @@ class Kernel extends ConsoleKernel
         // WhatsApp send is deliberately delayed 2 hours from the latest
         // upload/replace. This picks up whatever's due every 5 minutes.
         $schedule->command('xray:send-due-whatsapp')->everyFiveMinutes();
+
+        // Safety net for the due-payment report hold -- sends held reports
+        // whose invoice is now fully paid but whose release never ran in
+        // the payment request itself (see ReportWhatsappDueGate::releaseAllPaid()).
+        $schedule->command('reports:release-held-whatsapp')->everyFiveMinutes()->withoutOverlapping();
     }
 
     /**

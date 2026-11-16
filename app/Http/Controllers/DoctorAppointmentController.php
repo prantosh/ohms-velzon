@@ -97,11 +97,14 @@ class DoctorAppointmentController extends Controller
             'appointment_time' => $request->appointment_time,
             'remarks' => $request->remarks,
             'created_by' => Auth::id(),
+            'check_similar_patient' => true,
+            'confirm_new_patient' => $request->confirm_new_patient,
         ]);
 
         return response()->json([
             'status' => $result['status'],
             'message' => $result['message'],
+            'patients' => $result['patients'] ?? null,
             'token_no' => optional($result['appointment'])->token_no,
         ]);
     }
@@ -180,6 +183,27 @@ class DoctorAppointmentController extends Controller
         return response()->json(
             $this->scheduleQuery->getAvailableSlots($request->doctor_id, $request->appointment_date)
         );
+    }
+
+    /**
+     * Tells the booking screen whether the doctor has been marked
+     * unavailable on the picked date (a blackout row in
+     * doctor_schedule_exceptions), so it can alert the user instead of
+     * silently showing an empty slot list. Staff also see the reason.
+     */
+    public function checkDateAvailability(Request $request)
+    {
+        $request->validate([
+            'doctor_id' => 'required|integer',
+            'appointment_date' => 'required|date',
+        ]);
+
+        $blackout = $this->scheduleQuery->getBlackout((int) $request->doctor_id, $request->appointment_date);
+
+        return response()->json([
+            'unavailable' => (bool) $blackout,
+            'reason' => $blackout?->reason,
+        ]);
     }
 
     /**

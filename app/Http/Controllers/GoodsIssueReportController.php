@@ -17,7 +17,11 @@ class GoodsIssueReportController extends Controller
 
     public function index()
     {
-        return view('apps-goods-issue-report');
+        $items = DB::table('inventory_items')
+            ->orderBy('item_name')
+            ->get(['id', 'item_code', 'item_name']);
+
+        return view('apps-goods-issue-report', compact('items'));
     }
 
     /*
@@ -33,7 +37,7 @@ class GoodsIssueReportController extends Controller
             'to_date' => 'required|date|after_or_equal:from_date',
         ]);
 
-        $rows = $this->baseQuery($request->from_date, $request->to_date)
+        $rows = $this->baseQuery($request->from_date, $request->to_date, $request->filled('item_id') ? (int) $request->item_id : null)
             ->orderBy('stock_issues.issue_date')
             ->orderBy('stock_issues.issue_no')
             ->get([
@@ -104,7 +108,7 @@ class GoodsIssueReportController extends Controller
             'to_date' => 'required|date|after_or_equal:from_date',
         ]);
 
-        $rows = $this->baseQuery($request->from_date, $request->to_date)
+        $rows = $this->baseQuery($request->from_date, $request->to_date, $request->filled('item_id') ? (int) $request->item_id : null)
             ->groupBy('inventory_items.id', 'inventory_items.item_code', 'inventory_items.item_name', 'stock_issue_items.uom')
             ->orderBy('inventory_items.item_name')
             ->get([
@@ -161,11 +165,17 @@ class GoodsIssueReportController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    private function baseQuery(string $fromDate, string $toDate)
+    private function baseQuery(string $fromDate, string $toDate, ?int $itemId = null)
     {
-        return DB::table('stock_issue_items')
+        $query = DB::table('stock_issue_items')
             ->join('stock_issues', 'stock_issues.id', '=', 'stock_issue_items.stock_issue_id')
             ->join('inventory_items', 'inventory_items.id', '=', 'stock_issue_items.inventory_item_id')
             ->whereBetween('stock_issues.issue_date', [$fromDate, $toDate]);
+
+        if ($itemId) {
+            $query->where('stock_issue_items.inventory_item_id', $itemId);
+        }
+
+        return $query;
     }
 }

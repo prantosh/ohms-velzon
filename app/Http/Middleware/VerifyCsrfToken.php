@@ -19,5 +19,8 @@ class VerifyCsrfToken extends Middleware
         // CSRF's threat model (abusing a victim's authenticated session)
         // doesn't apply here.
         'book-appointment/*',
+        // Server-to-server WATI delivery-status webhook, authenticated by
+        // the secret in its URL (see WatiWebhookController).
+        'webhooks/wati/*',
     ];
 }

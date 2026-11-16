@@ -17,7 +17,14 @@ function fmtMoney4($v)
 }
 
 $netCashFormatter = new \NumberFormatter("en", \NumberFormatter::SPELLOUT);
-$netCashInWords = ucwords($netCashFormatter->format((float) ($summary['net_cash_to_deposit'] ?? 0)));
+// A deposit can never be negative: when payouts (refunds / doctor payments)
+// plus any deficit carried in exceed the day's collections, the amount to
+// deposit is 0 and the shortfall is shown as a deficit instead.
+$netMovement = (float) ($summary['net_cash_to_deposit'] ?? 0);
+$closingPosition = (float) ($summary['closing_position'] ?? $netMovement);
+$depositAmount = max(0, $closingPosition);
+$deficitAmount = $closingPosition < 0 ? abs($closingPosition) : 0;
+$netCashInWords = ucwords($netCashFormatter->format($depositAmount));
 @endphp
 
                 <style>
@@ -136,11 +143,49 @@ $netCashInWords = ucwords($netCashFormatter->format((float) ($summary['net_cash_
 
 <tr>
     <td class="label-blue">Net Cash To Deposit</td>
-    <td><b>Rs. {{ fmtMoney4($summary['net_cash_to_deposit']) }}</b> (Rupees {{ $netCashInWords }} Only)</td>
+    <td><b>Rs. {{ fmtMoney4($depositAmount) }}</b> (Rupees {{ $netCashInWords }} Only)
+        @if($deficitAmount > 0)
+        <br><span style="color:#c0392b;">Nothing to deposit &ndash; see deficit below.</span>
+        @endif
+    </td>
 
     <td class="label-blue">Print Date/Time</td>
     <td>{{ now()->format('d-m-Y h:i A') }}</td>
 </tr>
+
+@if(($summary['adjustment_total'] ?? 0) > 0)
+<tr>
+    <td class="label-blue">Accounts Adjustment (Approved)</td>
+    <td>+ Rs. {{ fmtMoney4($summary['adjustment_total']) }}</td>
+
+    <td class="label-blue">Day's Cash Position</td>
+    <td><b>Rs. {{ fmtMoney4($closingPosition) }}</b> (net cash + adjustment)</td>
+</tr>
+@endif
+
+@if($deficitAmount > 0 || ($summary['pending_prior_deficit'] ?? 0) < 0)
+<tr>
+    <td class="label-blue">{{ $deficitAmount > 0 ? 'Cash Deficit (Today)' : 'Cash Deficit (Today)' }}</td>
+    <td>
+        @if($deficitAmount > 0)
+        <b style="color:#c0392b;">Rs. {{ fmtMoney4($deficitAmount) }}</b>
+        <br>Cash paid out exceeded cash collected. Nothing to deposit; the deficit stays pending until Admin posts an Accounts Adjustment. It is NOT recovered from the next day's collections.
+        @else
+        Nil
+        @endif
+    </td>
+
+    <td class="label-blue">Earlier Pending Deficit</td>
+    <td>
+        @if(($summary['pending_prior_deficit'] ?? 0) < 0)
+        <b style="color:#c0392b;">Rs. {{ fmtMoney4(abs($summary['pending_prior_deficit'])) }}</b>
+        <br>Still unadjusted from earlier days (does not reduce today's deposit).
+        @else
+        Nil
+        @endif
+    </td>
+</tr>
+@endif
 
 </table>
 
@@ -158,9 +203,9 @@ $netCashInWords = ucwords($netCashFormatter->format((float) ($summary['net_cash_
 </tr>
 <tr>
     <th>Reporting Group</th>
-    <th width="20%">Amount To Deposit</th>
+    <th width="20%">{{ abs($netMovement - $depositAmount) > 0.004 ? 'Net Cash Amount' : 'Amount To Deposit' }}</th>
     <th>Reporting Group</th>
-    <th width="20%">Amount To Deposit</th>
+    <th width="20%">{{ abs($netMovement - $depositAmount) > 0.004 ? 'Net Cash Amount' : 'Amount To Deposit' }}</th>
 </tr>
 </thead>
 
@@ -187,9 +232,26 @@ $groupPairs = collect($groupBreakdown)->chunk(2);
 @endforelse
 
 <tr>
-    <td class="label-blue">Total</td>
-    <td class="text-end" colspan="3"><b>Rs. {{ fmtMoney4($summary['net_cash_to_deposit']) }}</b></td>
+    <td class="label-blue">{{ abs($netMovement - $depositAmount) > 0.004 ? 'Total (Net Cash Movement)' : 'Total' }}</td>
+    <td class="text-end" colspan="3"><b>Rs. {{ fmtMoney4($netMovement) }}</b></td>
 </tr>
+
+@if(abs($netMovement - $depositAmount) > 0.004)
+@if(($summary['adjustment_total'] ?? 0) > 0)
+<tr>
+    <td class="label-blue">Accounts Adjustment (+)</td>
+    <td class="text-end" colspan="3">Rs. {{ fmtMoney4($summary['adjustment_total']) }}</td>
+</tr>
+@endif
+<tr>
+    <td class="label-blue">Cash To Deposit</td>
+    <td class="text-end" colspan="3"><b>Rs. {{ fmtMoney4($depositAmount) }}</b>
+        @if($deficitAmount > 0)
+        &nbsp;(deficit of Rs. {{ fmtMoney4($deficitAmount) }} pending adjustment)
+        @endif
+    </td>
+</tr>
+@endif
 
 </tbody>
 
@@ -245,6 +307,37 @@ $groupPairs = collect($groupBreakdown)->chunk(2);
 </tbody>
 
 </table>
+
+@if(!empty($adjustments))
+<table style="margin-top:8px;">
+<thead>
+<tr>
+    <th colspan="5" style="text-align:left; background-color:#e6e6e6;">Accounts Adjustments (cash handed back by Accounts / approved by Admin)</th>
+</tr>
+<tr>
+    <th width="14%">Adj. No</th>
+    <th width="14%">Amount</th>
+    <th width="20%">Source</th>
+    <th>Reference / Remarks</th>
+    <th width="16%">Approved By</th>
+</tr>
+</thead>
+<tbody>
+@foreach($adjustments as $adj)
+<tr>
+    <td>{{ $adj['adjustment_no'] }}</td>
+    <td class="text-end amt-positive">+{{ fmtMoney4($adj['amount']) }}</td>
+    <td>{{ str_replace('_', ' ', $adj['source']) }}</td>
+    <td>
+        @if($adj['reference_date']) Against deposit of {{ \Carbon\Carbon::parse($adj['reference_date'])->format('d-m-Y') }}. @endif
+        {{ $adj['reference_note'] }} {{ $adj['remarks'] }}
+    </td>
+    <td>{{ $adj['approved_by'] }}</td>
+</tr>
+@endforeach
+</tbody>
+</table>
+@endif
 
 <div class="signature-section">
 

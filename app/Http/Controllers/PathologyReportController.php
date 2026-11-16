@@ -86,18 +86,39 @@ class PathologyReportController extends Controller
             ]);
         }
 
+        $outsourcedItems = DB::table('invoice_details as d')
+            ->join('invoice_item_details as iid', function ($join) {
+                $join->on('iid.item_code', '=', 'd.item_code')
+                    ->on('iid.item_code_sub', '=', 'd.item_code_sub');
+            })
+            ->where('d.invoice_no', $invoice->invoice_no)
+            ->where('d.item_code', self::ITEM_CODE)
+            ->where('iid.is_package', 0)
+            ->where('iid.is_outsourced', 1)
+            ->where('iid.is_report_not_required', 0)
+            ->whereRaw(\App\Support\ReportableLines::sql())
+            ->orderBy('d.line_no')
+            ->pluck('d.item_description')
+            ->filter()
+            ->unique()
+            ->values();
+
         // Confirmed under the OLD analyte-grid system before this feature
         // existed -- there is no data for it in the new tables at all, so
         // stop here and let the frontend show the legacy read-only card
         // (Print/WhatsApp still hit TestResultEntryController's untouched
         // routes) instead of a misleading "nothing reported yet" screen.
-        if (TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->exists()) {
+        $legacyConfirmation = TestReportConfirmation::where('invoice_no', $invoice->invoice_no)->first();
+
+        if ($legacyConfirmation) {
 
             return response()->json([
                 'status' => true,
                 'invoice' => $this->invoicePayload($invoice),
                 'legacy_confirmed' => true,
+                'created_offline' => (bool) $legacyConfirmation->created_offline,
                 'groups' => [],
+                'outsourced_items' => $outsourcedItems,
                 'pathology_whatsapp' => ['sent' => false, 'sent_at' => null],
             ]);
         }
@@ -136,6 +157,7 @@ class PathologyReportController extends Controller
                 'invoice' => $this->invoicePayload($invoice),
                 'legacy_confirmed' => false,
                 'groups' => [],
+                'outsourced_items' => $outsourcedItems,
                 'pathology_whatsapp' => ['sent' => false, 'sent_at' => null],
             ]);
         }
@@ -430,6 +452,8 @@ class PathologyReportController extends Controller
                     'item_code_sub' => $p->item_code_sub,
                     'parameter_name' => $p->parameter_name,
                     'group_label' => $p->group_label,
+                    'section_label' => $p->section_label,
+                    'default_value' => $p->default_value,
                     'uom' => $p->uom,
                     'reference_range' => $range,
                     'triggers' => json_decode($p->trigger_item_code_subs, true) ?: [],
@@ -448,6 +472,7 @@ class PathologyReportController extends Controller
             'invoice' => $this->invoicePayload($invoice),
             'legacy_confirmed' => false,
             'groups' => $groups,
+            'outsourced_items' => $outsourcedItems,
             'pathology_whatsapp' => $this->pathologyWhatsappStatus($invoice->invoice_no),
             'can_delete_reports' => optional(Auth::user())->role === 'Admin',
             'key_parameters' => $keyParameters,
@@ -474,10 +499,51 @@ class PathologyReportController extends Controller
             ->orderByDesc('id')
             ->first();
 
+        $reason = null;
+
+        if (!$log) {
+            $reason = $this->whatsappNotSentReason($invoiceNo);
+        }
+
         return [
             'sent' => (bool) $log,
             'sent_at' => $log ? \Carbon\Carbon::parse($log->created_at)->format('d-m-Y H:i') : null,
+            'reason' => $reason,
+            'held_due' => !$log && ReportWhatsappDueGate::dueAmount($invoiceNo) > 0,
         ];
+    }
+
+    /**
+     * Why the automatic combined-report WhatsApp has not gone out yet, for
+     * the banner on the result screen. A payment due is checked live (it
+     * wins even if the logged attempt was something else, since nothing
+     * will be sent while it stands); otherwise the latest logged attempt
+     * explains it. Null when there's nothing notable (e.g. not every test
+     * confirmed yet, so no send was ever attempted).
+     */
+    private function whatsappNotSentReason(string $invoiceNo): ?string
+    {
+        $due = ReportWhatsappDueGate::dueAmount($invoiceNo);
+
+        if ($due > 0) {
+            return 'Payment of ' . number_format($due, 2) . ' is still due on this invoice. The report is held and will be sent on WhatsApp automatically once the payment is cleared.';
+        }
+
+        $last = DB::table('whatsapp_message_logs')
+            ->where('invoice_no', $invoiceNo)
+            ->where('message_type', 'PATHOLOGY_REPORT')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$last) {
+            return null;
+        }
+
+        return match ($last->status) {
+            'SKIPPED' => 'Automatic WhatsApp for Pathology Report is switched off in WhatsApp Auto-Send settings.',
+            'FAILED' => 'The last automatic WhatsApp attempt failed (e.g. WhatsApp service unavailable or invalid mobile number). Use Send Now to retry.',
+            default => null,
+        };
     }
 
     private function invoicePayload(Invoice $invoice): array
@@ -485,6 +551,7 @@ class PathologyReportController extends Controller
         return [
             'id' => $invoice->id,
             'invoice_no' => $invoice->invoice_no,
+            'due_amount' => (float) $invoice->due_amount,
             'invoice_date' => $invoice->invoice_date
                 ? \Carbon\Carbon::parse($invoice->invoice_date)->format('d-m-Y')
                 : null,
@@ -795,6 +862,7 @@ class PathologyReportController extends Controller
             'report_title' => \App\Support\ReportTitle::normalise($request->report_title, $lines->sortBy('id')->pluck('item_description')->implode(', ')),
             'confirmed_at' => null,
             'key_parameter_values' => $this->sanitizeKeyParameterValues($request->input('key_parameter_values')),
+            'item_code_subs' => $lines->pluck('item_code_sub')->all(),
         ];
 
         $itemDescriptions = $lines->pluck('item_description');
@@ -879,6 +947,7 @@ class PathologyReportController extends Controller
         $finding = (object) [
             'invoice_no' => $invoice->invoice_no,
             'key_parameter_values' => $this->sanitizeKeyParameterValues($request->input('key_parameter_values')),
+            'item_code_subs' => $lines->pluck('item_code_sub')->all(),
         ];
 
         $ids = $lines->pluck('id')->map(fn ($v) => (int) $v)->sort()->values()->all();
@@ -1366,11 +1435,22 @@ class PathologyReportController extends Controller
 
         $groupName = $groupName ?: self::UNGROUPED_LABEL;
 
-        $sections = $findings->map(function ($finding) use ($groupName, $itemDescById) {
+        // Same key-parameter table processing as buildInvoiceSections() (and
+        // the same shared header date that layout prints) -- without it a
+        // placeholder template printed an empty table, and a saved
+        // Key Parameters block printed as-is instead of the compact table.
+        $keyParamService = app(KeyParameterService::class);
+        $sharedHeaderDateRaw = ReportTestDates::clean($invoice->test_date ?? null);
+
+        $sections = $findings->map(function ($finding) use ($groupName, $itemDescById, $invoice, $keyParamService, $sharedHeaderDateRaw) {
 
             $ids = $finding->items->pluck('invoice_detail_id')->map(fn ($v) => (int) $v)->all();
 
             $dateInfo = ReportTestDates::describe($ids, $itemDescById->all());
+
+            $tableData = $keyParamService->tableDataFor($finding, $invoice);
+            $content = $keyParamService->expandTrackedResultTables($finding->content ?? '', $tableData);
+            $content = $keyParamService->spliceAutoTable($content, $keyParamService->buildAutoTable($tableData, $sharedHeaderDateRaw));
 
             return [
                 'group_name' => $groupName,
@@ -1379,7 +1459,7 @@ class PathologyReportController extends Controller
                 'date_note' => (!empty($finding->report_title) && $dateInfo['mixed']) ? $dateInfo['title'] : null,
                 'date_single' => $dateInfo['single'],
                 'date_mixed' => $dateInfo['mixed'],
-                'content' => $finding->content,
+                'content' => $content,
                 'confirmed_at' => $finding->confirmed_at,
                 'corrected_from_sent_at' => $finding->corrected_from_sent_at,
             ];
@@ -1812,9 +1892,11 @@ class PathologyReportController extends Controller
 
             return $sent;
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
 
             \Log::error('Pathology Combined Invoice WhatsApp Send Failed: ' . $e->getMessage());
+
+            ReportWhatsappDueGate::logSendFailure('PATHOLOGY_REPORT', $invoiceNo, $e);
 
             return false;
         }

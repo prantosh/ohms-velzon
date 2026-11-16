@@ -75,6 +75,18 @@ class DoctorScheduleQueryService
             ->values();
     }
 
+    /**
+     * The blackout row (if any) that disables this doctor on this exact
+     * calendar date -- used by the booking screens to tell the user WHY a
+     * date has no slots, instead of just showing an empty slot list.
+     */
+    public function getBlackout(int $doctorId, string $date): ?DoctorScheduleException
+    {
+        return DoctorScheduleException::where('doctor_id', $doctorId)
+            ->whereDate('exception_date', $date)
+            ->first();
+    }
+
     public function getAvailableSlots(int $doctorId, string $date, bool $excludeByAppointment = false): array
     {
         // A blackout date (doctor sits on this weekday most weeks, but not

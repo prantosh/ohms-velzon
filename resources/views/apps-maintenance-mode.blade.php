@@ -45,7 +45,7 @@
 
             <div class="card-body">
 
-                <div class="d-flex align-items-center gap-3 mb-4">
+                <div class="d-flex flex-wrap align-items-center gap-3 mb-4">
                     <div class="form-check form-switch fs-3">
                         <input class="form-check-input" type="checkbox" role="switch" id="maintenanceToggle"
                                {{ $setting->is_enabled ? 'checked' : '' }}>

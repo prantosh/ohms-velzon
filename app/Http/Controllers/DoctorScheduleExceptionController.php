@@ -27,6 +27,78 @@ class DoctorScheduleExceptionController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | REPORT PAGE (Appointment > Doctor Unavailable Dates)
+    |--------------------------------------------------------------------------
+    | Read-only listing of every disabled date across all doctors, with who
+    | disabled it and when. Defaults to upcoming dates only; the filters
+    | let staff narrow by doctor / date range or include past dates.
+    */
+
+    public function report(Request $request)
+    {
+        $request->validate([
+            'doctor_id' => 'nullable|integer',
+            'from_date' => 'nullable|date',
+            'to_date' => 'nullable|date',
+            'scope' => 'nullable|in:upcoming,all',
+        ]);
+
+        $scope = $request->input('scope', 'upcoming');
+
+        $query = DoctorScheduleException::with([
+            'doctor:id,doctor_name',
+            'creator:id,name',
+        ]);
+
+        if ($request->filled('doctor_id')) {
+            $query->where('doctor_id', $request->doctor_id);
+        }
+
+        if ($request->filled('from_date')) {
+            $query->whereDate('exception_date', '>=', $request->from_date);
+        } elseif ($scope === 'upcoming') {
+            $query->whereDate('exception_date', '>=', Carbon::today()->toDateString());
+        }
+
+        if ($request->filled('to_date')) {
+            $query->whereDate('exception_date', '<=', $request->to_date);
+        }
+
+        $exceptions = $query
+            ->orderBy('exception_date', $scope === 'upcoming' ? 'asc' : 'desc')
+            ->orderBy('doctor_id')
+            ->get();
+
+        // Booked-appointment counts for every (doctor, date) on the page in
+        // one grouped query, instead of one count query per row.
+        $bookedCounts = collect();
+
+        if ($exceptions->isNotEmpty()) {
+
+            $bookedCounts = DoctorAppointment::query()
+                ->selectRaw('doctor_id, DATE(appointment_date) as appt_date, COUNT(*) as total')
+                ->whereIn('doctor_id', $exceptions->pluck('doctor_id')->unique())
+                ->whereIn('appointment_date', $exceptions->map(fn ($e) => $e->exception_date->toDateString())->unique())
+                ->where('appointment_status', 'Booked')
+                ->groupBy('doctor_id', 'appt_date')
+                ->get()
+                ->keyBy(fn ($row) => $row->doctor_id . '|' . $row->appt_date);
+        }
+
+        $exceptions->each(function ($exception) use ($bookedCounts) {
+            $key = $exception->doctor_id . '|' . $exception->exception_date->toDateString();
+            $exception->booked_count = (int) ($bookedCounts[$key]->total ?? 0);
+        });
+
+        $doctors = Doctor::whereIn('id', DoctorScheduleException::distinct()->pluck('doctor_id'))
+            ->orderBy('doctor_name')
+            ->get(['id', 'doctor_name']);
+
+        return view('apps-doctor-unavailable-dates', compact('exceptions', 'doctors', 'scope'));
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | LIST (upcoming exceptions for one doctor)
     |--------------------------------------------------------------------------
     */

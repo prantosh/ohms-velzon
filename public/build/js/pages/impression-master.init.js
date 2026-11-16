@@ -120,11 +120,8 @@ async function loadImpressions(page = 1) {
 
     lastPage = result.pagination.last_page;
 
-    document.querySelector('#pageNumber').innerText =
-        `Page ${result.pagination.current_page}`;
+    renderPager(result.pagination, loadImpressions);
 
-    document.querySelector('#pagination-info').innerText =
-        `Total Records : ${result.pagination.total}`;
 
     result.data.forEach(raw => {
 

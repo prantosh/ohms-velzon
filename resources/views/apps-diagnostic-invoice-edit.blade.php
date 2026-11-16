@@ -324,16 +324,17 @@ Pay Rest Payment
                     </td>
 
                     <td>
-                        @if($row->item_code === 'USG001' && $invoice->due_amount > 0 && !$row->doctor_payment_waived)
+                        @if($row->doctor_id && $invoice->due_amount > 0 && !$row->doctor_payment_waived)
                             {{--
-                                Doctor replacement, USG only, offered right
+                                Doctor replacement, for any line that carries
+                                a performing doctor, offered right
                                 at final/due payment collection -- the
                                 originally selected doctor may not be the
                                 one who actually performs the test. Options
                                 beyond the current doctor are filled in by
                                 JS from the same doctor-payments endpoint
                                 used at invoice creation
-                                (loadUsgDoctorReplacementOptions()); the
+                                (loadDoctorReplacementOptions()); the
                                 select's name always submits whichever
                                 doctor is currently chosen, changed or not --
                                 the server treats "same as before" as a
@@ -589,7 +590,7 @@ Pay Rest Payment
                     </td>
 
                     <td>
-                        @if($row->item_code === 'USG001' && $invoice->due_amount > 0 && !$row->doctor_payment_waived)
+                        @if($row->doctor_id && $invoice->due_amount > 0 && !$row->doctor_payment_waived)
                             <select
                                 class="form-select form-select-sm changeDoctorSelect"
                                 name="doctor_replacements[{{ $row->id }}]"
@@ -1048,7 +1049,7 @@ Select
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
 
-<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}?v={{ @filemtime(public_path('build/js/pages/apps-diagnostic-invoice.init.js')) ?: 1 }}"></script>
+<script src="{{ URL::asset('build/js/pages/apps-diagnostic-invoice.init.js') }}?v={{ filemtime(public_path('build/js/pages/apps-diagnostic-invoice.init.js')) }}"></script>
 
 
 @endsection

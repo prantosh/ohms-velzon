@@ -49,14 +49,14 @@ async function loadPendingRequests() {
 
     tbody.innerHTML = result.data.map(row => `
         <tr>
-            <td>${escapeHtml(row.invoice_no)}</td>
-            <td>${escapeHtml(row.invoice_type_label ?? '-')}</td>
-            <td>${escapeHtml(row.invoice_date_fmt ?? '-')}</td>
-            <td>${escapeHtml(row.patient_name ?? '-')}</td>
-            <td class="text-end">${fmtMoney(row.paid_amount)}</td>
-            <td>${escapeHtml(row.requested_by_name ?? '-')}</td>
-            <td>${escapeHtml(row.reason ?? '-')}</td>
-            <td>${fmtDateTime(row.requested_at)}</td>
+            <td data-label="Invoice No" class="fw-semibold">${escapeHtml(row.invoice_no)}</td>
+            <td data-label="Type">${escapeHtml(row.invoice_type_label ?? '-')}</td>
+            <td data-label="Date">${escapeHtml(row.invoice_date_fmt ?? '-')}</td>
+            <td data-label="Patient / Party">${escapeHtml(row.patient_name ?? '-')}</td>
+            <td data-label="Paid (₹)" class="text-end">${fmtMoney(row.paid_amount)}</td>
+            <td data-label="Requested By">${escapeHtml(row.requested_by_name ?? '-')}</td>
+            <td data-label="Reason">${escapeHtml(row.reason ?? '-')}</td>
+            <td data-label="Requested At">${fmtDateTime(row.requested_at)}</td>
             <td>
                 <button type="button" class="btn btn-sm btn-success grant-pending-btn"
                         data-permission-id="${row.permission_id}"

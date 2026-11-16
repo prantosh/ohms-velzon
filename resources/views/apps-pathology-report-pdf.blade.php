@@ -210,7 +210,7 @@ table {
         </td>
         <td width="35%">
             <span class="label-blue">Ref. Doctor :</span>
-            {{ strlen(trim((string) $invoice->referred_doctor)) < 8 ? 'Not Mentioned' : trim($invoice->referred_doctor) }}
+            {{ \App\Support\ReferredDoctor::display($invoice->referred_doctor) }}
         </td>
         <td width="30%" style="text-align:right;">
             <span class="label-blue">Patient Id :</span>

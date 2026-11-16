@@ -196,22 +196,35 @@ class DiagnosticInvoiceController extends Controller
                 $days = 3;
             }
 
+            // Sub-tabs: all / payment complete (Paid) / payment due (Partial,
+            // Due, ...). Cancelled invoices appear under "all" only.
+            $payment = $request->get('payment', 'all');
+
             $invoices =
                 Invoice::where(
                     'invoice_type',
                     'DIAGNOSTIC'
                 )
 
+                    ->when($payment === 'complete', fn ($q) => $q
+                        ->where('status', 'Paid')
+                        ->where(fn ($c) => $c->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y')))
+
+                    ->when($payment === 'due', fn ($q) => $q
+                        ->where(fn ($s) => $s->whereNull('status')->orWhere('status', '!=', 'Paid'))
+                        ->where(fn ($c) => $c->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y')))
+
                     ->where(
                         'invoice_category',
                         $category
                     )
 
-                    ->where(
+                    // Payment Due lists every due record regardless of age.
+                    ->when($payment !== 'due', fn ($q) => $q->where(
                         'created_at',
                         '>=',
                         now()->subDays($days - 1)->startOfDay()
-                    )
+                    ))
 
                     ->orderBy('id', 'desc')
 
@@ -280,12 +293,19 @@ class DiagnosticInvoiceController extends Controller
 
     public function getTests($itemCode)
     {
-        $tests = InvoiceItemDetail::where('item_code', $itemCode)
+        $query = InvoiceItemDetail::where('item_code', $itemCode)
+            ->where('status', 'Y');
 
-            ->where('status', 'Y')
+        // Manually priced categories intentionally use a zero master rate;
+        // their amount is entered during invoice creation. For regular
+        // categories, zero-rated items are report-only and must not be
+        // offered as individually selectable invoice lines.
+        if (!$this->isManualDiagnosticItem($itemCode)) {
+            $query->where('rate', '<>', 0);
+        }
 
+        $tests = $query
             ->orderBy('item_description_sub')
-
             ->get([
                 'id',
                 'item_code_sub',
@@ -337,7 +357,7 @@ class DiagnosticInvoiceController extends Controller
             ->value('payable_no');
 
         if ($last) {
-            $serial = (int) substr($last, -4) + 1;
+            $serial = (int) substr($last, strrpos($last, '/') + 1) + 1;
         } else {
             $serial = 1;
         }
@@ -448,8 +468,11 @@ class DiagnosticInvoiceController extends Controller
     public function store(Request $request, AuditService $auditService)
     {
 
-       
-
+        $request->validate([
+            'patient_age' => 'nullable|digits_between:1,2',
+        ], [
+            'patient_age.digits_between' => 'Age must be a number of up to 2 digits.',
+        ]);
 
         DB::beginTransaction();
 
@@ -462,8 +485,9 @@ class DiagnosticInvoiceController extends Controller
                 ->where('authorised', 'YES')
                 ->pluck('id')
                 ->all();
+            $doctorPaymentRulesByItem = [];
 
-            foreach ($tests as $test) {
+            foreach ($tests as &$test) {
 
                 $manualDiscount =
                     (float) ($test['additional_discount_percent'] ?? 0) +
@@ -480,18 +504,81 @@ class DiagnosticInvoiceController extends Controller
                     ], 422);
                 }
 
-                // The doctor's payable for this item is fixed per the
-                // master table regardless of discount, so a discount can
-                // never push the patient's payable for that item below
-                // what's owed to the doctor -- otherwise ABSSRK would be
-                // paying the doctor more than it collected for the item.
-                // Exempted when the doctor is waiving their fee for this
-                // line entirely (doctor_payment_waived) -- there the patient
-                // amount is *expected* to drop below the scheduled figure,
-                // by design.
-                $doctorPayable = (float) ($test['payment_value'] ?? 0);
-
                 $isManualTest = $this->isManualDiagnosticItem($test['item_code'] ?? null);
+                $hasDoctorRule = false;
+
+                if (!$isManualTest) {
+                    $itemCodeSub = $test['item_code_sub'] ?? '';
+                    if (!array_key_exists($itemCodeSub, $doctorPaymentRulesByItem)) {
+                        $doctorPaymentRulesByItem[$itemCodeSub] = DB::table('doctor_test_payment_masters')
+                            ->where('item_code_sub', $itemCodeSub)
+                            ->where('status', 'A')
+                            ->lockForUpdate()
+                            ->get(['doctor_id', 'payment_value']);
+                    }
+
+                    $paymentRules = $doctorPaymentRulesByItem[$itemCodeSub];
+                    $hasDoctorRule = $paymentRules->isNotEmpty();
+
+                    if ($hasDoctorRule) {
+                        $selectedDoctorId = (string) ($test['doctor_id'] ?? '');
+                        if ($selectedDoctorId === '') {
+                            DB::rollBack();
+
+                            return response()->json([
+                                'status' => false,
+                                'message' => 'Select a Doctor for "' . ($test['test_name'] ?? 'a test') .
+                                    '" -- it has a doctor payment rule configured.'
+                            ], 422);
+                        }
+
+                        $doctorRule = $paymentRules->first(
+                            fn ($rule) => (string) $rule->doctor_id === $selectedDoctorId
+                        );
+
+                        if (!$doctorRule) {
+                            DB::rollBack();
+
+                            return response()->json([
+                                'status' => false,
+                                'message' => 'The selected doctor does not have an active payment rule for "' .
+                                    ($test['test_name'] ?? $itemCodeSub) . '". Select a doctor with a configured rate and try again.'
+                            ], 422);
+                        }
+
+                        $configuredPayable = round((float) $doctorRule->payment_value, 2);
+                        $submittedPayable = round((float) ($test['payment_value'] ?? 0), 2);
+                        $isWaived = !empty($test['doctor_payment_waived']);
+
+                        if (!$isWaived && $submittedPayable !== $configuredPayable) {
+                            DB::rollBack();
+
+                            return response()->json([
+                                'status' => false,
+                                'message' => 'The doctor payment for "' . ($test['test_name'] ?? $itemCodeSub) .
+                                    '" must match the configured rate of ' . number_format($configuredPayable, 2) .
+                                    '. Refresh the invoice and try again.'
+                            ], 422);
+                        }
+
+                        // Use the server-validated rule for all subsequent
+                        // invoice and payable calculations, including waivers.
+                        $test['payment_value'] = $configuredPayable;
+                    } elseif (!empty($test['doctor_id'])
+                        || round((float) ($test['payment_value'] ?? 0), 2) !== 0.0) {
+                        DB::rollBack();
+
+                        return response()->json([
+                            'status' => false,
+                            'message' => 'No active doctor payment rule exists for "' .
+                                ($test['test_name'] ?? $itemCodeSub) . '". Remove the doctor payment or configure an active rule before saving.'
+                        ], 422);
+                    }
+                }
+
+                // The doctor's payable for a configured test comes from its
+                // selected doctor's rule, not from the submitted form value.
+                $doctorPayable = (float) ($test['payment_value'] ?? 0);
 
                 // Recomputed from rate/discounts (rounded to the nearest 10)
                 // rather than trusting the submitted 'amount' -- see
@@ -512,28 +599,35 @@ class DiagnosticInvoiceController extends Controller
                     ], 422);
                 }
 
-                // Mirrors the client-side check in apps-diagnostic-invoice.init.js
-                // (doctor selection is mandatory whenever the doctor dropdown got
-                // populated, i.e. a payment rule exists) -- but re-derived here
-                // from doctor_test_payment_masters directly rather than trusting
-                // the submitted doctor_id/payment_value, since a request that
-                // skips the browser entirely could otherwise leave a
-                // doctor-payable line with no doctor attributed to it at all.
-                $hasDoctorRule = !$isWaived && DB::table('doctor_test_payment_masters')
-                    ->where('item_code_sub', $test['item_code_sub'] ?? null)
-                    ->where('status', 'A')
-                    ->exists();
+            }
+            unset($test);
 
-                if ($hasDoctorRule && empty($test['doctor_id'])) {
+            // An item may be billed only once per invoice. Package component
+            // rows (package_parent_item_code_sub set) are zero-rated result
+            // rows, not billed lines, so they're excluded.
+            $seenItemCodes = [];
 
+            foreach ($tests as $test) {
+                $itemCodeSub = (string) ($test['item_code_sub'] ?? '');
+
+                if ($itemCodeSub === '' || !empty($test['package_parent_item_code_sub'])) {
+                    continue;
+                }
+
+                if (isset($seenItemCodes[$itemCodeSub])) {
                     DB::rollBack();
 
                     return response()->json([
                         'status' => false,
-                        'message' => 'Select a Doctor for "' . ($test['test_name'] ?? 'a test') . '" -- it has a doctor payment rule configured.'
+                        'message' => '"' . ($test['test_name'] ?? $itemCodeSub) .
+                            '" is added more than once. An item can be invoiced only once per invoice.'
                     ], 422);
                 }
+
+                $seenItemCodes[$itemCodeSub] = true;
             }
+
+            $request->merge(['tests' => $tests]);
 
             $firstIsPathology = null;
 
@@ -882,7 +976,11 @@ class DiagnosticInvoiceController extends Controller
                         Auth::id()
                 ]);
 
-            DB::commit();
+            // No commit here: the lines, doctor payables and payment below
+            // must commit or roll back together with the invoice header, or a
+            // failure part-way (e.g. a duplicate payable_no) leaves a saved
+            // invoice with missing tests/components. The single commit is
+            // after the payment is recorded.
 
             $auditService->logCreate(
                 self::MODULE_CODE,
@@ -1241,27 +1339,30 @@ class DiagnosticInvoiceController extends Controller
 
     public function generatePatientId(Request $request)
     {
-        $count = DB::table('patients')
-            ->where(
-                'mobile_no',
-                $request->mobile_no
-            )
-            ->count() + 1;
+        // Same mobile + same name is the same patient -- hand back their
+        // existing ID instead of minting a new one. The screen then saves
+        // the typed name/age/gender onto it (savePatient), so the latest
+        // input wins.
+        $existing = \App\Models\Patient::findActiveByMobileAndName(
+            $request->mobile_no,
+            $request->patient_name
+        );
 
-        $patientId =
-            \App\Support\OfflineMode::prefix('P') .
-            $request->mobile_no .
-            '-' .
-            str_pad(
-                $count,
-                2,
-                '0',
-                STR_PAD_LEFT
-            );
+        if ($existing) {
+
+            return response()->json([
+                'status' => true,
+                'patient_id' => $existing->patient_id,
+                'existing' => true,
+            ]);
+        }
+
+        $patientId = \App\Models\Patient::nextPatientId((string) $request->mobile_no);
 
         return response()->json([
             'status' => true,
-            'patient_id' => $patientId
+            'patient_id' => $patientId,
+            'existing' => false,
         ]);
     }
     public function getPatientDiscountEligibility($patientId)
@@ -1997,10 +2098,10 @@ class DiagnosticInvoiceController extends Controller
 
             /*
             |--------------------------------------------------------------------------
-            | DOCTOR REPLACEMENT (USG ONLY) -- AT FINAL/DUE PAYMENT
+            | DOCTOR REPLACEMENT -- AT FINAL/DUE PAYMENT
             |--------------------------------------------------------------------------
             | The doctor originally selected when the invoice was raised can be
-            | swapped for a different USG doctor at the point the remaining due
+            | swapped for a different doctor at the point the remaining due
             | amount is collected. The patient's line amount (and therefore the
             | invoice total/paid/due) never changes here -- only how that fixed
             | amount splits between the clinic's own charge and the doctor's
@@ -2008,7 +2109,9 @@ class DiagnosticInvoiceController extends Controller
             | this exact test (doctor_test_payment_masters), looked up
             | server-side rather than trusted from the request, since this is
             | recomputing money, not just accepting a fresh line like store() does.
-            | Restricted to USG001 lines only, per the requirement.
+            | Allowed on any line that already carries a performing doctor
+            | (originally USG001 only; widened so e.g. ECHO/CRD001 lines can be
+            | corrected too).
             |--------------------------------------------------------------------------
             */
 
@@ -2023,11 +2126,12 @@ class DiagnosticInvoiceController extends Controller
                         ->where('invoice_no', $invoice->invoice_no)
                         ->first();
 
-                    // Not this invoice's line, not USG, or nothing actually
-                    // changed -- silently skip rather than error, since the
-                    // dropdown always submits its currently-selected value
-                    // whether or not the operator touched it.
-                    if (!$line || $line->item_code !== 'USG001') {
+                    // Not this invoice's line, a line with no performing
+                    // doctor, or nothing actually changed -- silently skip
+                    // rather than error, since the dropdown always submits
+                    // its currently-selected value whether or not the
+                    // operator touched it.
+                    if (!$line || empty($line->doctor_id)) {
                         continue;
                     }
 
@@ -2125,7 +2229,7 @@ class DiagnosticInvoiceController extends Controller
                             $doctorPayable,
                             $oldPayableData,
                             $doctorPayable->only($doctorPayable->getFillable()),
-                            'Doctor changed at final payment (USG)'
+                            'Doctor changed at final payment'
                         );
                     }
                 }
@@ -2365,13 +2469,16 @@ class DiagnosticInvoiceController extends Controller
                 'Diagnostic invoice due payment collected'
             );
 
+            // Reports whose WhatsApp was held for this payment go out now
+            // that nothing is due (no-op while any due remains). Runs BEFORE
+            // the invoice WhatsApp below so a hang/fatal in that send can't
+            // leave the held reports unreleased; anything still missed is
+            // picked up by the reports:release-held-whatsapp sweeper.
+            \App\Services\ReportWhatsappDueGate::releaseAll($invoice->invoice_no);
+
             $this->autoSendInvoiceWhatsapp(
                 $invoice->id
             );
-
-            // Reports whose WhatsApp was held for this payment go out now
-            // that nothing is due (no-op while any due remains).
-            \App\Services\ReportWhatsappDueGate::releaseAll($invoice->invoice_no);
 
             return response()->json([
                 'status' => true,
@@ -2791,11 +2898,28 @@ class DiagnosticInvoiceController extends Controller
             return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
         }
 
-        DB::table('patients')->updateOrInsert(
-            [
-                'patient_id' => $request->patient_id
-            ],
-            [
+        $patientRow = DB::table('patients')->where('patient_id', $request->patient_id);
+
+        if ($patientRow->exists()) {
+
+            // An existing patient (e.g. matched by mobile + name): the
+            // latest input wins, but a blank age/gender never wipes what's
+            // on file, and created_at is left as it was.
+            $patientRow->update(array_filter([
+                'patient_name' => $request->patient_name,
+                'mobile_no' => $request->mobile_no,
+                'age' => $parsedAge['years'] ?? null,
+                'age_months' => $parsedAge['months'] ?? null,
+                'age_recorded_on' => $parsedAge ? now()->toDateString() : null,
+                'gender' => $request->gender,
+                'status' => 'A',
+                'updated_at' => now(),
+            ], fn ($v) => $v !== null && $v !== ''));
+
+        } else {
+
+            DB::table('patients')->insert([
+                'patient_id' => $request->patient_id,
                 'patient_name' => $request->patient_name,
                 'mobile_no' => $request->mobile_no,
                 'age' => $parsedAge['years'] ?? null,
@@ -2805,8 +2929,8 @@ class DiagnosticInvoiceController extends Controller
                 'status' => 'A',
                 'updated_at' => now(),
                 'created_at' => now()
-            ]
-        );
+            ]);
+        }
 
         DB::table('patient_mobile_numbers')
             ->updateOrInsert(
