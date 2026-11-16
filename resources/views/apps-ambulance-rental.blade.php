@@ -235,7 +235,7 @@
 
 <div class="input-group">
 <input type="number" min="0" max="150" id="patient_age-field" class="form-control" placeholder="Years" readonly>
-<input type="number" min="0" max="11" id="patient_age-field_months" class="form-control" placeholder="Months" readonly>
+<input type="number" min="0" max="11" id="patient_age_months-field" class="form-control" placeholder="Months" readonly>
 </div>
 
                         </div>

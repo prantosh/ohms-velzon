@@ -197,7 +197,7 @@ Create Diagnostic Invoice
                                    readonly>
                         </div>
 
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <div class="d-flex justify-content-between">
 
                                 <label>Name</label>
