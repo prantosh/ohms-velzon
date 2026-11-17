@@ -6,6 +6,8 @@
 
 @section('css')
 
+<link href="{{ URL::asset('build/libs/flatpickr/flatpickr.min.css') }}" rel="stylesheet" type="text/css" />
+
 <link href="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.css') }}"
       rel="stylesheet"
       type="text/css" />
@@ -444,6 +446,17 @@
                  editable until the report is confirmed. A single date prints once;
                  different dates print in brackets beside each test name. -->
             <div class="pathology-item-dates d-flex flex-wrap gap-3 mb-3"></div>
+            <!-- URINE C/S (NO GROWTH) template only: printed above the report content -->
+            <div class="pathology-specimen-dates flex-wrap gap-3 mb-3" style="display:none;">
+                <label class="d-flex align-items-center gap-2 small mb-0">
+                    <span class="text-muted">Date of Receipt</span>
+                    <input type="date" class="form-control form-control-sm pathology-receipt-date" style="width:auto">
+                </label>
+                <label class="d-flex align-items-center gap-2 small mb-0">
+                    <span class="text-muted">Date of Report</span>
+                    <input type="date" class="form-control form-control-sm pathology-report-date" style="width:auto">
+                </label>
+            </div>
 
             <!-- Key Parameters: a small structured capture box for a curated
                  subset of results (FBS, PPBS, Creatinine, Lipid/LFT
@@ -548,6 +561,8 @@
 @section('script')
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
+
+<script src="{{ URL::asset('build/libs/flatpickr/flatpickr.min.js') }}"></script>
 
 <script src="{{ URL::asset('build/libs/ckeditor5/browser/ckeditor5.umd.js') }}"></script>
 

@@ -28,6 +28,10 @@ class Kernel extends ConsoleKernel
         // available for manual use.
         $schedule->command('invoices:archive')->dailyAt('02:00');
 
+        // Ages patients forward from age_recorded_on: +1 month per month under 5,
+        // +1 year per anniversary from 5. Catches up on its own after missed days.
+        $schedule->command('patients:roll-age')->dailyAt('00:10');
+
         // See CashInHandService::closeDay() -- at 23:00 every positive
         // cash_in_hand is assumed handed over to the accountant; a negative
         // one is recorded as a pending deficit that an Admin clears with a

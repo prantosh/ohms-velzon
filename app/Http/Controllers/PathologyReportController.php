@@ -320,6 +320,8 @@ class PathologyReportController extends Controller
                         'template_id' => $finding->pathology_report_template_id,
                         'template_title' => $templateTitles->get($finding->pathology_report_template_id),
                         'report_title' => $finding->report_title,
+                        'receipt_date' => optional($finding->receipt_date)->format('Y-m-d'),
+                        'report_date' => optional($finding->report_date)->format('Y-m-d'),
                         'confirmed_at' => optional($finding->confirmed_at)->format('d-m-Y H:i'),
                         'items' => $finding->items->map(fn ($i) => [
                             'invoice_detail_id' => $i->invoice_detail_id,
@@ -595,6 +597,8 @@ class PathologyReportController extends Controller
                 'content' => 'nullable|string',
                 'key_parameter_values' => 'nullable|array',
                 'key_parameter_values.*' => 'nullable|string|max:100',
+                'receipt_date' => 'nullable|date_format:Y-m-d',
+                'report_date' => 'nullable|date_format:Y-m-d',
             ]
         );
 
@@ -640,7 +644,10 @@ class PathologyReportController extends Controller
                     'content' => $content,
                     'key_parameter_values' => $this->sanitizeKeyParameterValues($request->input('key_parameter_values')),
                     'updated_by' => Auth::id(),
-                ] + ($request->has('report_title') ? [
+                ] + ($request->has('receipt_date') || $request->has('report_date') ? [
+                    'receipt_date' => $request->input('receipt_date') ?: null,
+                    'report_date' => $request->input('report_date') ?: null,
+                ] : []) + ($request->has('report_title') ? [
                     // the heading typed on the card (null = the default, the test descriptions)
                     'report_title' => \App\Support\ReportTitle::normalise(
                         $request->report_title,
@@ -750,6 +757,8 @@ class PathologyReportController extends Controller
                 'report_title' => $request->has('report_title')
                     ? \App\Support\ReportTitle::normalise($request->report_title, $lines->sortBy('id')->pluck('item_description')->implode(', '))
                     : null,
+                'receipt_date' => $request->input('receipt_date') ?: null,
+                'report_date' => $request->input('report_date') ?: null,
                 'created_by' => Auth::id(),
                 'updated_by' => Auth::id(),
             ]);
@@ -824,6 +833,8 @@ class PathologyReportController extends Controller
                 'item_dates.*' => 'nullable|date_format:Y-m-d',
                 'report_title' => 'nullable|string|max:255',
                 'content' => 'nullable|string',
+                'receipt_date' => 'nullable|date_format:Y-m-d',
+                'report_date' => 'nullable|date_format:Y-m-d',
                 'key_parameter_values' => 'nullable|array',
             ]
         );
@@ -862,6 +873,8 @@ class PathologyReportController extends Controller
             'report_title' => \App\Support\ReportTitle::normalise($request->report_title, $lines->sortBy('id')->pluck('item_description')->implode(', ')),
             'confirmed_at' => null,
             'key_parameter_values' => $this->sanitizeKeyParameterValues($request->input('key_parameter_values')),
+            'receipt_date' => $request->input('receipt_date') ?: null,
+            'report_date' => $request->input('report_date') ?: null,
             'item_code_subs' => $lines->pluck('item_code_sub')->all(),
         ];
 
@@ -884,6 +897,7 @@ class PathologyReportController extends Controller
         $tableData = $keyParamService->tableDataFor($finding, $invoice);
         $printContent = $keyParamService->expandTrackedResultTables($finding->content ?? '', $tableData);
         $printContent = $keyParamService->spliceAutoTable($printContent, $keyParamService->buildAutoTable($tableData, $dateInfo['header_date_raw'] ?? null));
+        $printContent = \App\Support\SpecimenDates::prepend($finding, $printContent);
 
         $pdf = Pdf::loadView(
             'apps-pathology-report-pdf',
@@ -1345,6 +1359,7 @@ class PathologyReportController extends Controller
         $tableData = $keyParamService->tableDataFor($finding, $invoice);
         $printContent = $keyParamService->expandTrackedResultTables($finding->content ?? '', $tableData);
         $printContent = $keyParamService->spliceAutoTable($printContent, $keyParamService->buildAutoTable($tableData, $dateInfo['header_date_raw'] ?? null));
+        $printContent = \App\Support\SpecimenDates::prepend($finding, $printContent);
 
         $pdf = Pdf::loadView(
             'apps-pathology-report-pdf',
@@ -1451,6 +1466,7 @@ class PathologyReportController extends Controller
             $tableData = $keyParamService->tableDataFor($finding, $invoice);
             $content = $keyParamService->expandTrackedResultTables($finding->content ?? '', $tableData);
             $content = $keyParamService->spliceAutoTable($content, $keyParamService->buildAutoTable($tableData, $sharedHeaderDateRaw));
+            $content = \App\Support\SpecimenDates::prepend($finding, $content);
 
             return [
                 'group_name' => $groupName,
@@ -1733,6 +1749,8 @@ class PathologyReportController extends Controller
                     $content = $keyParamService->expandTrackedResultTables($content, $tableData);
                     $content = $keyParamService->spliceAutoTable($content, $keyParamService->buildAutoTable($tableData, $sharedHeaderDateRaw));
                 }
+
+                $content = \App\Support\SpecimenDates::prepend($finding, $content);
 
                 return [
                     'group_name' => $groupNameForFinding($finding->id),

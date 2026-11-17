@@ -13,6 +13,8 @@ class PathologyReportFinding extends Model
         'content',
         'key_parameter_values',
         'report_title',
+        'receipt_date',
+        'report_date',
 
         'confirmed_by',
         'confirmed_at',
@@ -23,6 +25,8 @@ class PathologyReportFinding extends Model
     ];
 
     protected $casts = [
+        'receipt_date' => 'date',
+        'report_date' => 'date',
         'confirmed_at' => 'datetime',
         'corrected_from_sent_at' => 'datetime',
         'key_parameter_values' => 'array',

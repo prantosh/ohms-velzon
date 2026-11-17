@@ -1321,6 +1321,17 @@ function renderPathologyFindingCard(container, finding, invoiceNo) {
 
         datesWrap.appendChild(label);
     });
+    // Date of Receipt / Date of Report: only for the URINE C/S (NO GROWTH) template
+    if (/urine\s*c\s*\/\s*s/i.test(finding.template_title || '') && /no\s*growth/i.test(finding.template_title || '')) {
+        let specimenWrap = cardEl.querySelector('.pathology-specimen-dates');
+        specimenWrap.style.display = 'flex';
+        specimenWrap.dataset.active = '1';
+        // shown as dd/mm/yyyy; the underlying input keeps Y-m-d for saving
+        specimenWrap.querySelectorAll('.pathology-receipt-date, .pathology-report-date').forEach(input => {
+            flatpickr(input, { dateFormat: 'Y-m-d', altInput: true, altFormat: 'd/m/Y', allowInput: true, defaultDate: (input.classList.contains('pathology-receipt-date') ? finding.receipt_date : finding.report_date) || null });
+        });
+    }
+
     cardEl.querySelector('.pathology-template-title').innerText =
         finding.template_title ? `(Template: ${finding.template_title})` : '';
 
@@ -1375,6 +1386,7 @@ function lockPathologyCard(cardEl, findingId) {
 
     cardEl.querySelector('.pathology-confirmed-badge').style.display = 'inline-block';
     cardEl.querySelectorAll('.pathology-item-date').forEach(input => { input.disabled = true; });
+    cardEl.querySelectorAll('.pathology-receipt-date, .pathology-report-date').forEach(input => { input.disabled = true; if (input._flatpickr && input._flatpickr.altInput) input._flatpickr.altInput.disabled = true; });
     cardEl.querySelectorAll('.pathology-key-param-input').forEach(input => { input.disabled = true; });
     cardEl.querySelector('.pathology-report-title').disabled = true;
     cardEl.querySelector('.pathology-save-btn').style.display = 'none';
@@ -1582,6 +1594,11 @@ async function savePathologyCard(card) {
     if (editor) editor.setData(content);
 
     let payload = { content: content, report_title: card.querySelector('.pathology-report-title').value };
+
+    if (card.querySelector('.pathology-specimen-dates').dataset.active) {
+        payload.receipt_date = card.querySelector('.pathology-receipt-date').value || '';
+        payload.report_date = card.querySelector('.pathology-report-date').value || '';
+    }
 
     // per-test dates: { invoice_detail_id: 'YYYY-MM-DD' } ('' clears a test's own
     // date so it follows the invoice's again)
@@ -1922,6 +1939,8 @@ document.addEventListener('click', async function (e) {
                     invoice_detail_ids: (card.dataset.invoiceDetailIds || '').split(',').filter(Boolean),
                     item_dates: itemDates,
                     report_title: card.querySelector('.pathology-report-title').value,
+                    receipt_date: card.querySelector('.pathology-receipt-date').value || null,
+                    report_date: card.querySelector('.pathology-report-date').value || null,
                     content: editor.getData(),
                     key_parameter_values: keyParameterValues
                 })

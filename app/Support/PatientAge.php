@@ -94,12 +94,71 @@ class PatientAge
             return ['years' => $years, 'months' => $months];
         }
 
-        if ($months === null) {
-            return ['years' => $years + $recorded->diffInYears($today), 'months' => null];
+        $r = self::rollForward($years, $months, $recorded, $today);
+
+        return ['years' => $r['years'], 'months' => $r['months']];
+    }
+
+    /**
+     * The one rule for ageing a recorded age:
+     *  - under 5 years: +1 month each time a month has passed since the anchor date;
+     *  - 5 years and over: +1 year on each anniversary of the anchor date.
+     * Months are stepped from the anchor (not date-to-date) so 31st-of-month
+     * anchors don't drift. Returns the new age plus the anchor date it now
+     * counts from (the date of the last step taken), so the stored
+     * age_recorded_on can be moved forward by the same amount.
+     *
+     * @return array{years:int,months:?int,anchor:Carbon}
+     */
+    public static function rollForward(int $years, ?int $months, $recordedOn, $today = null): array
+    {
+        $today = ($today ? Carbon::parse($today) : now())->startOfDay();
+        $anchor = Carbon::parse($recordedOn)->startOfDay();
+
+        // months phase (under 5)
+        if ($years < 5) {
+            $origin = $anchor->copy();
+            $k = 0;
+
+            while ($years < 5) {
+                $next = $origin->copy()->addMonthsNoOverflow($k + 1);
+
+                if ($next->gt($today)) {
+                    break;
+                }
+
+                $k++;
+                $months = ($months ?? 0) + 1;
+
+                if ($months >= 12) {
+                    $years++;
+                    $months = 0;
+                }
+
+                $anchor = $next;
+            }
+
+            if ($years < 5) {
+                return ['years' => $years, 'months' => $months, 'anchor' => $anchor];
+            }
         }
 
-        $total = $years * 12 + $months + $recorded->diffInMonths($today);
+        // years phase (5 and over)
+        $origin = $anchor->copy();
+        $j = 0;
 
-        return ['years' => intdiv($total, 12), 'months' => $total % 12];
+        while (true) {
+            $next = $origin->copy()->addYearsNoOverflow($j + 1);
+
+            if ($next->gt($today)) {
+                break;
+            }
+
+            $j++;
+            $years++;
+            $anchor = $next;
+        }
+
+        return ['years' => $years, 'months' => $months, 'anchor' => $anchor];
     }
 }
