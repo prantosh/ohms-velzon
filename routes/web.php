@@ -506,6 +506,11 @@ Route::get(
     [DiagnosticInvoiceController::class, 'getInvoices']
 );
 
+Route::get(
+    '/diagnostic-invoice/list-pdf',
+    [DiagnosticInvoiceController::class, 'listPdf']
+)->name('diagnostic-invoice.list-pdf');
+
 Route::post(
     '/diagnostic-invoice/new-patient-discount',
     [

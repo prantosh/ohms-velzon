@@ -179,28 +179,37 @@ class DiagnosticInvoiceController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function getInvoices(Request $request)
+    /**
+     * Normalises the list-screen filters (category tab, day range, payment
+     * sub-tab) -- shared by the JSON list and the PDF print so both always
+     * show exactly the same set of invoices.
+     */
+    private function listFilters(Request $request): array
     {
-        try {
+        $category =
+            $request->get('category', 'PATHOLOGY') === 'NON_PATHOLOGY'
+                ? 'NON_PATHOLOGY'
+                : 'PATHOLOGY';
 
-            $category =
-                $request->get('category', 'PATHOLOGY') === 'NON_PATHOLOGY'
-                    ? 'NON_PATHOLOGY'
-                    : 'PATHOLOGY';
+        $days = (int) $request->get('days', 3);
 
-            $allowedDays = [3, 7, 15, 30, 60];
+        if (!in_array($days, [3, 7, 15, 30, 60])) {
+            $days = 3;
+        }
 
-            $days = (int) $request->get('days', 3);
+        $payment = $request->get('payment', 'all');
 
-            if (!in_array($days, $allowedDays)) {
-                $days = 3;
-            }
+        if (!in_array($payment, ['all', 'complete', 'due'])) {
+            $payment = 'all';
+        }
 
-            // Sub-tabs: all / payment complete (Paid) / payment due (Partial,
-            // Due, ...). Cancelled invoices appear under "all" only.
-            $payment = $request->get('payment', 'all');
+        return [$category, $days, $payment];
+    }
 
-            $invoices =
+    private function listInvoices(string $category, int $days, string $payment)
+    {
+        return
+
                 Invoice::where(
                     'invoice_type',
                     'DIAGNOSTIC'
@@ -229,6 +238,15 @@ class DiagnosticInvoiceController extends Controller
                     ->orderBy('id', 'desc')
 
                     ->get();
+    }
+
+    public function getInvoices(Request $request)
+    {
+        try {
+
+            [$category, $days, $payment] = $this->listFilters($request);
+
+            $invoices = $this->listInvoices($category, $days, $payment);
 
             $protectedUsers = $this->identityGuard->protectedUsersForMobiles(
                 $invoices->pluck('patient_mobile_no')
@@ -270,6 +288,89 @@ class DiagnosticInvoiceController extends Controller
             ], 500);
         }
     }
+    /*
+    |--------------------------------------------------------------------------
+    | LIST -> PDF (prints whatever combination the list screen is showing:
+    | category tab + payment sub-tab + day range + search box text)
+    |--------------------------------------------------------------------------
+    */
+
+    public function listPdf(Request $request)
+    {
+        ini_set('memory_limit', '512M');
+        set_time_limit(180);
+
+        // PDF is offered for the Payment Due list only (it ignores the day
+        // range, so the result is a bounded set of outstanding invoices).
+        [$category, $days] = $this->listFilters($request);
+        $payment = 'due';
+
+        $invoices = $this->listInvoices($category, $days, $payment);
+
+        $fmt = fn ($d) => $d ? \Carbon\Carbon::parse($d)->format('d-m-Y') : '';
+
+        $rows = $invoices->map(function ($r) use ($fmt) {
+            $r->invoice_date_fmt = $fmt($r->invoice_date);
+            $r->test_date_fmt = $fmt($r->test_date);
+            $r->status_label = $r->cancelled === 'Y' ? 'Cancelled' : ($r->status ?: '');
+            return $r;
+        });
+
+        // Same free-text search as the screen's DataTables box: every word
+        // must appear somewhere in the row's displayed text.
+        $search = trim((string) $request->get('search', ''));
+
+        if ($search !== '') {
+            $words = preg_split('/\s+/', mb_strtolower($search));
+
+            $rows = $rows->filter(function ($r) use ($words) {
+                $hay = mb_strtolower(implode(' ', [
+                    $r->invoice_no, $r->patient_id, $r->patient_name,
+                    $r->invoice_date_fmt, $r->test_date_fmt,
+                    $r->total_amount, $r->discount, $r->paid_amount,
+                    $r->due_amount, $r->doctor_payment_amount, $r->status_label,
+                ]));
+
+                foreach ($words as $w) {
+                    if (!str_contains($hay, $w)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+        }
+
+        $rows = $rows->values();
+
+        $active = $rows->where('cancelled', '!=', 'Y');
+
+        $summary = [
+            'count' => $rows->count(),
+            'total' => (float) $active->sum('total_amount'),
+            'discount' => (float) $active->sum('discount'),
+            'paid' => (float) $active->sum('paid_amount'),
+            'due' => (float) $active->sum('due_amount'),
+            'doctor' => (float) $active->sum('doctor_payment_amount'),
+        ];
+
+        $categoryLabel = $category === 'NON_PATHOLOGY' ? 'Non-Pathology' : 'Pathology';
+        $paymentLabel = ['all' => 'All', 'complete' => 'Payment Complete', 'due' => 'Payment Due (All)'][$payment];
+        $rangeLabel = $payment === 'due'
+            ? 'All dates'
+            : 'Last ' . $days . ' day(s), including today';
+
+        $pdf = Pdf::loadView('apps-diagnostic-invoice-list-pdf', compact(
+            'rows', 'summary', 'categoryLabel', 'paymentLabel', 'rangeLabel', 'search'
+        ));
+
+        $pdf->setPaper('A4', 'landscape');
+
+        return $pdf->stream(
+            'Diagnostic-Invoices-' . $categoryLabel . '-' . $payment . '-' . now()->format('d-m-Y') . '.pdf'
+        );
+    }
+
     public function checkEmployeeMember($patientId)
     {
         $exists =

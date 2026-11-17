@@ -138,6 +138,13 @@ Diagnostic Invoice
 
                 </ul>
 
+                <div class="d-flex align-items-center gap-2">
+
+                <button type="button" class="btn btn-sm btn-danger" id="invoiceListPdfBtn"
+                        title="Print the Payment Due list (current category and search) as PDF">
+                    <i class="ri-file-pdf-line"></i> Print PDF
+                </button>
+
                 <div class="btn-group" id="invoiceDaysFilter" role="group">
 
                     <button type="button" class="btn btn-sm btn-primary" data-days="3">3 Days</button>
@@ -145,6 +152,8 @@ Diagnostic Invoice
                     <button type="button" class="btn btn-sm btn-outline-primary" data-days="15">15 Days</button>
                     <button type="button" class="btn btn-sm btn-outline-primary" data-days="30">30 Days</button>
                     <button type="button" class="btn btn-sm btn-outline-primary" data-days="60">60 Days</button>
+
+                </div>
 
                 </div>
 

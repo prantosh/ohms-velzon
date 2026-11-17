@@ -96,6 +96,23 @@ $(document).ready(function () {
         }
     );
 
+    // PDF of exactly what the list is showing: category + payment sub-tab +
+    // day range + the DataTables search box text.
+    $(document).on("click", "#invoiceListPdfBtn", function () {
+
+        let search = $.fn.DataTable.isDataTable('#invoiceTable')
+            ? $('#invoiceTable').DataTable().search()
+            : '';
+
+        let qs = $.param({
+            category: currentInvoiceCategory,
+            payment: 'due',
+            search: search
+        });
+
+        window.open('/diagnostic-invoice/list-pdf?' + qs, '_blank');
+    });
+
     $(document).on(
         "click",
         "#invoiceDaysFilter button",
@@ -156,6 +173,9 @@ function applyInvoicePaymentMode() {
 
     $("#invoiceDaysFilter button").prop("disabled", allRecords);
     $("#invoiceDaysText").toggleClass("d-none", allRecords);
+
+    // PDF print is available for Payment Due only.
+    $("#invoiceListPdfBtn").toggleClass("d-none", !allRecords);
 }
 
 function loadInvoices() {
