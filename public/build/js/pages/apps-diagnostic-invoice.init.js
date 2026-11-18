@@ -2978,6 +2978,19 @@ function loadDoctorReplacementOptions(select) {
                 </option>`
             );
         });
+    }).fail(function (xhr) {
+
+        console.error(
+            'Doctor replacement options failed to load for ' + itemCodeSub,
+            xhr.status,
+            xhr.statusText
+        );
+
+        select.append(
+            `<option value="${currentDoctorId}" disabled>
+                (could not load other doctors - HTTP ${xhr.status})
+            </option>`
+        );
     });
 }
 
@@ -2992,6 +3005,11 @@ $(document).on('change', '.changeDoctorSelect', function () {
         (parseFloat(newPayment) || 0).toFixed(2)
     );
 });
+
+console.log(
+    'Doctor replacement init: editMode=' + window.editMode +
+    ', selects=' + $('.changeDoctorSelect').length
+);
 
 if (window.editMode) {
 
