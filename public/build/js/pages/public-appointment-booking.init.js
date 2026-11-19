@@ -67,12 +67,24 @@ $(document).on('click', '#sendOtpBtn', function () {
         },
         success: function (response) {
 
-            btn.prop('disabled', false).text('Send OTP via WhatsApp');
-
             if (!response.status) {
+                btn.prop('disabled', false).text('Send OTP via WhatsApp');
                 Swal.fire({ icon: 'error', title: 'Could not send OTP', text: response.message });
                 return;
             }
+
+            // Keep the button locked for the server's 60s cooldown.
+            let remaining = 60;
+            btn.prop('disabled', true).text('Resend in ' + remaining + 's');
+            let timer = setInterval(function () {
+                remaining--;
+                if (remaining <= 0) {
+                    clearInterval(timer);
+                    btn.prop('disabled', false).text('Send OTP via WhatsApp');
+                } else {
+                    btn.text('Resend in ' + remaining + 's');
+                }
+            }, 1000);
 
             $('#otpEntryRow').show();
             $('#patient_mobile_no').prop('readonly', true);
@@ -82,8 +94,20 @@ $(document).on('click', '#sendOtpBtn', function () {
             Swal.fire({ icon: 'success', title: 'OTP Sent', text: response.message, timer: 2000, showConfirmButton: false });
         },
         error: function () {
-            btn.prop('disabled', false).text('Send OTP via WhatsApp');
-            Swal.fire({ icon: 'error', title: 'Something went wrong. Please try again.' });
+            // The OTP may have been delivered even though the request failed
+            // (timeout), so make the patient wait before retrying.
+            let wait = 30;
+            btn.prop('disabled', true).text('Retry in ' + wait + 's');
+            let t = setInterval(function () {
+                wait--;
+                if (wait <= 0) {
+                    clearInterval(t);
+                    btn.prop('disabled', false).text('Send OTP via WhatsApp');
+                } else {
+                    btn.text('Retry in ' + wait + 's');
+                }
+            }, 1000);
+            Swal.fire({ icon: 'error', title: 'Something went wrong.', text: 'If a WhatsApp message arrives, use that OTP. Otherwise retry shortly.' });
         }
     });
 });

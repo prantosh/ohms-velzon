@@ -9,6 +9,7 @@ use App\Services\AppointmentBookingService;
 use App\Services\DoctorScheduleQueryService;
 use App\Services\WatiService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -117,38 +118,58 @@ class PublicAppointmentController extends Controller
             ]);
         }
 
-        $recentlySent = PatientOtp::where('mobile_no', $mobile)
-            ->where('purpose', self::OTP_PURPOSE)
-            ->where('created_at', '>', now()->subSeconds(self::OTP_RESEND_COOLDOWN_SECONDS))
-            ->exists();
+        // Serialise the cooldown check + insert per mobile so near-simultaneous
+        // requests (double-tap, network retry) cannot both pass the cooldown.
+        $lock = Cache::lock('public-otp-send:' . $mobile, 10);
 
-        if ($recentlySent) {
+        if (!$lock->get()) {
             return response()->json([
                 'status' => false,
-                'message' => 'Please wait a minute before requesting another OTP.',
+                'message' => 'An OTP request is already in progress. Please wait a minute.',
             ]);
         }
 
-        $sentThisHour = PatientOtp::where('mobile_no', $mobile)
-            ->where('purpose', self::OTP_PURPOSE)
-            ->where('created_at', '>', now()->subHour())
-            ->count();
+        try {
+            $recentlySent = PatientOtp::where('mobile_no', $mobile)
+                ->where('purpose', self::OTP_PURPOSE)
+                ->where('created_at', '>', now()->subSeconds(self::OTP_RESEND_COOLDOWN_SECONDS))
+                ->exists();
 
-        if ($sentThisHour >= self::OTP_MAX_PER_HOUR) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Too many OTP requests for this number. Please try again later.',
+            if ($recentlySent) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Please wait a minute before requesting another OTP.',
+                ]);
+            }
+
+            $sentThisHour = PatientOtp::where('mobile_no', $mobile)
+                ->where('purpose', self::OTP_PURPOSE)
+                ->where('created_at', '>', now()->subHour())
+                ->count();
+
+            if ($sentThisHour >= self::OTP_MAX_PER_HOUR) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Too many OTP requests for this number. Please try again later.',
+                ]);
+            }
+
+            // Invalidate earlier unverified OTPs so only the newest code works.
+            PatientOtp::active($mobile, self::OTP_PURPOSE)
+                ->whereNull('verified_at')
+                ->update(['expires_at' => now()]);
+
+            $code = (string) random_int(100000, 999999);
+
+            $otp = PatientOtp::create([
+                'mobile_no' => $mobile,
+                'otp_code_hash' => hash('sha256', $code),
+                'purpose' => self::OTP_PURPOSE,
+                'expires_at' => now()->addMinutes(self::OTP_EXPIRY_MINUTES),
             ]);
+        } finally {
+            $lock->release();
         }
-
-        $code = (string) random_int(100000, 999999);
-
-        $otp = PatientOtp::create([
-            'mobile_no' => $mobile,
-            'otp_code_hash' => hash('sha256', $code),
-            'purpose' => self::OTP_PURPOSE,
-            'expires_at' => now()->addMinutes(self::OTP_EXPIRY_MINUTES),
-        ]);
 
         if (app()->environment(['local', 'staging'])) {
             Log::debug('Public appointment OTP generated (dev only)', ['mobile' => $mobile, 'code' => $code]);
