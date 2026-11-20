@@ -130,7 +130,16 @@ class DailyTransactionReportController extends Controller
                 'dt.id', 'dt.transaction_no', 'dt.transaction_type', 'dt.received_amount', 'dt.refund_amount',
                 'dt.doctor_payment_amount', 'dt.invoice_reference', 'dt.patient_name', 'dt.payment_mode',
                 'dt.operator_name', 'dt.remarks', 'dt.status', 'dt.created_at',
-                'doc.doctor_name',
+                // Visiting doctor from the invoice; diagnostic invoices carry no
+                // invoices.doctor_id, so fall back to the doctors payable on the
+                // invoice's test lines. Never the referred doctor.
+                DB::raw("COALESCE(
+                    doc.doctor_name,
+                    (SELECT GROUP_CONCAT(DISTINCT d2.doctor_name ORDER BY d2.doctor_name SEPARATOR ', ')
+                       FROM invoice_details idt
+                       JOIN doctors d2 ON d2.id = idt.doctor_id
+                      WHERE idt.invoice_no = inv.invoice_no)
+                ) as doctor_name"),
                 'inv.id as invoice_id', 'inv.invoice_type',
                 'inv.discount', 'inv.total_amount as billed_amount',
                 'inv.due_amount', 'inv.paid_amount_1', 'inv.paid_amount_2',
