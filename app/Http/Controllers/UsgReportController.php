@@ -334,6 +334,8 @@ class UsgReportController extends Controller
             ], 422);
         }
 
+        $oldData = $existing ? $existing->only($existing->getFillable()) : null;
+
         $finding = UsgReportFinding::updateOrCreate(
             ['invoice_detail_id' => $line->id],
             [
@@ -372,12 +374,17 @@ class UsgReportController extends Controller
                 ->update(['test_date' => $request->test_date ?: null]);
         }
 
-        $auditService->logAction(
-            self::MODULE_CODE,
-            $finding,
-            $existing ? 'UPDATE' : 'CREATE',
-            'USG report finding saved'
-        );
+        // Keep old -> new content on every save so the Test Report Dashboard's
+        // Print Reports window can show who changed what.
+        $newData = $finding->only($finding->getFillable());
+
+        if ($oldData !== null) {
+            $auditService->logUpdate(self::MODULE_CODE, $finding, $oldData, $newData, 'USG report finding saved');
+        } else {
+            $auditService->logCreate(self::MODULE_CODE, $finding, $newData, 'USG report finding saved');
+        }
+
+        app(\App\Services\ReportEntryReceiptNotifier::class)->send('usg', $finding, 'SAVE');
 
         return response()->json([
             'status' => true,
@@ -515,6 +522,8 @@ class UsgReportController extends Controller
             'CONFIRM',
             'USG report confirmed and locked'
         );
+
+        app(\App\Services\ReportEntryReceiptNotifier::class)->send('usg', $finding, 'CONFIRM');
 
         $whatsappStatus = $this->autoSendReportWhatsapp($finding, $wati, $auditService);
 

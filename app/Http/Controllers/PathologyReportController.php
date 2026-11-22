@@ -640,6 +640,8 @@ class PathologyReportController extends Controller
                     ], 422);
                 }
 
+                $oldData = $finding->only($finding->getFillable());
+
                 $finding->update([
                     'content' => $content,
                     'key_parameter_values' => $this->sanitizeKeyParameterValues($request->input('key_parameter_values')),
@@ -659,7 +661,15 @@ class PathologyReportController extends Controller
 
                 DB::commit();
 
-                $auditService->logAction(self::MODULE_CODE, $finding, 'UPDATE', 'Pathology report finding updated');
+                $auditService->logUpdate(
+                    self::MODULE_CODE,
+                    $finding,
+                    $oldData,
+                    $finding->only($finding->getFillable()),
+                    'Pathology report finding updated'
+                );
+
+                app(\App\Services\ReportEntryReceiptNotifier::class)->send('pathology', $finding, 'SAVE');
 
                 return response()->json([
                     'status' => true,
@@ -796,6 +806,8 @@ class PathologyReportController extends Controller
                 array_merge($finding->only($finding->getFillable()), ['invoice_detail_ids' => $invoiceDetailIds]),
                 'Pathology report finding created'
             );
+
+            app(\App\Services\ReportEntryReceiptNotifier::class)->send('pathology', $finding, 'SAVE');
 
             return response()->json([
                 'status' => true,
@@ -1067,6 +1079,8 @@ class PathologyReportController extends Controller
 
             $auditService->logAction(self::MODULE_CODE, $finding, 'CONFIRM', 'Pathology report confirmed and locked (group confirm)');
 
+            app(\App\Services\ReportEntryReceiptNotifier::class)->send('pathology', $finding, 'CONFIRM');
+
             app(KeyParameterService::class)->recordConfirmedValues($finding);
         }
 
@@ -1132,6 +1146,8 @@ class PathologyReportController extends Controller
         ]);
 
         $auditService->logAction(self::MODULE_CODE, $finding, 'CONFIRM', 'Pathology report confirmed and locked (individual item confirm)');
+
+        app(\App\Services\ReportEntryReceiptNotifier::class)->send('pathology', $finding, 'CONFIRM');
 
         app(KeyParameterService::class)->recordConfirmedValues($finding);
 

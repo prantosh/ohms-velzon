@@ -209,6 +209,7 @@
                                 <th>Confirmed By</th>
                                 <th>Confirmed Date &amp; Time</th>
                                 <th>Remarks</th>
+                                <th>History</th>
                             </tr>
                         </thead>
 

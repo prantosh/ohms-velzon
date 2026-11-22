@@ -61,6 +61,7 @@
                         <span>Home</span>
                     </a>
                 </li> <!-- end Dashboard Menu -->
+                @if(optional(Auth::user())->role !== 'Employee')
                 <li class="nav-item">
                     <a class="nav-link menu-link" href="#sidebarLayouts" data-bs-toggle="collapse" role="button"
                         aria-expanded="false" aria-controls="sidebarLayouts">
@@ -112,6 +113,9 @@
                                         <a href="{{ route('invoice-doctor-correction.index') }}" class="nav-link">@lang('translation.invoicedoctorcorrection')</a>
                                         </li>
                             <li class="nav-item">
+                                        <a href="{{ route('payment-mode-correction.index') }}" class="nav-link">@lang('translation.paymentmodecorrection')</a>
+                                        </li>
+                            <li class="nav-item">
                                         <a href="{{ route('cash-adjustment.index') }}" class="nav-link">Cash Adjustments</a>
                                         </li>
                             @endif
@@ -138,7 +142,8 @@
 
                         </ul>
                     </div>
-                </li> <!-- end Dashboard Menu -->
+                </li> <!-- end Admin Menu -->
+                @endif
                 <li class="nav-item">
                     <a class="nav-link menu-link" href="#sidebarUsers" data-bs-toggle="collapse" role="button"
                         aria-expanded="false" aria-controls="sidebarUsers">
@@ -561,14 +566,14 @@
                                                     <a href="{{ route('daily-transaction-report.index') }}" class="nav-link">@lang('translation.dailytransactionreport')</a>
                                                     </li>
                                         @endif
-                                        @if(is_null($allowedPages) || in_array('all-invoices-report', $allowedPages))
-                                        <li class="nav-item">
-                                                    <a href="{{ route('all-invoices-report.index') }}" class="nav-link">@lang('translation.allinvoicesreport')</a>
-                                                    </li>
-                                        @endif
                                         @if(is_null($allowedPages) || in_array('additional-discount-report', $allowedPages))
                                         <li class="nav-item">
                                                     <a href="{{ route('additional-discount-report.index') }}" class="nav-link">@lang('translation.additionaldiscountreport')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('all-invoices-report', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('all-invoices-report.index') }}" class="nav-link">@lang('translation.allinvoicesreport')</a>
                                                     </li>
                                         @endif
                                     </ul>

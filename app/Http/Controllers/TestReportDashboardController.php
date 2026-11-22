@@ -233,6 +233,72 @@ class TestReportDashboardController extends Controller
         ]);
     }
 
+    /**
+     * Edit history of one report (who saved it, when, and old -> new values),
+     * from the audit log -- shown from the Print Reports window.
+     */
+    public function itemHistory($kind, $findingId)
+    {
+        $map = [
+            'pathology' => ['PATHOLOGY_REPORT', 'pathology_report_findings'],
+            'usg' => ['USG_REPORT', 'usg_report_findings'],
+            'cardiology' => ['CARDIOLOGY_REPORT', 'cardiology_report_findings'],
+            'non_pathology' => ['NON_PATHOLOGY_REPORT', 'non_pathology_report_findings'],
+        ];
+
+        abort_unless(isset($map[$kind]), 404);
+
+        [$module, $table] = $map[$kind];
+
+        $logs = \App\Models\AuditLog::where('module_code', $module)
+            ->where('table_name', $table)
+            ->where('record_id', (string) $findingId)
+            ->whereIn('action', ['CREATE', 'UPDATE', 'CONFIRM'])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        $entries = $logs->map(function ($log) {
+
+            $changes = [];
+
+            foreach (($log->changed_data ?? []) as $field => $new) {
+
+                $old = $log->old_data[$field] ?? null;
+
+                $changes[] = [
+                    'field' => ucfirst(str_replace('_', ' ', $field)),
+                    'old' => is_array($old) ? json_encode($old) : $old,
+                    'new' => is_array($new) ? json_encode($new) : $new,
+                ];
+            }
+
+            // A first save has no old values -- show what was entered.
+            if ($log->action === 'CREATE') {
+                $changes = [];
+                foreach (($log->new_data ?? []) as $field => $value) {
+                    if ($value === null || $value === '' || in_array($field, ['invoice_no', 'invoice_detail_id', 'item_code', 'item_code_sub', 'item_description'], true)) {
+                        continue;
+                    }
+                    $changes[] = [
+                        'field' => ucfirst(str_replace('_', ' ', $field)),
+                        'old' => null,
+                        'new' => is_array($value) ? json_encode($value) : $value,
+                    ];
+                }
+            }
+
+            return [
+                'action' => $log->action,
+                'user' => $log->user_name ?? '-',
+                'at' => optional($log->created_at)->timezone(config('app.timezone'))->format('d-m-Y H:i'),
+                'changes' => $changes,
+            ];
+        })->values();
+
+        return response()->json(['status' => true, 'entries' => $entries]);
+    }
+
     public function printSelected(Request $request, InvoiceReportItemsService $itemsService, AuditService $auditService)
     {
         $request->validate([

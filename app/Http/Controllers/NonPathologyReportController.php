@@ -337,6 +337,8 @@ class NonPathologyReportController extends Controller
             ], 422);
         }
 
+        $oldData = $existing ? $existing->only($existing->getFillable()) : null;
+
         $finding = NonPathologyReportFinding::updateOrCreate(
             ['invoice_detail_id' => $line->id],
             [
@@ -376,12 +378,17 @@ class NonPathologyReportController extends Controller
                 ->update(['test_date' => $request->test_date ?: null]);
         }
 
-        $auditService->logAction(
-            self::MODULE_CODE,
-            $finding,
-            $existing ? 'UPDATE' : 'CREATE',
-            'Non-Pathology report finding saved'
-        );
+        // Keep old -> new content on every save so the Test Report Dashboard's
+        // Print Reports window can show who changed what.
+        $newData = $finding->only($finding->getFillable());
+
+        if ($oldData !== null) {
+            $auditService->logUpdate(self::MODULE_CODE, $finding, $oldData, $newData, 'Non-Pathology report finding saved');
+        } else {
+            $auditService->logCreate(self::MODULE_CODE, $finding, $newData, 'Non-Pathology report finding saved');
+        }
+
+        app(\App\Services\ReportEntryReceiptNotifier::class)->send('non_pathology', $finding, 'SAVE');
 
         return response()->json([
             'status' => true,
@@ -443,6 +450,8 @@ class NonPathologyReportController extends Controller
             'CONFIRM',
             'Non-Pathology report confirmed and locked'
         );
+
+        app(\App\Services\ReportEntryReceiptNotifier::class)->send('non_pathology', $finding, 'CONFIRM');
 
         $whatsappStatus = $this->autoSendReportWhatsapp($finding, $wati, $auditService);
 

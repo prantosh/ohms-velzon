@@ -1065,6 +1065,8 @@ class DiagnosticInvoiceController extends Controller
 
                     'payment_mode' =>
                         $request->payment_mode,
+                    'payment_mode_initial' =>
+                        $request->payment_mode,
 
                     'remarks' =>
                         $request->remarks,
@@ -2373,6 +2375,7 @@ class DiagnosticInvoiceController extends Controller
 
                     $invoice->paid_amount_1 = $additionalPaid;
                     $invoice->paid_date_1 = now();
+                    $invoice->payment_mode_1 = $request->payment_mode ?: $invoice->payment_mode;
 
                     $this->allocatePaymentToInvoiceItems(
                         $invoice->invoice_no,
@@ -2400,6 +2403,7 @@ class DiagnosticInvoiceController extends Controller
 
                     $invoice->paid_amount_2 = $additionalPaid;
                     $invoice->paid_date_2 = now();
+                    $invoice->payment_mode_2 = $request->payment_mode ?: $invoice->payment_mode;
 
                     $this->allocatePaymentToInvoiceItems(
                         $invoice->invoice_no,
@@ -2438,6 +2442,7 @@ class DiagnosticInvoiceController extends Controller
 
                 $invoice->paid_amount_1 = $additionalPaid;
                 $invoice->paid_date_1 = now();
+                $invoice->payment_mode_1 = $request->payment_mode ?: $invoice->payment_mode;
 
                 $this->allocatePaymentToInvoiceItems(
                     $invoice->invoice_no,
@@ -2832,9 +2837,14 @@ class DiagnosticInvoiceController extends Controller
             if ($invoice->payment_edit_count == 2) {
                 $invoice->paid_amount_2 = null;
                 $invoice->paid_date_2 = null;
+                $invoice->payment_mode_2 = null;
+                // Latest mode falls back to the phase that is now the latest.
+                $invoice->payment_mode = $invoice->payment_mode_1 ?: ($invoice->payment_mode_initial ?: $invoice->payment_mode);
             } elseif ($invoice->payment_edit_count == 1) {
                 $invoice->paid_amount_1 = null;
                 $invoice->paid_date_1 = null;
+                $invoice->payment_mode_1 = null;
+                $invoice->payment_mode = $invoice->payment_mode_initial ?: $invoice->payment_mode;
             }
 
             $invoice->payment_edit_count = max(0, $invoice->payment_edit_count - 1);

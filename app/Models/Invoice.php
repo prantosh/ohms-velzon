@@ -31,6 +31,9 @@ class Invoice extends Model
         'due_amount',
 
         'payment_mode',
+        'payment_mode_initial',
+        'payment_mode_1',
+        'payment_mode_2',
         'received_by',
 
         'remarks',

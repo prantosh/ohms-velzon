@@ -1649,7 +1649,7 @@ function releaseApplyDiscountToAll() {
         }
 
         percent
-            .removeClass('appliedFromFirst')
+            .removeClass('appliedFromFirst discOverridden')
             .prop('readonly', false)
             .val(0)
             .trigger('change');
@@ -1681,7 +1681,7 @@ function syncAddlDiscountExclusivity() {
         let hasPercent = (parseFloat(percent.val()) || 0) > 0;
         let hasAmount = (parseFloat(amount.val()) || 0) > 0;
 
-        percent.prop('readonly', hasAmount || percent.hasClass('appliedFromFirst'));
+        percent.prop('readonly', hasAmount);
         amount.prop('readonly', hasPercent);
     });
 }
@@ -1746,13 +1746,23 @@ function applyDiscountToAllCore() {
             return;
         }
 
-        detailRow.find('.additionalDiscountAmount').val(0);
+        let percentInput = detailRow.find('.additionalDiscountPercent');
 
-        detailRow.find('.additionalDiscountPercent')
-            .addClass('appliedFromFirst')
-            .prop('readonly', true)
-            .val(percent)
-            .trigger('change');
+        // A row the user edited by hand keeps its own % (and amount); it
+        // still follows the first row's approver.
+        if (!percentInput.hasClass('discOverridden')) {
+
+            detailRow.find('.additionalDiscountAmount').val(0);
+
+            percentInput
+                .addClass('appliedFromFirst')
+                .prop('readonly', false)
+                .val(percent)
+                .trigger('change');
+
+        } else {
+            percentInput.addClass('appliedFromFirst');
+        }
 
         detailRow.find('.discountApprovedBy')
             .addClass('appliedFromFirst')
@@ -1762,6 +1772,16 @@ function applyDiscountToAllCore() {
             .trigger('change');
     });
 }
+
+// A manual edit (real user event, not a programmatic .trigger()) of an
+// auto-applied % marks that row as overridden so later changes to the first
+// row no longer overwrite it.
+$(document).on('input change', '.additionalDiscountPercent.appliedFromFirst', function (e) {
+
+    if (e.originalEvent) {
+        $(this).addClass('discOverridden');
+    }
+});
 
 $(document).on('change', '.applyDiscountToAll', function () {
 

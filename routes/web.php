@@ -3238,6 +3238,11 @@ Route::middleware(['auth'])->prefix('test-report-dashboard')->group(function () 
         [TestReportDashboardController::class, 'items']
     )->name('test-report-dashboard.items');
 
+    Route::get(
+        '/item-history/{kind}/{findingId}',
+        [TestReportDashboardController::class, 'itemHistory']
+    )->name('test-report-dashboard.item-history');
+
     Route::post(
         '/print-selected',
         [TestReportDashboardController::class, 'printSelected']
@@ -3289,6 +3294,16 @@ Route::get('/__deploy_check_whatsapp_sent_breakdown', function () {
 Route::middleware(['auth'])
     ->get('/report-print-due-log', [\App\Http\Controllers\ReportPrintDueLogController::class, 'index'])
     ->name('report-print-due-log.index');
+
+// Admin-only (enforced in the controller; deliberately not in config/access_pages)
+Route::middleware(['auth'])->prefix('payment-mode-correction')->group(function () {
+    Route::get('/', [\App\Http\Controllers\PaymentModeCorrectionController::class, 'index'])
+        ->name('payment-mode-correction.index');
+    Route::get('/search', [\App\Http\Controllers\PaymentModeCorrectionController::class, 'search'])
+        ->name('payment-mode-correction.search');
+    Route::post('/update', [\App\Http\Controllers\PaymentModeCorrectionController::class, 'update'])
+        ->name('payment-mode-correction.update');
+});
 
 // Admin-only (enforced in the controller; deliberately not in config/access_pages)
 Route::middleware(['auth'])->prefix('invoice-doctor-correction')->group(function () {

@@ -321,6 +321,8 @@ class CardiologyReportController extends Controller
             ], 422);
         }
 
+        $oldData = $existing ? $existing->only($existing->getFillable()) : null;
+
         $finding = CardiologyReportFinding::updateOrCreate(
             ['invoice_detail_id' => $line->id],
             array_merge([
@@ -354,12 +356,17 @@ class CardiologyReportController extends Controller
                 ->update(['test_date' => $request->test_date ?: null]);
         }
 
-        $auditService->logAction(
-            self::MODULE_CODE,
-            $finding,
-            $existing ? 'UPDATE' : 'CREATE',
-            'Cardiology report finding saved'
-        );
+        // Keep old -> new content on every save so the Test Report Dashboard's
+        // Print Reports window can show who changed what.
+        $newData = $finding->only($finding->getFillable());
+
+        if ($oldData !== null) {
+            $auditService->logUpdate(self::MODULE_CODE, $finding, $oldData, $newData, 'Cardiology report finding saved');
+        } else {
+            $auditService->logCreate(self::MODULE_CODE, $finding, $newData, 'Cardiology report finding saved');
+        }
+
+        app(\App\Services\ReportEntryReceiptNotifier::class)->send('cardiology', $finding, 'SAVE');
 
         return response()->json([
             'status' => true,
@@ -487,6 +494,8 @@ class CardiologyReportController extends Controller
             'CONFIRM',
             'Cardiology report confirmed and locked'
         );
+
+        app(\App\Services\ReportEntryReceiptNotifier::class)->send('cardiology', $finding, 'CONFIRM');
 
         $whatsappStatus = $this->autoSendReportWhatsapp($finding, $wati, $auditService);
 

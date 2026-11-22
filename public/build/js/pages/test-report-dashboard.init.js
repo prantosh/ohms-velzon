@@ -526,7 +526,7 @@ async function openPrintItemsModal(invoiceId) {
     printItemsInvoiceId = invoiceId;
 
     let body = document.getElementById('printItemsBody');
-    body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>';
+    body.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">Loading...</td></tr>';
     document.getElementById('printItemsInvoiceInfo').innerText = '';
     let summaryBox = document.getElementById('printItemsSummary');
     summaryBox.classList.add('d-none');
@@ -557,7 +557,7 @@ async function openPrintItemsModal(invoiceId) {
         summaryBox.classList.remove('d-none');
 
         if (!result.items.length) {
-            body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No report items on this invoice (nothing here needs a report).</td></tr>';
+            body.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No report items on this invoice (nothing here needs a report).</td></tr>';
             refreshPrintSelection();
             return;
         }
@@ -577,6 +577,12 @@ async function openPrintItemsModal(invoiceId) {
                 <td>${escapeHtml(item.confirmed_by ?? '-')}</td>
                 <td>${escapeHtml(item.confirmed_at ?? '-')}</td>
                 <td class="${item.can_print ? 'text-muted' : 'text-danger'}"><small>${escapeHtml(item.reason ?? 'Ready to print')}</small></td>
+                <td>${item.finding_id && ['pathology', 'usg', 'cardiology', 'non_pathology'].includes(item.kind)
+                    ? `<button type="button" class="btn btn-sm btn-soft-secondary item-history-btn"
+                               data-kind="${item.kind}" data-finding="${item.finding_id}">
+                           <i class="ri-history-line"></i> History
+                       </button>`
+                    : '<span class="text-muted">-</span>'}</td>
             </tr>
         `).join('');
 
@@ -584,9 +590,62 @@ async function openPrintItemsModal(invoiceId) {
 
     } catch (err) {
 
-        body.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Could not load the report details. Please try again.</td></tr>';
+        body.innerHTML = '<tr><td colspan="9" class="text-center text-danger py-4">Could not load the report details. Please try again.</td></tr>';
     }
 }
+
+// Edit history (who changed what, old -> new) -- expands under the item's row.
+document.getElementById('printItemsBody').addEventListener('click', async function (e) {
+
+    let btn = e.target.closest('.item-history-btn');
+    if (!btn) return;
+
+    let row = btn.closest('tr');
+    let existing = row.nextElementSibling;
+
+    if (existing && existing.classList.contains('item-history-row')) {
+        existing.remove();
+        return;
+    }
+
+    let detail = document.createElement('tr');
+    detail.className = 'item-history-row';
+    detail.innerHTML = '<td colspan="9" class="bg-light"><small class="text-muted">Loading history...</small></td>';
+    row.after(detail);
+
+    try {
+
+        const response = await fetch(`/test-report-dashboard/item-history/${btn.dataset.kind}/${btn.dataset.finding}`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        const result = await response.json();
+
+        if (!result.status) throw new Error('failed');
+
+        if (!result.entries.length) {
+            detail.firstElementChild.innerHTML = '<small class="text-muted">No edit history recorded for this report.</small>';
+            return;
+        }
+
+        let strip = html => String(html ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+        detail.firstElementChild.innerHTML = result.entries.map(entry => `
+            <div class="mb-2">
+                <strong>${escapeHtml(entry.action)}</strong> by ${escapeHtml(entry.user)}
+                <span class="text-muted">- ${escapeHtml(entry.at ?? '')}</span>
+                ${entry.changes.map(c => `
+                    <div class="ms-3 small">
+                        <em>${escapeHtml(c.field)}:</em>
+                        ${c.old !== null && c.old !== '' ? `<del class="text-danger">${escapeHtml(strip(c.old))}</del> &rarr; ` : ''}
+                        <span class="text-success">${escapeHtml(strip(c.new))}</span>
+                    </div>`).join('')}
+            </div>`).join('');
+
+    } catch (err) {
+
+        detail.firstElementChild.innerHTML = '<small class="text-danger">Could not load history.</small>';
+    }
+});
 
 document.getElementById('printItemsSelectAll').addEventListener('change', function () {
 
