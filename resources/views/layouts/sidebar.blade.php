@@ -538,7 +538,7 @@
                                 </div>
                             </li>
                             @endif
-                            @if(is_null($allowedPages) || in_array('cash-submission-report', $allowedPages) || in_array('daily-cash-settlement', $allowedPages) || in_array('daily-transaction-report', $allowedPages) || in_array('all-invoices-report', $allowedPages))
+                            @if(is_null($allowedPages) || in_array('cash-submission-report', $allowedPages) || in_array('daily-cash-settlement', $allowedPages) || in_array('daily-transaction-report', $allowedPages) || in_array('additional-discount-report', $allowedPages) || in_array('all-invoices-report', $allowedPages))
                             <li class="nav-item">
                                 <a class="nav-link menu-link" href="#sidebarReportDaily" data-bs-toggle="collapse" role="button"
                                     aria-expanded="false" aria-controls="sidebarReportDaily">
@@ -564,6 +564,11 @@
                                         @if(is_null($allowedPages) || in_array('all-invoices-report', $allowedPages))
                                         <li class="nav-item">
                                                     <a href="{{ route('all-invoices-report.index') }}" class="nav-link">@lang('translation.allinvoicesreport')</a>
+                                                    </li>
+                                        @endif
+                                        @if(is_null($allowedPages) || in_array('additional-discount-report', $allowedPages))
+                                        <li class="nav-item">
+                                                    <a href="{{ route('additional-discount-report.index') }}" class="nav-link">@lang('translation.additionaldiscountreport')</a>
                                                     </li>
                                         @endif
                                     </ul>

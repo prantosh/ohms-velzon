@@ -90,6 +90,7 @@ return [
     "doctorwisepaymentreport" => "Doctor Wise Payment Report",
     "dailytransactionreport" => "Daily Transaction Detail",
     "whatsappmessagereport" => "Whatsapp Message Detail",
+    "additionaldiscountreport" => "Additional Discount Report",
     "doctorvisitcollectionreport" => "Doctor Visit Collection Report",
     "servicesummaryreport" => "Service Summary (Date-wise)",
     "itemwisereport" => "Category-wise Summary & Detail",

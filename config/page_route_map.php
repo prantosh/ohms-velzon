@@ -125,6 +125,7 @@ return [
     'doctor-payable-non-cash-report.index' => 'doctor-payable-non-cash-report',
     'doctor-wise-payment-report.index' => 'doctor-wise-payment-report',
     'daily-transaction-report.index' => 'daily-transaction-report',
+    'additional-discount-report.index' => 'additional-discount-report',
     'whatsapp-message-report.index' => 'whatsapp-message-report',
     'doctor-visit-collection-report.index' => 'doctor-visit-collection-report',
     'item-wise-report.index' => 'item-wise-report',

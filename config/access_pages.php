@@ -11,6 +11,7 @@ return [
     'system-log' => 'System Log Viewer',
     'cash-submission-report' => 'Daily Cash Submission Report',
     'daily-transaction-report' => 'Daily Transaction Report',
+    'additional-discount-report' => 'Additional Discount Report',
     'dashboard' => 'Dashboard',
     'detail-range-master' => 'Detail Range Master',
     'diagnostic-invoice' => 'Diagnostic Invoice',

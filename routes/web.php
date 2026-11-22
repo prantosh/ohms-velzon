@@ -92,6 +92,7 @@ use App\Http\Controllers\DoctorPaymentReportController;
 use App\Http\Controllers\DoctorPayableNonCashReportController;
 use App\Http\Controllers\DoctorWisePaymentReportController;
 use App\Http\Controllers\DailyTransactionReportController;
+use App\Http\Controllers\AdditionalDiscountReportController;
 use App\Http\Controllers\WhatsappMessageReportController;
 use App\Http\Controllers\DoctorVisitCollectionReportController;
 use App\Http\Controllers\ItemWiseReportController;
@@ -1835,6 +1836,16 @@ Route::middleware(['auth'])->prefix('daily-transaction-report')->group(function 
     Route::get('/print-summary', [DailyTransactionReportController::class, 'printSummary']);
     Route::get('/detail', [DailyTransactionReportController::class, 'detail']);
     Route::get('/print-detail', [DailyTransactionReportController::class, 'printDetail']);
+
+});
+
+Route::middleware(['auth'])->prefix('additional-discount-report')->group(function () {
+
+    Route::get('/', [AdditionalDiscountReportController::class, 'index'])
+        ->name('additional-discount-report.index');
+
+    Route::get('/data', [AdditionalDiscountReportController::class, 'data']);
+    Route::get('/print', [AdditionalDiscountReportController::class, 'print']);
 
 });
 
