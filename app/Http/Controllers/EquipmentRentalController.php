@@ -1000,11 +1000,21 @@ class EquipmentRentalController extends Controller
 
             $approver = DB::table('users')->where('id', $approverId)->first();
 
-            if (!$approver || !$approver->email) {
+            if (!$approver) {
                 return;
             }
 
-            Mail::to($approver->email)->send(new DiscountApprovedMail(
+            // Admin always gets a copy -- and is the sole recipient if the
+            // approver has no email on file.
+            $to = $approver->email ?: DiscountApprovedMail::COPY_TO;
+
+            $mail = Mail::to($to);
+
+            if (strcasecmp($to, DiscountApprovedMail::COPY_TO) !== 0) {
+                $mail->cc(DiscountApprovedMail::COPY_TO);
+            }
+
+            $mail->send(new DiscountApprovedMail(
                 $approver->name,
                 $invoiceNo,
                 $patientName,
