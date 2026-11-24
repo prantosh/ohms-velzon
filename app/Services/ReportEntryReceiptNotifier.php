@@ -19,8 +19,6 @@ use Illuminate\Support\Facades\Mail;
 class ReportEntryReceiptNotifier
 {
     // Every receipt is also copied here (the office's record of who entered what).
-    private const COPY_TO = 'admin@abssrk.com';
-
     private const LABELS = [
         'pathology' => 'Pathology',
         'usg' => 'USG',
@@ -111,13 +109,8 @@ class ReportEntryReceiptNotifier
             app()->terminating(function () use ($to, $payload) {
 
                 try {
-                    $mail = Mail::to($to);
-
-                    if (strcasecmp($to, self::COPY_TO) !== 0) {
-                        $mail->cc(self::COPY_TO);
-                    }
-
-                    $mail->send(new ReportEntryReceiptMail($payload));
+                    // Operator only -- no CC.
+                    Mail::to($to)->send(new ReportEntryReceiptMail($payload));
                 } catch (\Throwable $e) {
                     Log::error('Failed to send report entry receipt email: ' . $e->getMessage());
                 }

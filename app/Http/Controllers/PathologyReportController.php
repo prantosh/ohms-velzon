@@ -669,8 +669,6 @@ class PathologyReportController extends Controller
                     'Pathology report finding updated'
                 );
 
-                app(\App\Services\ReportEntryReceiptNotifier::class)->send('pathology', $finding, 'SAVE');
-
                 return response()->json([
                     'status' => true,
                     'message' => 'Saved.',
@@ -806,8 +804,6 @@ class PathologyReportController extends Controller
                 array_merge($finding->only($finding->getFillable()), ['invoice_detail_ids' => $invoiceDetailIds]),
                 'Pathology report finding created'
             );
-
-            app(\App\Services\ReportEntryReceiptNotifier::class)->send('pathology', $finding, 'SAVE');
 
             return response()->json([
                 'status' => true,

@@ -10,9 +10,6 @@ class DiscountApprovedMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    /** Copied on every discount approval email. */
-    public const COPY_TO = 'admin@abssrk.com';
-
     public function __construct(
         public string $approverName,
         public string $invoiceNo,

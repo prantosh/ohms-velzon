@@ -490,19 +490,14 @@ class DiagnosticInvoiceController extends Controller
                 return;
             }
 
-            // Admin always gets a copy -- and is the sole recipient if the
-            // approver has no email on file.
-            $to = $approver->email ?: DiscountApprovedMail::COPY_TO;
+            // Nothing to send if the approver has no email on file.
+            if (!$approver->email) {
+                return;
+            }
 
             $noteParts = array_filter([$testName, $remarks]);
 
-            $mail = Mail::to($to);
-
-            if (strcasecmp($to, DiscountApprovedMail::COPY_TO) !== 0) {
-                $mail->cc(DiscountApprovedMail::COPY_TO);
-            }
-
-            $mail->send(new DiscountApprovedMail(
+            Mail::to($approver->email)->send(new DiscountApprovedMail(
                 $approver->name,
                 $invoiceNo,
                 $patientName,

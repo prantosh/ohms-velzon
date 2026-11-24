@@ -384,8 +384,6 @@ class UsgReportController extends Controller
             $auditService->logCreate(self::MODULE_CODE, $finding, $newData, 'USG report finding saved');
         }
 
-        app(\App\Services\ReportEntryReceiptNotifier::class)->send('usg', $finding, 'SAVE');
-
         return response()->json([
             'status' => true,
             'message' => 'Saved.',

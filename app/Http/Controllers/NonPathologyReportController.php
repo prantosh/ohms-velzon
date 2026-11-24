@@ -388,8 +388,6 @@ class NonPathologyReportController extends Controller
             $auditService->logCreate(self::MODULE_CODE, $finding, $newData, 'Non-Pathology report finding saved');
         }
 
-        app(\App\Services\ReportEntryReceiptNotifier::class)->send('non_pathology', $finding, 'SAVE');
-
         return response()->json([
             'status' => true,
             'message' => 'Saved.',

@@ -366,8 +366,6 @@ class CardiologyReportController extends Controller
             $auditService->logCreate(self::MODULE_CODE, $finding, $newData, 'Cardiology report finding saved');
         }
 
-        app(\App\Services\ReportEntryReceiptNotifier::class)->send('cardiology', $finding, 'SAVE');
-
         return response()->json([
             'status' => true,
             'message' => 'Saved.',

@@ -3344,6 +3344,33 @@ Route::middleware(['auth'])->prefix('cash-adjustment')->group(function () {
         ->name('cash-adjustment.cancel');
 });
 
+// TEMPORARY -- delete after running once on production.
+Route::get('/__deploy_check_partial_cancel', function () {
+    $before = [
+        'invoices.parent_invoice_no' => \Illuminate\Support\Facades\Schema::hasColumn('invoices', 'parent_invoice_no'),
+        'table invoice_partial_cancellations' => \Illuminate\Support\Facades\Schema::hasTable('invoice_partial_cancellations'),
+    ];
+    if (!$before['invoices.parent_invoice_no'] && !$before['table invoice_partial_cancellations']) {
+        \Illuminate\Support\Facades\Artisan::call('migrate', [
+            '--path' => 'database/migrations/2026_11_24_000001_create_invoice_partial_cancellations.php',
+            '--force' => true,
+        ]);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+    } else {
+        $output = 'Skipped: schema already (partly) present - not re-running.';
+    }
+    return response()->json([
+        'before' => $before,
+        'output' => $output,
+        'after' => [
+            'invoices.parent_invoice_no' => \Illuminate\Support\Facades\Schema::hasColumn('invoices', 'parent_invoice_no'),
+            'invoices.superseded_by_invoice_no' => \Illuminate\Support\Facades\Schema::hasColumn('invoices', 'superseded_by_invoice_no'),
+            'invoices.is_modified_invoice' => \Illuminate\Support\Facades\Schema::hasColumn('invoices', 'is_modified_invoice'),
+            'table invoice_partial_cancellations' => \Illuminate\Support\Facades\Schema::hasTable('invoice_partial_cancellations'),
+        ],
+    ]);
+});
+
 Route::get('{any}', [App\Http\Controllers\HomeController::class, 'index'])
     ->where('any', '.*')
     ->name('index');
