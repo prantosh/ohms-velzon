@@ -1525,7 +1525,7 @@ class DiagnosticInvoiceController extends Controller
      * The manual sendWhatsapp($id) route calls sendInvoiceWhatsapp()
      * directly, ungated, so staff always retain a working resend button.
      */
-    private function autoSendInvoiceWhatsapp($invoiceId): array
+    public function autoSendInvoiceWhatsapp($invoiceId): array
     {
         if (!WhatsappAutoSendSetting::isEnabled('INVOICE')) {
             $invoice = Invoice::find($invoiceId);

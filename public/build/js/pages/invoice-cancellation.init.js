@@ -1,5 +1,14 @@
 let currentInvoice = null;
 let currentPermission = null;
+let currentPartial = null;
+let currentSuperseded = null;
+let currentParentNo = null;
+
+function captureExtras(result) {
+    currentPartial = result.partial ?? null;
+    currentSuperseded = result.superseded_by ?? null;
+    currentParentNo = result.parent_invoice_no ?? null;
+}
 
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]').content;
@@ -53,6 +62,7 @@ document.getElementById('searchForm').addEventListener('submit', async function 
 
     currentInvoice = result.invoice;
     currentPermission = result.permission;
+    captureExtras(result);
 
     renderInvoice(result.invoice, result.details, result.permission);
 });
@@ -108,6 +118,18 @@ function renderInvoice(invoice, details, permission) {
     document.getElementById('pendingOtherWrap').style.display = 'none';
     document.getElementById('requestPermissionWrap').style.display = 'none';
     document.getElementById('cancelActionWrap').style.display = 'none';
+    document.getElementById('supersededWrap').style.display = 'none';
+    document.getElementById('modifiedFromWrap').style.display = 'none';
+
+    if (currentSuperseded) {
+        document.getElementById('supersededWrap').style.display = 'block';
+        document.getElementById('superseded-by').innerText = currentSuperseded;
+    }
+
+    if (currentParentNo) {
+        document.getElementById('modifiedFromWrap').style.display = 'block';
+        document.getElementById('modified-from').innerText = currentParentNo;
+    }
 
     if (invoice.already_cancelled) {
 
@@ -221,6 +243,7 @@ document.getElementById('btnRequestPermission').addEventListener('click', async 
     if (refreshedResult.status) {
         currentInvoice = refreshedResult.invoice;
         currentPermission = refreshedResult.permission;
+        captureExtras(refreshedResult);
         renderInvoice(refreshedResult.invoice, refreshedResult.details, refreshedResult.permission);
     }
 });
@@ -302,6 +325,7 @@ document.getElementById('btnConfirmCancel').addEventListener('click', async func
     if (refreshedResult.status) {
         currentInvoice = refreshedResult.invoice;
         currentPermission = refreshedResult.permission;
+        captureExtras(refreshedResult);
         renderInvoice(refreshedResult.invoice, refreshedResult.details, refreshedResult.permission);
     }
 });

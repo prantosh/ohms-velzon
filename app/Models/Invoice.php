@@ -93,5 +93,9 @@ class Invoice extends Model
         'outsourced_report_delivered_by',
 
         'low_advance_reason',
+
+        'parent_invoice_no',
+        'superseded_by_invoice_no',
+        'is_modified_invoice',
     ];
 }

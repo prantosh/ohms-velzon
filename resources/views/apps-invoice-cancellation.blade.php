@@ -1,7 +1,7 @@
 @extends('layouts.master')
 
 @section('title')
-    Invoice Cancellation
+    Invoice Cancellation (All Item)
 @endsection
 
 @section('css')
@@ -21,7 +21,7 @@
     @endslot
 
     @slot('title')
-        Invoice Cancellation
+        Invoice Cancellation (All Item)
     @endslot
 
 @endcomponent
@@ -193,6 +193,16 @@
 
                 </div>
 
+                <div id="supersededWrap" class="alert alert-info" style="display:none;">
+                    <i class="ri-file-copy-line"></i>
+                    Partially cancelled. Replaced by Modified Invoice <strong id="superseded-by"></strong>.
+                </div>
+
+                <div id="modifiedFromWrap" class="alert alert-info" style="display:none;">
+                    <i class="ri-file-copy-line"></i>
+                    Modified Invoice &mdash; supersedes <strong id="modified-from"></strong>.
+                </div>
+
                 <div id="cancelActionWrap" style="display:none;">
 
                     <button type="button" class="btn btn-danger" id="btnOpenCancel">
@@ -201,6 +211,7 @@
                     </button>
 
                 </div>
+
 
             </div>
 

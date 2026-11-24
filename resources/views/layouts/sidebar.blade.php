@@ -102,12 +102,14 @@
                                         <a href="{{ route('system-log.index') }}" class="nav-link">@lang('translation.systemlog')</a>
                                         </li>
                             @endif
+                            @if(is_null($allowedPages) || in_array('report-print-due-log', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('report-print-due-log.index') }}" class="nav-link">@lang('translation.reportprintduelog')</a>
+                                        </li>
+                            @endif
                             @if(optional(Auth::user())->role === 'Admin')
                             <li class="nav-item">
                                         <a href="{{ route('system-migration.index') }}" class="nav-link">Database Migrations</a>
-                                        </li>
-                            <li class="nav-item">
-                                        <a href="{{ route('report-print-due-log.index') }}" class="nav-link">@lang('translation.reportprintduelog')</a>
                                         </li>
                             <li class="nav-item">
                                         <a href="{{ route('invoice-doctor-correction.index') }}" class="nav-link">@lang('translation.invoicedoctorcorrection')</a>
@@ -493,6 +495,11 @@
                             @if(is_null($allowedPages) || in_array('invoice-cancellation', $allowedPages))
                             <li class="nav-item">
                                         <a href="{{ route('invoice-cancellation.index') }}" class="nav-link">@lang('translation.invoicecancellation')</a>
+                                        </li>
+                            @endif
+                            @if(is_null($allowedPages) || in_array('invoice-partial-cancellation', $allowedPages))
+                            <li class="nav-item">
+                                        <a href="{{ route('invoice-partial-cancellation.index') }}" class="nav-link">@lang('translation.invoicepartialcancellation')</a>
                                         </li>
                             @endif
                         </ul>

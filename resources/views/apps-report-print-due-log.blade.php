@@ -60,6 +60,8 @@
             <div class="col-md-2">
                 <button type="submit" class="btn btn-primary">Filter</button>
                 <a href="{{ route('report-print-due-log.index') }}" class="btn btn-light">Reset</a>
+                <a href="{{ route('report-print-due-log.pdf', request()->only('search', 'from', 'to', 'payment_status')) }}"
+                   target="_blank" class="btn btn-danger"><i class="ri-file-pdf-line align-bottom"></i> PDF</a>
             </div>
 
         </form>

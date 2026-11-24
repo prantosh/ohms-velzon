@@ -56,7 +56,8 @@ return [
     'instrument-master' => 'Instrument Master',
     'inventory-category' => 'Inventory Category Master',
     'inventory-item' => 'Inventory Item Master',
-    'invoice-cancellation' => 'Invoice Cancellation',
+    'invoice-cancellation' => 'Invoice Cancellation (All Item)',
+    'invoice-partial-cancellation' => 'Invoice Cancellation (Partial)',
     'invoice-cancellation-history' => 'Invoice Cancellation History',
     'item-wise-report' => 'Item Wise Report',
     'service-summary-report' => 'Service Summary Report (Date-wise)',
@@ -108,4 +109,5 @@ return [
     'whatsapp-message-report' => 'WhatsApp Message Report',
     'doctor-visit-collection-report' => 'Doctor Visit Collection Report',
     'doctor-fee-waiver-report' => 'Doctor Fee Waiver Report',
+    'report-print-due-log' => 'Report Print With Due Log',
 ];

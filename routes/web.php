@@ -1624,6 +1624,18 @@ Route::prefix('invoice-cancellation')->group(function () {
 
 });
 
+// Cancel individual items of a Diagnostic invoice (issues a Modified Invoice).
+// Search / request-permission reuse the endpoints above.
+Route::prefix('invoice-partial-cancellation')->group(function () {
+
+    Route::get('/', [InvoiceCancellationController::class, 'partialIndex'])
+        ->name('invoice-partial-cancellation.index');
+
+    Route::post('/cancel', [InvoiceCancellationController::class, 'partialCancel'])
+        ->name('invoice-partial-cancellation.cancel');
+
+});
+
 Route::prefix('cancellation-permission')->group(function () {
 
     Route::get('/', [CancellationPermissionController::class, 'index'])
@@ -3294,6 +3306,10 @@ Route::get('/__deploy_check_whatsapp_sent_breakdown', function () {
 Route::middleware(['auth'])
     ->get('/report-print-due-log', [\App\Http\Controllers\ReportPrintDueLogController::class, 'index'])
     ->name('report-print-due-log.index');
+
+Route::middleware(['auth'])
+    ->get('/report-print-due-log/pdf', [\App\Http\Controllers\ReportPrintDueLogController::class, 'pdf'])
+    ->name('report-print-due-log.pdf');
 
 // Admin-only (enforced in the controller; deliberately not in config/access_pages)
 Route::middleware(['auth'])->prefix('payment-mode-correction')->group(function () {

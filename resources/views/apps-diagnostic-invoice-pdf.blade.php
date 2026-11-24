@@ -32,6 +32,14 @@ function fmtDateTime($date)
 // any other caller that doesn't pass $paperSize keeps the original
 // (uncompacted) layout.
 $isShort = ($paperSize ?? 'STANDARD') === 'SHORT';
+
+// Modified Invoice: issued when item(s) of an earlier invoice were cancelled.
+$isModified = !empty($invoice->is_modified_invoice);
+$invoiceTitle = $isModified ? 'MODIFIED INVOICE' : 'INVOICE';
+$cancelledItems = $isModified
+    ? \Illuminate\Support\Facades\DB::table('invoice_partial_cancellations')
+        ->where('new_invoice_no', $invoice->invoice_no)->orderBy('id')->get()
+    : collect();
 @endphp
                 <style>
 
@@ -187,8 +195,7 @@ $isShort = ($paperSize ?? 'STANDARD') === 'SHORT';
 
         <td colspan="3" style="border:none; text-align:center; padding-top:3px; padding-bottom:0;">
             <div style="font-size:16px; font-weight:bold; color:#003399;">
-                INVOICE
-            </div>
+                {{ $invoiceTitle }}            </div>
         </td>
 
     </tr>
@@ -196,7 +203,17 @@ $isShort = ($paperSize ?? 'STANDARD') === 'SHORT';
     <tr>
 
         <td colspan="3" style="border:none; text-align:right; padding-top:1px; padding-bottom:0; font-size:9px; color:#555;">
+            @if($isModified)
+            <table style="width:100%; margin:0; border:none;">
+                <tr>
+                    <td style="width:30%; border:none; padding:0;"></td>
+                    <td style="width:40%; border:none; padding:0; text-align:center; color:#000;">Supersedes {{ $invoice->parent_invoice_no }}</td>
+                    <td style="width:30%; border:none; padding:0; text-align:right; color:#555;">Printed On: {{ now()->format('d-m-Y h:i A') }}</td>
+                </tr>
+            </table>
+            @else
             Printed On: {{ now()->format('d-m-Y h:i A') }}
+            @endif
         </td>
 
     </tr>
@@ -204,7 +221,8 @@ $isShort = ($paperSize ?? 'STANDARD') === 'SHORT';
 </table>
 @else
 @include('partials.pdf-header', [
-    'reportTitle' => 'INVOICE',
+    'reportTitle' => $invoiceTitle,
+    'reportSubtitle' => $isModified ? 'Supersedes ' . $invoice->parent_invoice_no : null,
     'headerColor' => '#003399',
 ])
 @endif
@@ -272,9 +290,9 @@ $isShort = ($paperSize ?? 'STANDARD') === 'SHORT';
 
 <th width="5%">SL</th>
 
-<th width="15%">Test Category</th>
+<th width="19%" style="white-space:nowrap;">Test Category</th>
 
-<th width="50%">Test Description</th>
+<th width="46%">Test Description</th>
 
 <th width="10%">Rate</th>
 
@@ -324,6 +342,40 @@ $sl = 1;
 
 </table>
 
+@if($isModified && $cancelledItems->isNotEmpty())
+@php
+    $cancelledTotal = $cancelledItems->sum('amount');
+    $refundTotal = (float) ($cancelledItems->first()->refund_amount ?? 0);
+@endphp
+<div style="margin-top:8px; font-weight:bold; color:#b30000;">
+    Cancelled Items (from {{ $invoice->parent_invoice_no }})
+</div>
+<table class="bordered-table">
+<thead>
+<tr>
+<th width="5%">SL</th>
+<th width="55%">Test Description</th>
+<th width="15%">Rate</th>
+<th width="25%" style="white-space:nowrap;">Cancelled Value</th>
+</tr>
+</thead>
+<tbody>
+@foreach($cancelledItems as $ci)
+<tr>
+<td class="text-center">{{ $loop->iteration }}</td>
+<td style="text-decoration: line-through;">{{ $ci->item_description }}</td>
+<td class="amount">{{ number_format($ci->rate, 2) }}</td>
+<td class="amount">{{ number_format($ci->amount, 2) }}</td>
+</tr>
+@endforeach
+<tr>
+<td colspan="3" class="amount"><b>Total Cancelled</b></td>
+<td class="amount"><b>{{ number_format($cancelledTotal, 2) }}</b></td>
+</tr>
+</tbody>
+</table>
+@endif
+
 
 
 <!-- =======================================================
@@ -351,11 +403,19 @@ $sl = 1;
     </td>
 
     <td class="label-blue">
-        Payable Amount
+        {{ ($isModified && ($refundTotal ?? 0) > 0) ? 'Amount to Refund' : 'Payable Amount' }}
     </td>
 
     <td class="amount">
-        {{ number_format($invoice->total_amount,2) }}
+        {{ number_format(($isModified && ($refundTotal ?? 0) > 0) ? $refundTotal : $invoice->total_amount,2) }}
+    </td>
+
+    <td class="label-blue">
+        Paid Amount
+    </td>
+
+    <td class="amount">
+        {{ number_format($invoice->paid_amount ?? 0,2) }}
     </td>
 
 </tr>
@@ -364,11 +424,43 @@ $sl = 1;
 @php
 // The LAST payment is already stated in the Receipt Acknowledgement below (amount and
 // who received it), so the table lists only the EARLIER payments.
-$paymentCount = 1 + (($invoice->paid_amount_1 ?? 0) > 0 ? 1 : 0) + (($invoice->paid_amount_2 ?? 0) > 0 ? 1 : 0);
+// Modified Invoice: the earlier payments are printed exactly as on the ORIGINAL invoice
+// (walk back to the root of the chain); refunds given at partial-cancellation time are
+// listed separately under the name of the employee who gave them.
+$pay = $invoice;
+$refundTxns = collect();
+if ($isModified) {
+    $chain = [];
+    $cur = $invoice;
+    $guard = 0;
+    while ($cur && !empty($cur->parent_invoice_no) && $guard++ < 10) {
+        $chain[] = $cur->parent_invoice_no;
+        $cur = \Illuminate\Support\Facades\DB::table('invoices')->where('invoice_no', $cur->parent_invoice_no)->first();
+    }
+    if ($cur && $cur->invoice_no !== $invoice->invoice_no) {
+        $pay = $cur;
+    }
+    $refundTxns = \Illuminate\Support\Facades\DB::table('daily_transactions')
+        ->whereIn('invoice_reference', $chain)
+        ->where('transaction_type', 'REFUND')
+        ->orderBy('id')->get();
+}
+// amount collected on the spot at partial-cancellation time (recorded against the new invoice)
+$collectTxns = $isModified
+    ? \Illuminate\Support\Facades\DB::table('daily_transactions')
+        ->where('invoice_reference', $invoice->invoice_no)
+        ->where('transaction_type', 'RECEIVED')
+        ->orderBy('id')->get()
+    : collect();
+$paymentCount = 1 + (($pay->paid_amount_1 ?? 0) > 0 ? 1 : 0) + (($pay->paid_amount_2 ?? 0) > 0 ? 1 : 0);
+// With a collection taken at cancellation, ALL original payments go in the table and the
+// collection becomes the "last payment" of the Receipt Acknowledgement (like any multi-phase invoice).
+$rootLastInAck = $collectTxns->isEmpty();
+$showPayTable = $paymentCount > 1 || $refundTxns->isNotEmpty() || $collectTxns->isNotEmpty();
 @endphp
 
 <table class="bordered-table">
-@if($paymentCount > 1)
+@if($showPayTable)
 <tr>
     <td class="label-blue">
         Date of Payment
@@ -396,36 +488,36 @@ $paymentCount = 1 + (($invoice->paid_amount_1 ?? 0) > 0 ? 1 : 0) + (($invoice->p
 @php
 
 $firstPaidAmount =
-    ($invoice->paid_amount ?? 0)
-    - ($invoice->paid_amount_1 ?? 0)
-    - ($invoice->paid_amount_2 ?? 0);
+    ($pay->paid_amount ?? 0)
+    - ($pay->paid_amount_1 ?? 0)
+    - ($pay->paid_amount_2 ?? 0);
 
 $cumulativeAfterFirst = $firstPaidAmount;
 
-$cumulativeAfterPhase1 = $firstPaidAmount + ($invoice->paid_amount_1 ?? 0);
+$cumulativeAfterPhase1 = $firstPaidAmount + ($pay->paid_amount_1 ?? 0);
 
-$cumulativeAfterPhase2 = $firstPaidAmount + ($invoice->paid_amount_1 ?? 0) + ($invoice->paid_amount_2 ?? 0);
+$cumulativeAfterPhase2 = $firstPaidAmount + ($pay->paid_amount_1 ?? 0) + ($pay->paid_amount_2 ?? 0);
 
 // Each payment (initial + up to 2 due-payment phases) can be collected in
 // a different mode, but invoices.payment_mode only stores the LATEST
 // one -- daily_transactions has one row per payment event and is the only
 // place the mode for each individual phase actually survives.
 $initialPaymentTxn = \Illuminate\Support\Facades\DB::table('daily_transactions')
-    ->where('invoice_reference', $invoice->invoice_no)
+    ->where('invoice_reference', $pay->invoice_no)
     ->where('remarks', 'Diagnostic Invoice')
     ->first();
 
 $phase1PaymentTxn = \Illuminate\Support\Facades\DB::table('daily_transactions')
-    ->where('invoice_reference', $invoice->invoice_no)
+    ->where('invoice_reference', $pay->invoice_no)
     ->where('remarks', 'like', 'Diagnostic Due Payment - Phase 1%')
     ->first();
 
 $phase2PaymentTxn = \Illuminate\Support\Facades\DB::table('daily_transactions')
-    ->where('invoice_reference', $invoice->invoice_no)
+    ->where('invoice_reference', $pay->invoice_no)
     ->where('remarks', 'like', 'Diagnostic Due Payment - Phase 2%')
     ->first();
 
-$initialPaymentMode = $initialPaymentTxn->payment_mode ?? $invoice->payment_mode ?? '-';
+$initialPaymentMode = $initialPaymentTxn->payment_mode ?? $pay->payment_mode ?? '-';
 $phase1PaymentMode = $phase1PaymentTxn->payment_mode ?? '-';
 $phase2PaymentMode = $phase2PaymentTxn->payment_mode ?? '-';
 
@@ -433,18 +525,18 @@ $phase2PaymentMode = $phase2PaymentTxn->payment_mode ?? '-';
 // transaction. The initial payment falls back to whoever created the invoice
 // (older invoices without a transaction row); due payments have no other record.
 $initialReceivedBy = $initialPaymentTxn->operator_name
-    ?? \Illuminate\Support\Facades\DB::table('users')->where('id', $invoice->created_by)->value('name')
+    ?? \Illuminate\Support\Facades\DB::table('users')->where('id', $pay->created_by)->value('name')
     ?? '-';
 $phase1ReceivedBy = $phase1PaymentTxn->operator_name ?? '-';
 $phase2ReceivedBy = $phase2PaymentTxn->operator_name ?? '-';
 
 @endphp
 
-@if($paymentCount > 1)
+@if($paymentCount > 1 || !$rootLastInAck)
 <tr>
 
     <td>
-        {{ fmtDateTime($initialPaymentTxn->created_at ?? $invoice->created_at) }}
+        {{ fmtDateTime($initialPaymentTxn->created_at ?? $pay->created_at) }}
     </td>
 
     <td class="text-end">
@@ -461,7 +553,7 @@ $phase2ReceivedBy = $phase2PaymentTxn->operator_name ?? '-';
 
     <td class="text-end">
         {{ number_format(
-            $invoice->total_amount
+            $pay->total_amount
             - $cumulativeAfterFirst,
             2
         ) }}
@@ -470,16 +562,16 @@ $phase2ReceivedBy = $phase2PaymentTxn->operator_name ?? '-';
 </tr>
 @endif
 
-@if($invoice->paid_amount_1 > 0 && $invoice->paid_amount_2 > 0)
+@if($pay->paid_amount_1 > 0 && ($pay->paid_amount_2 > 0 || !$rootLastInAck))
 
 <tr>
 
     <td>
-        {{ fmtDateTime($invoice->paid_date_1) }}
+        {{ fmtDateTime($pay->paid_date_1) }}
     </td>
 
     <td class="text-end">
-        {{ number_format($invoice->paid_amount_1,2) }}
+        {{ number_format($pay->paid_amount_1,2) }}
     </td>
 
     <td>
@@ -492,7 +584,7 @@ $phase2ReceivedBy = $phase2PaymentTxn->operator_name ?? '-';
 
     <td class="text-end">
         {{ number_format(
-            $invoice->total_amount
+            $pay->total_amount
             - $cumulativeAfterPhase1,
             2
         ) }}
@@ -503,6 +595,36 @@ $phase2ReceivedBy = $phase2PaymentTxn->operator_name ?? '-';
 @endif
 
 {{-- the 2nd due payment is always the last payment: shown in the Receipt Acknowledgement below --}}
+
+@if(!$rootLastInAck && $pay->paid_amount_2 > 0)
+<tr>
+    <td>{{ fmtDateTime($pay->paid_date_2) }}</td>
+    <td class="text-end">{{ number_format($pay->paid_amount_2,2) }}</td>
+    <td>{{ $phase2PaymentMode }}</td>
+    <td>{{ $phase2ReceivedBy }}</td>
+    <td class="text-end">{{ number_format($pay->total_amount - $cumulativeAfterPhase2, 2) }}</td>
+</tr>
+@endif
+
+@foreach($collectTxns->slice(0, -1) as $ct)
+<tr>
+    <td>{{ fmtDateTime($ct->created_at) }}</td>
+    <td class="text-end">{{ number_format($ct->received_amount, 2) }} (Collected)</td>
+    <td>{{ $ct->payment_mode ?? '-' }}</td>
+    <td>{{ $ct->operator_name ?? '-' }}</td>
+    <td class="text-end">{{ number_format($invoice->due_amount ?? 0, 2) }}</td>
+</tr>
+@endforeach
+
+@foreach($refundTxns as $rf)
+<tr>
+    <td>{{ fmtDateTime($rf->created_at) }}</td>
+    <td class="text-end">-{{ number_format($rf->refund_amount, 2) }} (Refund)</td>
+    <td>{{ $rf->payment_mode ?? '-' }}</td>
+    <td>{{ $rf->operator_name ?? '-' }}</td>
+    <td class="text-end">{{ number_format($invoice->due_amount ?? 0, 2) }}</td>
+</tr>
+@endforeach
 
 <tr>
 
@@ -531,32 +653,32 @@ $phase2ReceivedBy = $phase2PaymentTxn->operator_name ?? '-';
 
 @php
 
-$lastPayment = $invoice->paid_amount;
-$lastPaymentDate = $invoice->created_at;
+$lastPayment = $pay->paid_amount;
+$lastPaymentDate = $pay->created_at;
 
 // Who actually collected this money -- the operator recorded on that
 // payment's own daily_transactions row -- not whoever happens to be
 // logged in when the invoice is later (re)printed.
 $fallbackReceiver = \Illuminate\Support\Facades\DB::table('users')
-    ->where('id', $invoice->created_by)
+    ->where('id', $pay->created_by)
     ->value('name') ?? '-';
 
 $lastPaymentOperator = optional($initialPaymentTxn)->operator_name ?? $fallbackReceiver;
-$lastPaymentAt = optional($initialPaymentTxn)->created_at ?? $invoice->created_at;
+$lastPaymentAt = optional($initialPaymentTxn)->created_at ?? $pay->created_at;
 
-if (!empty($invoice->paid_amount_2) && $invoice->paid_amount_2 > 0) {
+if (!empty($pay->paid_amount_2) && $pay->paid_amount_2 > 0) {
 
-    $lastPayment = $invoice->paid_amount_2;
-    $lastPaymentDate = $invoice->paid_date_2;
+    $lastPayment = $pay->paid_amount_2;
+    $lastPaymentDate = $pay->paid_date_2;
     $lastPaymentOperator = optional($phase2PaymentTxn)->operator_name ?? $fallbackReceiver;
-    $lastPaymentAt = $invoice->paid_date_2 ?: (optional($phase2PaymentTxn)->created_at ?? $lastPaymentDate);
+    $lastPaymentAt = $pay->paid_date_2 ?: (optional($phase2PaymentTxn)->created_at ?? $lastPaymentDate);
 
-} elseif (!empty($invoice->paid_amount_1) && $invoice->paid_amount_1 > 0) {
+} elseif (!empty($pay->paid_amount_1) && $pay->paid_amount_1 > 0) {
 
-    $lastPayment = $invoice->paid_amount_1;
-    $lastPaymentDate = $invoice->paid_date_1;
+    $lastPayment = $pay->paid_amount_1;
+    $lastPaymentDate = $pay->paid_date_1;
     $lastPaymentOperator = optional($phase1PaymentTxn)->operator_name ?? $fallbackReceiver;
-    $lastPaymentAt = $invoice->paid_date_1 ?: (optional($phase1PaymentTxn)->created_at ?? $lastPaymentDate);
+    $lastPaymentAt = $pay->paid_date_1 ?: (optional($phase1PaymentTxn)->created_at ?? $lastPaymentDate);
 }
 
 /*
@@ -564,6 +686,13 @@ if (!empty($invoice->paid_amount_2) && $invoice->paid_amount_2 > 0) {
 | Amount To Words
 |--------------------------------------------------------------------------
 */
+
+if ($collectTxns->isNotEmpty()) {
+    $lastCt = $collectTxns->last();
+    $lastPayment = $lastCt->received_amount;
+    $lastPaymentOperator = $lastCt->operator_name ?? '-';
+    $lastPaymentAt = $lastCt->created_at;
+}
 
 $f = new \NumberFormatter(
     "en",
@@ -606,6 +735,14 @@ $amountInWords = ucwords(
 
                 Receipt Date &amp; Time :
                 <b>{{ fmtDateTime($lastPaymentAt) }}</b>
+
+                @foreach($refundTxns as $rf)
+                    <br>
+                    Refunded <b>Rs. {{ number_format($rf->refund_amount, 2) }}</b>
+                    By : <b>{{ $rf->operator_name ?? '-' }}</b>
+                    &nbsp;&nbsp;&nbsp;&nbsp;
+                    Refund Date &amp; Time : <b>{{ fmtDateTime($rf->created_at) }}</b>
+                @endforeach
 
         </td>
 

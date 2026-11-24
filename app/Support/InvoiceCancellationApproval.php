@@ -35,15 +35,18 @@ class InvoiceCancellationApproval
     /**
      * @return array{allowed: bool, approver_id: ?int, message: ?string}
      */
-    public static function check(Invoice $invoice, int $currentUserId): array
+    public static function check(Invoice $invoice, int $currentUserId, bool $ignoreExistingReports = false): array
     {
         // Checked before even the same-day shortcut below -- a report
         // already represents real diagnostic work, so it blocks
         // cancellation regardless of how recently the invoice was raised.
         // Admin alone may override this (the same-day/permission rules
         // below still apply to them like anyone else).
+        // $ignoreExistingReports: partial cancellation checks reports per
+        // line itself (only the cancelled lines must be report-free).
         if (
-            DiagnosticReportGuard::anyReportExists($invoice->invoice_no)
+            !$ignoreExistingReports
+            && DiagnosticReportGuard::anyReportExists($invoice->invoice_no)
             && optional(User::find($currentUserId))->role !== 'Admin'
         ) {
 

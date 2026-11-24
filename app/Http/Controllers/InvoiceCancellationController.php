@@ -37,6 +37,11 @@ class InvoiceCancellationController extends Controller
         return view('apps-invoice-cancellation');
     }
 
+    public function partialIndex()
+    {
+        return view('apps-invoice-partial-cancellation');
+    }
+
     /*
     |--------------------------------------------------------------------------
     | SEARCH INVOICE BY NUMBER
@@ -68,9 +73,19 @@ class InvoiceCancellationController extends Controller
             ? \Carbon\Carbon::parse($invoice->invoice_date)->isToday()
             : false;
 
-        $receivedByName = $invoice->received_by
-            ? DB::table('users')->where('id', $invoice->received_by)->value('name')
-            : null;
+        // received_by is only set by some invoice types; diagnostic invoices
+        // record who took the money on the RECEIVED ledger row / created_by.
+        $receivedByName = DB::table('users')
+            ->where('id', $invoice->received_by ?: $invoice->created_by)
+            ->value('name');
+
+        if (!$invoice->received_by) {
+            $receivedByName = DB::table('daily_transactions')
+                ->where('invoice_reference', $invoice->invoice_no)
+                ->where('transaction_type', 'RECEIVED')
+                ->orderBy('id')
+                ->value('operator_name') ?: $receivedByName;
+        }
 
         $cancelledByName = $invoice->cancelled_by
             ? DB::table('users')->where('id', $invoice->cancelled_by)->value('name')
@@ -134,7 +149,10 @@ class InvoiceCancellationController extends Controller
                 'granted_at' => $permission->granted_at,
                 'is_granted_to_me' => $isGrantedToMe,
             ] : null,
-            'details' => $details
+            'details' => $details,
+            'partial' => app(\App\Services\PartialInvoiceCancellationService::class)->describe($invoice),
+            'superseded_by' => $invoice->superseded_by_invoice_no,
+            'parent_invoice_no' => $invoice->parent_invoice_no,
         ]);
     }
 
@@ -310,6 +328,122 @@ class InvoiceCancellationController extends Controller
                 'message' => 'Unable to cancel invoice.'
             ], 500);
         }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PARTIAL CANCEL (cancel individual items, issue a Modified Invoice)
+    |--------------------------------------------------------------------------
+    */
+
+    public function partialCancel(Request $request, AuditService $auditService)
+    {
+        $request->validate([
+            'invoice_id' => 'required|exists:invoices,id',
+            'detail_ids' => 'required|array|min:1',
+            'detail_ids.*' => 'integer',
+            'cancellation_remarks' => 'required|string|max:500',
+            'collect_amount' => 'nullable|numeric|min:0',
+            'collect_mode' => 'nullable|required_with:collect_amount|string|in:Cash,Card,UPI',
+        ]);
+
+        $service = app(\App\Services\PartialInvoiceCancellationService::class);
+
+        DB::beginTransaction();
+
+        try {
+
+            $invoice = Invoice::findOrFail($request->invoice_id);
+
+            if ($invoice->cancelled === 'Y') {
+                DB::rollBack();
+
+                return response()->json(['status' => false, 'message' => 'This invoice has already been cancelled.'], 422);
+            }
+
+            // Reports are checked per item by the service, not per invoice.
+            $check = \App\Support\InvoiceCancellationApproval::check($invoice, Auth::id(), true);
+
+            if (!$check['allowed']) {
+                DB::rollBack();
+
+                return response()->json(['status' => false, 'message' => $check['message']], 422);
+            }
+
+            $oldData = $invoice->only($invoice->getFillable());
+
+            $result = $service->cancel(
+                $invoice,
+                $request->detail_ids,
+                $request->cancellation_remarks,
+                Auth::id(),
+                $check['approver_id'],
+                (float) $request->input('collect_amount', 0),
+                $request->input('collect_mode')
+            );
+
+            DB::commit();
+
+        } catch (\RuntimeException $e) {
+
+            DB::rollBack();
+
+            return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
+
+        } catch (Exception $e) {
+
+            DB::rollBack();
+
+            Log::error($e);
+
+            return response()->json(['status' => false, 'message' => 'Unable to partially cancel invoice.'], 500);
+        }
+
+        $newInvoice = $result['new_invoice'];
+        $invoice->refresh();
+
+        $auditService->logUpdate(
+            self::MODULE_CODE,
+            $invoice,
+            $oldData,
+            $invoice->only($invoice->getFillable()),
+            'Invoice partially cancelled; superseded by Modified Invoice ' . $newInvoice->invoice_no
+        );
+
+        app(\App\Services\InvoiceCancellationNotifier::class)->notify(
+            $invoice,
+            $result['refund'],
+            'Partial cancellation of: ' . $result['cancelled_summary'] . ' (Modified Invoice ' . $newInvoice->invoice_no . '). ' . $request->cancellation_remarks,
+            Auth::id(),
+            $check['approver_id']
+        );
+
+        // Fresh invoice PDF to the patient again, same gate as any invoice send.
+        $whatsapp = app(\App\Http\Controllers\DiagnosticInvoiceController::class)
+            ->autoSendInvoiceWhatsapp($newInvoice->id);
+
+        $msg = 'Item(s) cancelled. Modified Invoice ' . $newInvoice->invoice_no . ' generated. New total Rs. '
+            . number_format($result['new_total'], 2);
+
+        if ($result['refund'] > 0) {
+            $msg .= '; REFUND Rs. ' . number_format($result['refund'], 2) . ' to patient.';
+        } elseif ($result['due'] > 0) {
+            $msg .= ($result['collected'] > 0 ? '; COLLECTED Rs. ' . number_format($result['collected'], 2) : '')
+                . '; DUE Rs. ' . number_format($result['due'], 2) . ' to be collected.';
+        } elseif ($result['collected'] > 0) {
+            $msg .= '; COLLECTED Rs. ' . number_format($result['collected'], 2) . ' - fully paid.';
+        } else {
+            $msg .= '; nothing to refund or collect.';
+        }
+
+        $msg .= !empty($whatsapp['success']) ? ' WhatsApp sent.' : ' WhatsApp not sent.';
+
+        return response()->json([
+            'status' => true,
+            'message' => $msg,
+            'new_invoice_no' => $newInvoice->invoice_no,
+            'new_invoice_id' => $newInvoice->id,
+        ]);
     }
 
     /*

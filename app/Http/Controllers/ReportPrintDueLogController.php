@@ -4,21 +4,50 @@ namespace App\Http\Controllers;
 
 use App\Models\Invoice;
 use App\Models\ReportPrintDueLog;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * Admin-only view of reports printed while the invoice still had a payment
- * due (see ReportPrintDueLogger). Deliberately NOT in config/access_pages,
- * so it cannot be granted to other roles.
+ * View of reports printed while the invoice still had a payment due (see
+ * ReportPrintDueLogger). Admin always; other roles via Role Page Access
+ * ('report-print-due-log', enforced by CheckPageAccess).
  */
 class ReportPrintDueLogController extends Controller
 {
     public function index(Request $request)
     {
-        abort_unless(optional(Auth::user())->role === 'Admin', 403, 'Only Admin can view this log.');
+        $logs = $this->filteredQuery($request)->paginate(25)->withQueryString();
+        $this->attachFinalPayment($logs);
 
+        return view('apps-report-print-due-log', compact('logs'));
+    }
+
+    public function pdf(Request $request)
+    {
+        ini_set('memory_limit', '512M');
+
+        $logs = $this->filteredQuery($request)->get();
+        $this->attachFinalPayment($logs);
+
+        $pdf = Pdf::loadView('apps-report-print-due-log-pdf', [
+            'logs' => $logs,
+            'filters' => [
+                'From' => $request->filled('from') ? $request->from : 'All',
+                'To' => $request->filled('to') ? $request->to : 'All',
+                'Search' => $request->filled('search') ? trim($request->search) : '-',
+                'Final Payment' => ['paid' => 'Fully Paid', 'due' => 'Due'][$request->input('payment_status')] ?? 'All',
+            ],
+            'printedBy' => optional(Auth::user())->name,
+        ]);
+        $pdf->setPaper('A4', 'landscape');
+
+        return $pdf->stream('Report-Print-With-Due-Log-' . now()->format('d-m-Y') . '.pdf');
+    }
+
+    private function filteredQuery(Request $request)
+    {
         $query = ReportPrintDueLog::query();
 
         if ($request->filled('from')) {
@@ -54,8 +83,11 @@ class ReportPrintDueLogController extends Controller
             });
         }
 
-        $logs = $query->orderByDesc('printed_at')->orderByDesc('id')->paginate(25)->withQueryString();
+        return $query->orderByDesc('printed_at')->orderByDesc('id');
+    }
 
+    private function attachFinalPayment($logs): void
+    {
         // The log row is a snapshot taken at print time; the invoice's
         // present payment state is read live so Admin can see whether the
         // due was cleared afterwards, and when.
@@ -69,8 +101,6 @@ class ReportPrintDueLogController extends Controller
         foreach ($logs as $log) {
             $log->final_payment = $this->finalPaymentStatus($invoices->get($log->invoice_id));
         }
-
-        return view('apps-report-print-due-log', compact('logs'));
     }
 
     /**

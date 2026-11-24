@@ -146,7 +146,17 @@
                 color:#555;
             ">
 
+            @if(!empty($reportSubtitle))
+            <table style="width:100%; margin:0; border:none;">
+                <tr>
+                    <td style="width:30%; border:none; padding:0;"></td>
+                    <td style="width:40%; border:none; padding:0; text-align:center; color:#000;">{{ $reportSubtitle }}</td>
+                    <td style="width:30%; border:none; padding:0; text-align:right; color:#555;">Printed On: {{ now()->format('d-m-Y h:i A') }}</td>
+                </tr>
+            </table>
+            @else
             Printed On: {{ now()->format('d-m-Y h:i A') }}
+            @endif
 
         </td>
 
