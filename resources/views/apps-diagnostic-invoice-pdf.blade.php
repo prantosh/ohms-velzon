@@ -1,4 +1,4 @@
-﻿< !DOCTYPE html >
+< !DOCTYPE html >
     <html>
 
         <head>
@@ -33,6 +33,10 @@ function fmtDateTime($date)
 // (uncompacted) layout.
 $isShort = ($paperSize ?? 'STANDARD') === 'SHORT';
 
+// STANDARD layout: height (px) of the top page margin that holds the repeating
+// letterhead + patient details block.
+$stdTopMargin = 238;
+
 // Modified Invoice: issued when item(s) of an earlier invoice were cancelled.
 $isModified = !empty($invoice->is_modified_invoice);
 $invoiceTitle = $isModified ? 'MODIFIED INVOICE' : 'INVOICE';
@@ -44,15 +48,22 @@ $cancelledItems = $isModified
                 <style>
 
                     @page {
-                            margin-top: {{ $isShort ? '8mm' : '1in' }};
+                            margin-top: {{ $isShort ? '8mm' : $stdTopMargin . 'px' }};
                             margin-right: {{ $isShort ? '8mm' : '40px' }};
-                            margin-bottom: {{ $isShort ? '8mm' : '40px' }};
+                            margin-bottom: {{ $isShort ? '8mm' : '50px' }};
                             margin-left: {{ $isShort ? '8mm' : '40px' }};
                         }
 
+                    @if($isShort)
                     @page :first {
-                            margin-top: {{ $isShort ? '4mm' : '0.4in' }};
+                            margin-top: 4mm;
                         }
+                    @endif
+
+                    /* Never split a table row across pages; keep a block's
+                       rows/labels together with the block. */
+                    tr { page-break-inside: avoid; }
+                    .keep-together { page-break-inside: avoid; }
 
                     body {
                         font-family: DejaVu Sans, sans-serif;
@@ -220,11 +231,21 @@ $cancelledItems = $isModified
 
 </table>
 @else
+{{-- STANDARD: letterhead + patient details sit in the (tall) top page margin
+     as a position:fixed block, so they repeat on every page. --}}
+<div style="position: fixed; top: 96px; left: 0; right: 0; text-align: center; opacity: 0.08;">
+    <img src="{{ public_path('images/abssrk_logo.png') }}" style="width: 380px;">
+</div>
+
+<div style="position: fixed; top: -{{ $stdTopMargin }}px; left: 0; right: 0;">
 @include('partials.pdf-header', [
     'reportTitle' => $invoiceTitle,
     'reportSubtitle' => $isModified ? 'Supersedes ' . $invoice->parent_invoice_no : null,
     'headerColor' => '#003399',
+    'omitWatermark' => true,
 ])
+@include('partials.diagnostic-invoice-patient-info')
+</div>
 @endif
 
 
@@ -233,48 +254,9 @@ $cancelledItems = $isModified
      INVOICE INFORMATION
 ======================================================= -->
 
-<table>
-
-<tr>
-    <td width="25%" class="label-blue">Patient Name</td>
-    <td><strong>{{ $invoice->patient_name }}</strong></td>
-
-    <td width="25%" class="label-blue">Invoice No</td>
-    <td>{{ $invoice->invoice_no }}</td>
-</tr>
-
-<tr>
-    <td class="label-blue">Gender</td>
-    <td>{{ $invoice->patient_gender }}</td>
-
-    <td class="label-blue">Invoice Date</td>
-    <td>{{ fmtDate($invoice->invoice_date) }}</td>
-</tr>
-
-<tr>
-    <td class="label-blue">Age</td>
-    <td>{{ $invoice->patient_age }}</td>
-
-    <td class="label-blue">Patient ID</td>
-    <td>{{ $invoice->patient_id }}</td>
-</tr>
-
-<tr>
-    <td class="label-blue">Mobile</td>
-    <td>{{ $invoice->patient_mobile_no }}</td>
-
-    <td class="label-blue">Payment Mode</td>
-    <td>{{ $invoice->payment_mode }}</td>
-</tr>
-
-<tr>
-    <td class="label-blue">Referred Doctor</td>
-    <td>{{ $invoice->referred_doctor }}</td>
-
-    <td class="label-blue">Test Date</td>
-    <td>{{ !empty($testDateText) ? $testDateText : fmtDate($invoice->test_date) }}</td>
-</tr>
-</table>
+@if($isShort)
+@include('partials.diagnostic-invoice-patient-info')
+@endif
 
 <div style="height: {{ $isShort ? '2px' : '10px' }};"></div>
 
@@ -347,6 +329,7 @@ $sl = 1;
     $cancelledTotal = $cancelledItems->sum('amount');
     $refundTotal = (float) ($cancelledItems->first()->refund_amount ?? 0);
 @endphp
+<div class="keep-together">
 <div style="margin-top:8px; font-weight:bold; color:#b30000;">
     Cancelled Items (from {{ $invoice->parent_invoice_no }})
 </div>
@@ -374,6 +357,7 @@ $sl = 1;
 </tr>
 </tbody>
 </table>
+</div>
 @endif
 
 
@@ -381,6 +365,10 @@ $sl = 1;
 <!-- =======================================================
      TOTALS
 ======================================================= -->
+
+{{-- Totals, payment history, receipt acknowledgement, remarks and signature
+     move to the next page together rather than being split. --}}
+<div class="keep-together">
 
 <table>
 
@@ -455,7 +443,13 @@ $collectTxns = $isModified
 $paymentCount = 1 + (($pay->paid_amount_1 ?? 0) > 0 ? 1 : 0) + (($pay->paid_amount_2 ?? 0) > 0 ? 1 : 0);
 // With a collection taken at cancellation, ALL original payments go in the table and the
 // collection becomes the "last payment" of the Receipt Acknowledgement (like any multi-phase invoice).
-$rootLastInAck = $collectTxns->isEmpty();
+// Modified Invoice: the original payment(s) are always listed in the table (history),
+// like a multi-phase invoice, instead of being folded into the acknowledgement.
+$rootLastInAck = !$isModified;
+// Receipt Acknowledgement only when money was actually received for it: any ordinary
+// invoice, or a Modified Invoice on which an amount was collected. A refund-only
+// Modified Invoice shows its refund as a row of the payment history table.
+$showReceipt = !$isModified || $collectTxns->isNotEmpty();
 $showPayTable = $paymentCount > 1 || $refundTxns->isNotEmpty() || $collectTxns->isNotEmpty();
 @endphp
 
@@ -705,6 +699,7 @@ $amountInWords = ucwords(
 
 @endphp
 
+@if($showReceipt)
 <table>
 
     <tr>
@@ -736,19 +731,12 @@ $amountInWords = ucwords(
                 Receipt Date &amp; Time :
                 <b>{{ fmtDateTime($lastPaymentAt) }}</b>
 
-                @foreach($refundTxns as $rf)
-                    <br>
-                    Refunded <b>Rs. {{ number_format($rf->refund_amount, 2) }}</b>
-                    By : <b>{{ $rf->operator_name ?? '-' }}</b>
-                    &nbsp;&nbsp;&nbsp;&nbsp;
-                    Refund Date &amp; Time : <b>{{ fmtDateTime($rf->created_at) }}</b>
-                @endforeach
-
         </td>
 
     </tr>
 
 </table>
+@endif
 
 <!-- =======================================================
      REMARKS
@@ -805,6 +793,8 @@ Authorized Signature
 </tr>
 
 </table>
+
+</div>
 
 </body>
 

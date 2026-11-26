@@ -199,7 +199,7 @@ class DiagnosticInvoiceController extends Controller
 
         $payment = $request->get('payment', 'all');
 
-        if (!in_array($payment, ['all', 'complete', 'due'])) {
+        if (!in_array($payment, ['all', 'complete', 'due', 'partial'])) {
             $payment = 'all';
         }
 
@@ -223,6 +223,9 @@ class DiagnosticInvoiceController extends Controller
                         ->where(fn ($s) => $s->whereNull('status')->orWhere('status', '!=', 'Paid'))
                         ->where(fn ($c) => $c->whereNull('cancelled')->orWhere('cancelled', '!=', 'Y')))
 
+                    // Modified Invoices issued by a partial cancellation.
+                    ->when($payment === 'partial', fn ($q) => $q->where('is_modified_invoice', 1))
+
                     ->where(
                         'invoice_category',
                         $category
@@ -238,6 +241,40 @@ class DiagnosticInvoiceController extends Controller
                     ->orderBy('id', 'desc')
 
                     ->get();
+    }
+
+    /**
+     * Partially Cancelled tab: adds the old (superseded) invoice number, the
+     * cancelled items with their value, the refund and who cancelled, to each
+     * Modified Invoice row.
+     */
+    private function attachPartialCancellationDetails($invoices): void
+    {
+        $lines = DB::table('invoice_partial_cancellations')
+            ->whereIn('new_invoice_no', $invoices->pluck('invoice_no'))
+            ->orderBy('id')
+            ->get()
+            ->groupBy('new_invoice_no');
+
+        $userNames = DB::table('users')
+            ->whereIn('id', $lines->flatten()->pluck('cancelled_by')->filter()->unique())
+            ->pluck('name', 'id');
+
+        $invoices->transform(function ($row) use ($lines, $userNames) {
+
+            $set = $lines->get($row->invoice_no, collect());
+
+            $row->old_invoice_no = $row->parent_invoice_no;
+            $row->cancelled_items = $set->pluck('item_description')->values();
+            $row->cancelled_value = round((float) $set->sum('amount'), 2);
+            $row->refund_given = round((float) ($set->first()->refund_amount ?? 0), 2);
+            $row->cancelled_by_name = $userNames->get($set->first()->cancelled_by ?? null);
+            $row->cancelled_on = $set->first()
+                ? \Carbon\Carbon::parse($set->first()->created_at)->format('d-m-Y h:i A')
+                : null;
+
+            return $row;
+        });
     }
 
     public function getInvoices(Request $request)
@@ -269,6 +306,10 @@ class DiagnosticInvoiceController extends Controller
 
                 return $row;
             });
+
+            if ($payment === 'partial') {
+                $this->attachPartialCancellationDetails($invoices);
+            }
 
             return response()->json([
 
@@ -1589,7 +1630,7 @@ class DiagnosticInvoiceController extends Controller
                     return $row;
                 });
 
-            $paperSize = $this->invoicePdfPaperSize($tests->count());
+            $paperSize = $this->invoicePdfPaperSize($tests->count(), $invoice);
 
             $testDateText = \App\Support\ReportTestDates::applyToInvoiceLines($tests, $invoice);
 
@@ -3133,7 +3174,7 @@ class DiagnosticInvoiceController extends Controller
                 return $row;
             });
 
-        $paperSize = $this->invoicePdfPaperSize($tests->count());
+        $paperSize = $this->invoicePdfPaperSize($tests->count(), $invoice);
 
         $testDateText = \App\Support\ReportTestDates::applyToInvoiceLines($tests, $invoice);
 
@@ -3157,8 +3198,15 @@ class DiagnosticInvoiceController extends Controller
     /**
      * @see self::PDF_SHORT_MAX_TESTS
      */
-    private function invoicePdfPaperSize(int $testCount): string
+    private function invoicePdfPaperSize(int $testCount, $invoice = null): string
     {
+        // A Modified Invoice (partial cancellation) always gets the full-page
+        // layout: its cancelled-items table and refund/collection rows don't
+        // fit the half-page budget, which counts only the remaining tests.
+        if (!empty($invoice->is_modified_invoice)) {
+            return 'STANDARD';
+        }
+
         return $testCount <= self::PDF_SHORT_MAX_TESTS ? 'SHORT' : 'STANDARD';
     }
 
@@ -3173,6 +3221,11 @@ class DiagnosticInvoiceController extends Controller
     private function applyInvoicePdfPaperSize($pdf, string $paperSize): void
     {
         $pdf->setPaper('A4', 'portrait');
+
+        // STANDARD can run to several pages: stamp "Page n/N" at the bottom centre.
+        if ($paperSize !== 'SHORT') {
+            \App\Support\PdfPageNumbers::add($pdf, 30, 'center');
+        }
     }
 
     // Every percent-based discount (Standard Discount %, Additional Discount

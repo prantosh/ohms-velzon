@@ -174,6 +174,10 @@ Diagnostic Invoice
                     <a class="nav-link active" href="javascript:void(0)" data-payment="due">Payment Due (All)</a>
                 </li>
 
+                <li class="nav-item">
+                    <a class="nav-link" href="javascript:void(0)" data-payment="partial">Partially Cancelled</a>
+                </li>
+
             </ul>
 
             <div class="text-muted mb-2" style="font-size:11px;">
@@ -235,6 +239,31 @@ Diagnostic Invoice
                     <tbody>
 
                     </tbody>
+
+                </table>
+
+                {{-- Partially Cancelled tab: shown instead of #invoiceTable. --}}
+                <table class="table table-bordered align-middle d-none"
+                       id="partialCancelTable">
+
+                    <thead class="table-light">
+                        <tr>
+                            <th>Old Invoice No.</th>
+                            <th>New Invoice No.</th>
+                            <th>Patient</th>
+                            <th>Cancelled Item(s)</th>
+                            <th class="text-end">Cancelled Value</th>
+                            <th class="text-end">New Total</th>
+                            <th class="text-end">Paid</th>
+                            <th class="text-end">Refund</th>
+                            <th class="text-end">Due</th>
+                            <th>Status</th>
+                            <th>Cancelled On / By</th>
+                            <th>Print</th>
+                        </tr>
+                    </thead>
+
+                    <tbody></tbody>
 
                 </table>
 

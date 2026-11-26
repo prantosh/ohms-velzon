@@ -43,7 +43,7 @@
                 <input type="text" id="to_date" class="form-control flatpickr" required>
             </div>
 
-            <div class="col-md-3 mb-3">
+            <div class="col-md-2 mb-3">
                 <label class="form-label">Item <small class="text-muted">(none = all)</small></label>
                 <select id="items" class="form-select" multiple size="4">
                     @foreach($items as $code => $label)
@@ -52,7 +52,12 @@
                 </select>
             </div>
 
-            <div class="col-md-3 mb-3">
+            <div class="col-md-2 mb-3">
+                <label class="form-label">Sub Item <small class="text-muted">(none = all)</small></label>
+                <select id="sub_items" class="form-select" multiple size="4"></select>
+            </div>
+
+            <div class="col-md-2 mb-3">
                 <label class="form-label">Doctor</label>
                 <select id="doctor_id" class="form-select">
                     <option value="">All Doctors</option>
@@ -70,7 +75,7 @@
                 </select>
             </div>
 
-            <div class="col-md-2 mb-3">
+            <div class="col-md-1 mb-3">
                 <button type="button" class="btn btn-primary w-100 mb-2" id="loadBtn">
                     <i class="ri-search-line"></i> Load
                 </button>
@@ -84,7 +89,7 @@
 </div>
 
 <div class="card" id="resultCard" style="display:none;">
-    <div class="card-header"><h5 class="card-title mb-0">Date-wise Summary</h5></div>
+    <div class="card-header"><h5 class="card-title mb-0" id="resultTitle">Date-wise Summary</h5></div>
     <div class="card-body">
         <div class="table-responsive">
             <table class="table table-bordered table-sm align-middle text-center">
@@ -115,11 +120,45 @@ document.addEventListener('DOMContentLoaded', function () {
     $('from_date')._flatpickr.setDate(now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-01');
     $('to_date')._flatpickr.setDate(today);
 
+    // Sub-item list follows the selected Item(s); empty until an Item is chosen (empty = all sub-items)
+    const subMap = @json($subItems);
+    function fillSubItems() {
+        const sel = Array.from($('items').selectedOptions).map(o => o.value);
+        const codes = sel.filter(c => subMap[c]); // no Item selected => list stays empty
+        const keep = new Set(Array.from($('sub_items').selectedOptions).map(o => o.value));
+        const specific = codes.flatMap(c => subMap[c].map(s =>
+            `<option value="${s.code}"${keep.has(s.code) ? ' selected' : ''}>${s.name}</option>`)).join('');
+        const anySpecific = Array.from(keep).some(v => v !== '');
+        $('sub_items').innerHTML = codes.length
+            ? `<option value=""${anySpecific ? '' : ' selected'}>ALL ITEMS</option>` + specific
+            : '';
+        allWasSelected = codes.length > 0 && !anySpecific;
+    }
+
+    // "ALL ITEMS" (first option) and specific sub-items are mutually exclusive
+    let allWasSelected = false;
+    $('sub_items').addEventListener('change', function () {
+        const opts = Array.from(this.options);
+        const all = opts[0];
+        if (!all || all.value !== '') return;
+        const others = opts.slice(1).filter(o => o.selected);
+        if (all.selected && !allWasSelected) {
+            others.forEach(o => o.selected = false);       // user just picked ALL ITEMS
+        } else if (all.selected && others.length) {
+            all.selected = false;                           // user picked a specific one
+        }
+        if (!opts.some(o => o.selected)) all.selected = true;
+        allWasSelected = all.selected;
+    });
+    $('items').addEventListener('change', fillSubItems);
+    fillSubItems();
+
     function params() {
         const p = new URLSearchParams();
         p.set('from_date', $('from_date').value);
         p.set('to_date', $('to_date').value);
         Array.from($('items').selectedOptions).forEach(o => p.append('items[]', o.value));
+        Array.from($('sub_items').selectedOptions).filter(o => o.value !== '').forEach(o => p.append('sub_items[]', o.value));
         if ($('doctor_id').value) p.set('doctor_id', $('doctor_id').value);
         if ($('employee_id').value) p.set('employee_id', $('employee_id').value);
         return p.toString();
@@ -143,6 +182,17 @@ document.addEventListener('DOMContentLoaded', function () {
                 $('tfoot').innerHTML = res.rows.length
                     ? '<tr><td class="text-start">Total</td>' + cols.map(c => `<td>${res.totals[c.key]}</td>`).join('') + '</tr>'
                     : '';
+                const txt = (id, all) => {
+                    const o = Array.from($(id).selectedOptions).map(x => x.text.trim());
+                    return o.length ? o.join(', ') : all;
+                };
+                const sel1 = (id, all) => $(id).value ? $(id).selectedOptions[0].text.trim() : all;
+                $('resultTitle').textContent = 'Date-wise Summary of Appointments, Visits & Services — ' +
+                    $('from_date').value + ' to ' + $('to_date').value +
+                    ' | Items: ' + txt('items', 'All') +
+                    ' | Sub-items: ' + txt('sub_items', 'All') +
+                    ' | Doctor: ' + sel1('doctor_id', 'All') +
+                    ' | Employee: ' + sel1('employee_id', 'All');
                 $('noData').style.display = res.rows.length ? 'none' : '';
                 $('resultCard').style.display = '';
                 $('printBtn').href = '{{ url('service-summary-report/print') }}?' + params();

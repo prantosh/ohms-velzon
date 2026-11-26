@@ -23,7 +23,10 @@
 @endphp
 
 {{-- WATERMARK -- position:fixed repeats this on every page. Placed before
-     the header table so it paints behind everything that follows. --}}
+     the header table so it paints behind everything that follows.
+     Pass 'omitWatermark' => true when the caller wraps this header in its own
+     position:fixed block and draws the watermark itself. --}}
+@unless($omitWatermark ?? false)
 <div style="
     position: fixed;
     top: {{ $watermarkTop }}px;
@@ -36,6 +39,7 @@
         src="{{ public_path('images/abssrk_logo.png') }}"
         style="width: {{ $watermarkWidth }}px;">
 </div>
+@endunless
 
 <table style="border:none; margin:0;">
 

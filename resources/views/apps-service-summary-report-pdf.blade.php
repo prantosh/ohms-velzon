@@ -17,7 +17,7 @@
     </style>
 </head>
 <body>
-    <h3>Service Summary (Date-wise)</h3>
+    <h3>Service Summary Report (Date-wise Count of Appointments, Visits and Services)</h3>
     <div class="sub">
         {{ $fromDate->format('d-m-Y') }} to {{ $toDate->format('d-m-Y') }}
         @if($filterText) <br>{{ $filterText }} @endif

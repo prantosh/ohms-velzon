@@ -178,7 +178,120 @@ function applyInvoicePaymentMode() {
     $("#invoiceListPdfBtn").toggleClass("d-none", !allRecords);
 }
 
+// Partially Cancelled tab: Modified Invoices with the old invoice number,
+// the cancelled items and the refund. Uses its own table; only the NEW
+// (modified) invoice gets a print button.
+function loadPartialCancelled() {
+
+    if ($.fn.DataTable.isDataTable('#invoiceTable')) {
+        $('#invoiceTable').DataTable().destroy();
+    }
+
+    if ($.fn.DataTable.isDataTable('#partialCancelTable')) {
+        $('#partialCancelTable').DataTable().destroy();
+    }
+
+    $('#invoiceTable').addClass('d-none');
+    $('#partialCancelTable').removeClass('d-none');
+
+    $('#partialCancelTable tbody').html(`
+        <tr>
+            <td colspan="12" class="text-center py-5">
+                <div class="spinner-border text-primary" role="status" style="width: 2rem; height: 2rem;"></div>
+                <div class="mt-2 fw-semibold">Loading partially cancelled invoices...</div>
+            </td>
+        </tr>
+    `);
+
+    $.ajax({
+        url: "/diagnostic-invoice/list",
+        type: "GET",
+        data: {
+            category: currentInvoiceCategory,
+            payment: 'partial',
+            days: currentInvoiceDays
+        },
+        success: function (response) {
+
+            // a newer tab click may have replaced this request
+            if (currentInvoicePayment !== 'partial') {
+                return;
+            }
+
+            if ($.fn.DataTable.isDataTable('#partialCancelTable')) {
+                $('#partialCancelTable').DataTable().destroy();
+            }
+
+            let rows = '';
+
+            $.each(response.data, function (i, row) {
+
+                const items = (row.cancelled_items || [])
+                    .map(function (d) { return '<div>' + escapeHtml(d) + '</div>'; })
+                    .join('');
+
+                const statusBadge = row.cancelled === 'Y'
+                    ? '<span class="badge bg-danger">Cancelled</span>'
+                    : row.status === 'Paid'
+                        ? '<span class="badge bg-success">Paid</span>'
+                        : row.status === 'Partial'
+                            ? '<span class="badge bg-warning text-dark">Partial</span>'
+                            : '<span class="badge bg-info text-dark">' + escapeHtml(row.status ?? '') + '</span>';
+
+                rows += `
+                    <tr>
+                        <td>${escapeHtml(row.old_invoice_no ?? '')}</td>
+                        <td><b>${escapeHtml(row.invoice_no ?? '')}</b></td>
+                        <td>${escapeHtml(row.patient_name ?? '')}<div class="text-muted small">${escapeHtml(row.patient_id ?? '')}</div></td>
+                        <td>${items}</td>
+                        <td class="text-end">${Number(row.cancelled_value ?? 0).toFixed(2)}</td>
+                        <td class="text-end">${row.total_amount ?? 0}</td>
+                        <td class="text-end">${row.paid_amount ?? 0}</td>
+                        <td class="text-end">${Number(row.refund_given ?? 0).toFixed(2)}</td>
+                        <td class="text-end">${row.due_amount ?? 0}</td>
+                        <td>${statusBadge}</td>
+                        <td>${escapeHtml(row.cancelled_on ?? '')}<div class="text-muted small">${escapeHtml(row.cancelled_by_name ?? '')}</div></td>
+                        <td>
+                            <a href="/diagnostic-invoice/print/${row.id}" target="_blank"
+                               class="btn btn-info btn-sm" title="Print Modified Invoice ${escapeHtml(row.invoice_no ?? '')}">
+                                <i class="ri-printer-line"></i>
+                            </a>
+                        </td>
+                    </tr>`;
+            });
+
+            $('#partialCancelTable tbody').html(rows);
+
+            $('#partialCancelTable').DataTable({
+                responsive: true,
+                ordering: false
+            });
+        },
+        error: function () {
+            $('#partialCancelTable tbody').html(`
+                <tr>
+                    <td colspan="12" class="text-center py-5 text-danger">
+                        Unable to load partially cancelled invoices. Please try again.
+                    </td>
+                </tr>
+            `);
+        }
+    });
+}
+
 function loadInvoices() {
+
+    if (currentInvoicePayment === 'partial') {
+        loadPartialCancelled();
+        return;
+    }
+
+    if ($.fn.DataTable.isDataTable('#partialCancelTable')) {
+        $('#partialCancelTable').DataTable().destroy();
+    }
+
+    $('#partialCancelTable').addClass('d-none');
+    $('#invoiceTable').removeClass('d-none');
 
     // Switching tabs/day-filter re-fetches the whole list, which can take
     // a moment -- without this the table just sits on the PREVIOUS

@@ -34,13 +34,37 @@ class ServiceSummaryReportController extends Controller
         'CRD001' => 'Cardiology',
     ];
 
+    private ?array $servicesCache = null;
+
+    /** All active item groups from invoice_item_masters (code => name); falls back to the legacy list. */
+    private function services(): array
+    {
+        return $this->servicesCache ??= (function () {
+            $rows = DB::table('invoice_item_masters')
+                ->where('status', 1)
+                ->orderBy('item_name')
+                ->pluck('item_name', 'item_code')
+                ->all();
+
+            return $rows + self::SERVICES;
+        })();
+    }
+
     public function index()
     {
         $doctors = Doctor::orderBy('doctor_name')->get(['id', 'doctor_name']);
         $employees = User::orderBy('name')->get(['id', 'name']);
-        $items = [self::PATIENTS => 'Patients (Appointments / Visited)'] + self::SERVICES;
+        $items = [self::PATIENTS => 'Patients (Appointments / Visited)'] + $this->services();
 
-        return view('apps-service-summary-report', compact('doctors', 'employees', 'items'));
+        $subItems = DB::table('invoice_item_details')
+            ->whereIn('item_code', array_keys($this->services()))
+            ->where('status', 'Y')
+            ->orderBy('item_description_sub')
+            ->get(['item_code', 'item_code_sub', 'item_description_sub'])
+            ->groupBy('item_code')
+            ->map(fn ($g) => $g->map(fn ($r) => ['code' => $r->item_code_sub, 'name' => $r->item_description_sub])->values());
+
+        return view('apps-service-summary-report', compact('doctors', 'employees', 'items', 'subItems'));
     }
 
     public function report(Request $request)
@@ -72,6 +96,8 @@ class ServiceSummaryReportController extends Controller
             'to_date' => 'required|date|after_or_equal:from_date',
             'items' => 'nullable|array',
             'items.*' => 'string',
+            'sub_items' => 'nullable|array',
+            'sub_items.*' => 'string',
             'doctor_id' => 'nullable|integer',
             'employee_id' => 'nullable|integer',
         ]);
@@ -82,14 +108,16 @@ class ServiceSummaryReportController extends Controller
         $doctorId = $request->filled('doctor_id') ? (int) $request->doctor_id : null;
         $employeeId = $request->filled('employee_id') ? (int) $request->employee_id : null;
 
+        $subItems = array_values(array_filter((array) $request->sub_items));
+
         $showPatients = !$selected || in_array(self::PATIENTS, $selected, true);
         $serviceCodes = $selected
-            ? array_values(array_intersect(array_keys(self::SERVICES), $selected))
-            : array_keys(self::SERVICES);
+            ? array_values(array_intersect(array_keys($this->services()), $selected))
+            : array_keys($this->services());
 
         $rows = [];
         $blank = fn () => array_fill_keys(
-            array_merge(['appointments', 'visited'], array_keys(self::SERVICES)),
+            array_merge(['appointments', 'visited'], array_keys($this->services())),
             0
         );
 
@@ -117,6 +145,7 @@ class ServiceSummaryReportController extends Controller
             $lines = DB::table('invoice_details as d')
                 ->join('invoices as i', 'i.invoice_no', '=', 'd.invoice_no')
                 ->whereIn('d.item_code', $serviceCodes)
+                ->when($subItems, fn ($q) => $q->whereIn('d.item_code_sub', $subItems))
                 ->whereBetween(DB::raw('DATE(i.invoice_date)'), [$from, $to])
                 ->where(fn ($q) => $q->whereNull('i.cancelled')->orWhere('i.cancelled', '!=', 'Y'))
                 ->when($doctorId, fn ($q) => $q->where('d.doctor_id', $doctorId))
@@ -148,7 +177,7 @@ class ServiceSummaryReportController extends Controller
             $columns[] = ['key' => 'visited', 'label' => 'Visited'];
         }
         foreach ($serviceCodes as $code) {
-            $columns[] = ['key' => $code, 'label' => self::SERVICES[$code]];
+            $columns[] = ['key' => $code, 'label' => $this->services()[$code]];
         }
 
         return ['columns' => $columns, 'rows' => $out, 'totals' => $totals];
@@ -156,21 +185,24 @@ class ServiceSummaryReportController extends Controller
 
     private function filterText(Request $request): string
     {
-        $parts = [];
-        if ($request->filled('doctor_id')) {
-            $parts[] = 'Doctor: ' . Doctor::where('id', $request->doctor_id)->value('doctor_name');
-        }
-        if ($request->filled('employee_id')) {
-            $parts[] = 'Employee: ' . User::where('id', $request->employee_id)->value('name');
-        }
         $items = array_filter((array) $request->items);
-        if ($items) {
-            $parts[] = 'Items: ' . implode(', ', array_map(
-                fn ($c) => $c === self::PATIENTS ? 'Patients' : (self::SERVICES[$c] ?? $c),
-                $items
-            ));
-        }
+        $subs = array_filter((array) $request->sub_items);
 
-        return implode(' | ', $parts);
+        $itemText = $items
+            ? implode(', ', array_map(
+                fn ($c) => $c === self::PATIENTS ? 'Patients' : ($this->services()[$c] ?? $c),
+                $items
+            ))
+            : 'All';
+        $subText = $subs
+            ? implode(', ', DB::table('invoice_item_details')->whereIn('item_code_sub', $subs)
+                ->pluck('item_description_sub')->unique()->all())
+            : 'All';
+        $doctor = $request->filled('doctor_id')
+            ? Doctor::where('id', $request->doctor_id)->value('doctor_name') : 'All';
+        $employee = $request->filled('employee_id')
+            ? User::where('id', $request->employee_id)->value('name') : 'All';
+
+        return "Items: {$itemText} | Sub-items: {$subText} | Doctor: {$doctor} | Employee: {$employee}";
     }
 }

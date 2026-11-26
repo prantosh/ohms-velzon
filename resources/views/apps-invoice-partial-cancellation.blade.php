@@ -281,6 +281,27 @@
         background-color: var(--vz-light);
         font-weight: 600;
     }
+
+    /* Item tick-boxes: the theme's default checkbox border is near-invisible
+       on a white table cell, so the selection column looked empty. */
+    .partial-chk {
+        width: 1.3rem;
+        height: 1.3rem;
+        cursor: pointer;
+        border: 2px solid #405189;
+        background-color: #fff;
+        opacity: 1;
+    }
+    .partial-chk:checked {
+        background-color: #405189;
+        border-color: #405189;
+    }
+    .partial-chk:disabled {
+        cursor: not-allowed;
+        border-color: #adb5bd;
+        background-color: #e9ecef;
+        opacity: 1;
+    }
 </style>
 
 <script src="{{ URL::asset('build/libs/sweetalert2/sweetalert2.min.js') }}"></script>
