@@ -34,7 +34,7 @@
             @forelse($rows as $r)
                 <tr>
                     <td class="l">{{ \Carbon\Carbon::parse($r['date'])->format('d-m-Y') }}</td>
-                    @foreach($columns as $c)<td>{{ $r[$c['key']] ?? 0 }}</td>@endforeach
+                    @foreach($columns as $c)<td>{{ !empty($c['money']) ? number_format($r[$c['key']] ?? 0, 2) : ($r[$c['key']] ?? 0) }}</td>@endforeach
                 </tr>
             @empty
                 <tr><td colspan="{{ count($columns) + 1 }}">No activity found.</td></tr>
@@ -44,11 +44,35 @@
         <tfoot>
             <tr>
                 <td class="l">Total</td>
-                @foreach($columns as $c)<td>{{ $totals[$c['key']] }}</td>@endforeach
+                @foreach($columns as $c)<td>{{ !empty($c['money']) ? number_format($totals[$c['key']], 2) : $totals[$c['key']] }}</td>@endforeach
             </tr>
         </tfoot>
         @endif
     </table>
+
+@if(!empty($details))
+    <h4 style="margin:14px 0 0 0;">Service Line Details</h4>
+    <table>
+        <thead><tr>
+            <th>Date</th><th>Invoice No</th><th class="l">Patient</th><th class="l">Item Group</th><th class="l">Sub Item</th>
+            <th>Gross</th><th>Discount</th><th>Net</th><th>Received</th><th>Pending</th>
+        </tr></thead>
+        <tbody>
+            @foreach($details as $d)
+            <tr>
+                <td>{{ \Carbon\Carbon::parse($d['date'])->format('d-m-Y') }}</td><td>{{ $d['invoice_no'] }}</td>
+                <td class="l">{{ $d['patient'] }}</td><td class="l">{{ $d['group'] }}</td><td class="l">{{ $d['sub_item'] }}</td>
+                @foreach(['gross','discount','net','received','pending'] as $k)<td style="text-align:right">{{ number_format($d[$k], 2) }}</td>@endforeach
+            </tr>
+            @endforeach
+        </tbody>
+        <tfoot><tr>
+            <td colspan="5" class="l">Total</td>
+            @foreach(['gross','discount','net','received','pending'] as $k)<td style="text-align:right">{{ number_format(collect($details)->sum($k), 2) }}</td>@endforeach
+        </tr></tfoot>
+    </table>
+    <div style="font-size:8px;margin-top:4px;">Received / Pending are each invoice's payment status shared pro-rata across its lines. Discount = Gross &minus; Net.</div>
+@endif
 
     <div class="foot">Printed by {{ $printedBy }} on {{ now()->format('d-m-Y H:i') }}</div>
 </body>

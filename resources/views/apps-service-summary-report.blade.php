@@ -104,6 +104,26 @@
     </div>
 </div>
 
+<div class="card" id="detailCard" style="display:none;">
+    <div class="card-header"><h5 class="card-title mb-0">Service Line Details</h5></div>
+    <div class="card-body">
+        <p class="text-muted small mb-2">Received / Pending are each invoice's payment status shared pro-rata across its lines.
+            Discount = Gross Amount &minus; Net Amount.</p>
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle text-center">
+                <thead class="table-light"><tr>
+                    <th>Date</th><th>Invoice No</th><th class="text-start">Patient</th>
+                    <th class="text-start">Item Group</th><th class="text-start">Sub Item</th>
+                    <th class="text-end">Gross Amount</th><th class="text-end">Discount</th><th class="text-end">Net Amount</th>
+                    <th class="text-end">Received</th><th class="text-end">Pending</th>
+                </tr></thead>
+                <tbody id="detailBody"></tbody>
+                <tfoot class="table-light fw-bold" id="detailFoot"></tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @section('script')
@@ -173,14 +193,27 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(r => r.ok ? r.json() : Promise.reject(r))
             .then(res => {
                 const cols = res.columns;
+                const fmt = (c, v) => c.money ? Number(v || 0).toFixed(2) : (v || 0);
+                const m = v => Number(v || 0).toFixed(2);
+                const esc = t => String(t ?? '').replace(/[&<>]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[ch]));
+                const det = res.details || [];
+                const sum = k => det.reduce((a, d) => a + Number(d[k] || 0), 0);
+                $('detailBody').innerHTML = det.map(d =>
+                    `<tr><td>${fmtDate(d.date)}</td><td>${esc(d.invoice_no)}</td><td class="text-start">${esc(d.patient)}</td>` +
+                    `<td class="text-start">${esc(d.group)}</td><td class="text-start">${esc(d.sub_item)}</td>` +
+                    ['gross','discount','net','received','pending'].map(k => `<td class="text-end">${m(d[k])}</td>`).join('') + '</tr>').join('');
+                $('detailFoot').innerHTML = det.length
+                    ? '<tr><td colspan="5" class="text-start">Total</td>' +
+                      ['gross','discount','net','received','pending'].map(k => `<td class="text-end">${m(sum(k))}</td>`).join('') + '</tr>' : '';
+                $('detailCard').style.display = det.length ? '' : 'none';
                 $('thead').innerHTML = '<tr><th class="text-start">Date</th>' +
                     cols.map(c => `<th>${c.label}</th>`).join('') + '</tr>';
                 $('tbody').innerHTML = res.rows.map(r =>
                     `<tr><td class="text-start">${fmtDate(r.date)}</td>` +
-                    cols.map(c => `<td>${r[c.key] || 0}</td>`).join('') + '</tr>'
+                    cols.map(c => `<td${c.money ? ' class="text-end"' : ''}>${fmt(c, r[c.key])}</td>`).join('') + '</tr>'
                 ).join('');
                 $('tfoot').innerHTML = res.rows.length
-                    ? '<tr><td class="text-start">Total</td>' + cols.map(c => `<td>${res.totals[c.key]}</td>`).join('') + '</tr>'
+                    ? '<tr><td class="text-start">Total</td>' + cols.map(c => `<td${c.money ? ' class="text-end"' : ''}>${fmt(c, res.totals[c.key])}</td>`).join('') + '</tr>'
                     : '';
                 const txt = (id, all) => {
                     const o = Array.from($(id).selectedOptions).map(x => x.text.trim());

@@ -117,7 +117,7 @@ class ServiceSummaryReportController extends Controller
 
         $rows = [];
         $blank = fn () => array_fill_keys(
-            array_merge(['appointments', 'visited'], array_keys($this->services())),
+            array_merge(['appointments', 'visited', 'gross', 'discount', 'net', 'received', 'pending'], array_keys($this->services())),
             0
         );
 
@@ -141,6 +141,9 @@ class ServiceSummaryReportController extends Controller
             }
         }
 
+        $details = [];
+        $fin = ['gross', 'discount', 'net', 'received', 'pending'];
+
         if ($serviceCodes) {
             $lines = DB::table('invoice_details as d')
                 ->join('invoices as i', 'i.invoice_no', '=', 'd.invoice_no')
@@ -150,13 +153,40 @@ class ServiceSummaryReportController extends Controller
                 ->where(fn ($q) => $q->whereNull('i.cancelled')->orWhere('i.cancelled', '!=', 'Y'))
                 ->when($doctorId, fn ($q) => $q->where('d.doctor_id', $doctorId))
                 ->when($employeeId, fn ($q) => $q->where('i.created_by', $employeeId))
-                ->selectRaw('DATE(i.invoice_date) as d, d.item_code, COUNT(*) as c')
-                ->groupBy('d', 'd.item_code')
+                ->selectRaw('DATE(i.invoice_date) as dt, i.invoice_no, i.patient_name, i.paid_amount, i.due_amount,
+                    d.id as line_id, d.item_code, d.item_description, d.quantity, d.rate, d.amount')
+                ->orderBy('dt')->orderBy('i.invoice_no')->orderBy('d.id')
                 ->get();
 
             foreach ($lines as $r) {
-                $rows[$r->d] ??= $blank();
-                $rows[$r->d][$r->item_code] = (int) $r->c;
+                $gross = round((float) $r->rate * max((float) $r->quantity, 1), 2);
+                $net = round((float) $r->amount, 2);
+                $disc = round(max($gross - $net, 0), 2);
+                // Payments are tracked per invoice; each line gets its pro-rata share.
+                $paid = (float) $r->paid_amount;
+                $due = (float) $r->due_amount;
+                $ratio = ($paid + $due) > 0 ? min($paid / ($paid + $due), 1) : 0;
+                $received = $ratio >= 1 ? $net : min($net, round($net * $ratio / 10) * 10); // pro-rata share, to nearest 10
+                $pending = round($net - $received, 2);
+
+                $rows[$r->dt] ??= $blank();
+                $rows[$r->dt][$r->item_code]++;
+                foreach (array_combine($fin, [$gross, $disc, $net, $received, $pending]) as $k => $v) {
+                    $rows[$r->dt][$k] += $v;
+                }
+
+                $details[] = [
+                    'date' => $r->dt,
+                    'invoice_no' => $r->invoice_no,
+                    'patient' => $r->patient_name,
+                    'group' => $this->services()[$r->item_code] ?? $r->item_code,
+                    'sub_item' => $r->item_description,
+                    'gross' => $gross,
+                    'discount' => $disc,
+                    'net' => $net,
+                    'received' => $received,
+                    'pending' => $pending,
+                ];
             }
         }
 
@@ -176,11 +206,29 @@ class ServiceSummaryReportController extends Controller
             $columns[] = ['key' => 'appointments', 'label' => 'Appointments'];
             $columns[] = ['key' => 'visited', 'label' => 'Visited'];
         }
+        // With a sub-item filter, label each group column as "Group (sub item names)"
+        $subNames = $subItems
+            ? DB::table('invoice_item_details')
+                ->whereIn('item_code', $serviceCodes)->whereIn('item_code_sub', $subItems)
+                ->get(['item_code', 'item_description_sub'])
+                ->groupBy('item_code')
+                ->map(fn ($g) => $g->pluck('item_description_sub')->unique()->implode(', '))
+            : collect();
         foreach ($serviceCodes as $code) {
-            $columns[] = ['key' => $code, 'label' => $this->services()[$code]];
+            $label = $this->services()[$code];
+            if ($subNames->get($code)) {
+                $label .= ' (' . $subNames->get($code) . ')';
+            }
+            $columns[] = ['key' => $code, 'label' => $label];
+        }
+        if ($serviceCodes) {
+            foreach (['gross' => 'Gross Amount', 'discount' => 'Discount', 'net' => 'Net Amount',
+                      'received' => 'Received', 'pending' => 'Pending'] as $k => $l) {
+                $columns[] = ['key' => $k, 'label' => $l, 'money' => true];
+            }
         }
 
-        return ['columns' => $columns, 'rows' => $out, 'totals' => $totals];
+        return ['columns' => $columns, 'rows' => $out, 'totals' => $totals, 'details' => $details];
     }
 
     private function filterText(Request $request): string
