@@ -3662,26 +3662,93 @@ $(document).on(
 
             return;
         }
-        if (paidAmount === 0) {
+        /*
+        |--------------------------------------------------------------------------
+        | STAFF WITH ZERO DOCTOR PAYMENT WARNING
+        |--------------------------------------------------------------------------
+        | STAFF has no fixed rate -- the operator types the doctor payment per
+        | line, and a forgotten entry silently saves as 0. Ask for explicit
+        | confirmation (tick "Waive doctor payment" if 0 is intended).
+        */
+        let staffZeroTests = [];
+
+        $('#testTable tbody tr.mainRow').each(function () {
+
+            let mainRow = $(this);
+
+            let doctorText = $.trim(
+                mainRow.find('.doctorSelect option:selected').text()
+            ).toUpperCase();
+
+            if (!/\bSTAFF\b/.test(doctorText)) {
+                return;
+            }
+
+            if (mainRow.find('.waiveDoctorPayment').is(':checked')) {
+                return;
+            }
+
+            let payment =
+                parseFloat(mainRow.find('.paymentValue').val()) || 0;
+
+            if (payment <= 0) {
+                staffZeroTests.push(
+                    $.trim(mainRow.find('input[name$="[test_name]"]').val()) ||
+                    'a test'
+                );
+            }
+        });
+
+        let proceedToSave = function () {
+
+            if (paidAmount === 0) {
+
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Paid Amount is Zero',
+                    text: 'Do you want to continue and save this invoice?',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, Save',
+                    cancelButtonText: 'No'
+                }).then((result) => {
+
+                    if (result.isConfirmed) {
+
+                        showConfirmOffcanvas();
+                    }
+                });
+
+                return;
+            }
+
+            showConfirmOffcanvas();
+        };
+
+        if (staffZeroTests.length > 0) {
 
             Swal.fire({
                 icon: 'warning',
-                title: 'Paid Amount is Zero',
-                text: 'Do you want to continue and save this invoice?',
+                title: 'Doctor Payment is Zero',
+                html:
+                    'Doctor <b>STAFF</b> is selected but the doctor payment is <b>0</b> for:<br><br>' +
+                    $('<div>').text(staffZeroTests.join(', ')).html() +
+                    '<br><br>Is this correct? If no doctor payment is due, tick ' +
+                    '<b>Waive doctor payment</b>; otherwise enter the amount.',
                 showCancelButton: true,
-                confirmButtonText: 'Yes, Save',
-                cancelButtonText: 'No'
+                confirmButtonText: 'Yes, 0 is correct',
+                cancelButtonText: 'Go back and enter'
             }).then((result) => {
 
                 if (result.isConfirmed) {
 
-                    showConfirmOffcanvas();
+                    proceedToSave();
                 }
             });
 
             return;
         }
-        showConfirmOffcanvas();
+
+        proceedToSave();
     }
 );
 
