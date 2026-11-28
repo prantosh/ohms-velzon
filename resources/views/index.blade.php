@@ -128,6 +128,38 @@
 
 @if($isAdmin)
 
+    @if($allEmployeesSummary)
+    <div class="card dash-card mb-4">
+
+        <div class="dash-section-header">
+            <span class="dash-section-icon bg-success-subtle text-success">
+                <i class="ri-team-line"></i>
+            </span>
+            <h5>Today's Invoices &mdash; All Employees
+                <small class="text-muted fw-normal">({{ $allEmployeesSummary['employee_count'] }} logged in)</small>
+            </h5>
+
+            <div class="ms-auto text-end">
+                <div class="fw-bold text-danger">
+                    ₹ {{ number_format($allEmployeesSummary['doctor_payable_pending'], 0) }}
+                </div>
+                <small class="text-muted">Pending Payable To Doctor</small>
+            </div>
+
+            <div class="ms-4 text-end">
+                <div class="fw-bold {{ $allEmployeesSummary['cash_in_hand'] < 0 ? 'text-danger' : 'text-success' }}">
+                    ₹ {{ number_format($allEmployeesSummary['cash_in_hand'], 0) }}
+                </div>
+                <small class="text-muted">Total Cash In Hand</small>
+            </div>
+        </div>
+
+        <div class="card-body">
+            @include('partials.dashboard-invoice-tiles', ['tiles' => $allEmployeesSummary['tiles'], 'tileReadonly' => true])
+        </div>
+    </div>
+    @endif
+
     @forelse($allUserInvoiceSummaries as $userSummary)
 
     <div class="card dash-card mb-4">

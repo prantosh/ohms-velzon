@@ -262,6 +262,7 @@ class HomeController extends Controller
 
         $myInvoiceSummary = [];
         $allUserInvoiceSummaries = collect();
+        $allEmployeesSummary = null;
 
         if ($isAdmin) {
 
@@ -288,6 +289,24 @@ class HomeController extends Controller
                     'doctor_payable_pending' => app(\App\Http\Controllers\DoctorPayableByUserController::class)->pendingBalanceForUser($userId),
                 ];
             })->values();
+
+            // Combined "All Employees" summary: sum of the per-user figures above.
+            $allEmployeesSummary = null;
+            if ($allUserInvoiceSummaries->isNotEmpty()) {
+                $first = $allUserInvoiceSummaries->first()['tiles'];
+                $combinedTiles = [];
+                foreach ($first as $i => $tile) {
+                    $tile['count'] = $allUserInvoiceSummaries->sum(fn ($u) => $u['tiles'][$i]['count']);
+                    $tile['amount'] = $allUserInvoiceSummaries->sum(fn ($u) => $u['tiles'][$i]['amount']);
+                    $combinedTiles[] = $tile;
+                }
+                $allEmployeesSummary = [
+                    'tiles' => $combinedTiles,
+                    'cash_in_hand' => $allUserInvoiceSummaries->sum('cash_in_hand'),
+                    'doctor_payable_pending' => $allUserInvoiceSummaries->sum('doctor_payable_pending'),
+                    'employee_count' => $allUserInvoiceSummaries->count(),
+                ];
+            }
 
         } else {
 
@@ -454,6 +473,7 @@ class HomeController extends Controller
                 'canViewCashSubmission',
                 'myInvoiceSummary',
                 'allUserInvoiceSummaries',
+                'allEmployeesSummary',
                 'cashInHand',
                 'doctorPayablePending',
                 'todayCollection',

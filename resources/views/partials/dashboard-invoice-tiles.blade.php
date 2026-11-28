@@ -11,12 +11,16 @@
 
     <div class="col">
 
+        @if(!empty($tileReadonly))
+        <div class="card stat-card h-100 mb-0">
+        @else
         <div class="card stat-card h-100 mb-0 tile-detail-trigger"
              role="button" tabindex="0" style="cursor:pointer"
              data-type="{{ $tile['key'] }}"
              data-user-id="{{ $tileUserId ?? Auth::id() }}"
              data-title="{{ $tile['label'] }}"
              title="Click to view details">
+        @endif
 
             <div class="card-body">
 
